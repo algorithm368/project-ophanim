@@ -1,0 +1,111 @@
+@AGENTS.md
+
+# project-ophanim
+
+A threat-intelligence indicator checker. Paste an **IPv4, domain, or file hash**
+(MD5/SHA1/SHA256), and the app fans out to many TI sources in parallel, then
+collapses every response into one normalized 0-100 risk score and verdict. Built
+on Next.js 16 (App Router) + React 19 + TypeScript. An optional Upstash Redis
+cache backs result caching and per-indicator history; without credentials the
+app degrades gracefully (no cache, no history) rather than failing.
+
+The README documents the user-facing source list and HTTP API. This file is for
+working *in* the codebase: where things live, the conventions, and how to verify.
+
+## Commands
+
+```bash
+npm run dev        # next dev (http://localhost:3000)
+npm run build      # production build
+npm run lint       # eslint (next core-web-vitals + typescript)
+npm test           # vitest run (unit tests, no network, ~0.4s)
+npm run test:watch # vitest watch
+```
+
+## Architecture: the indicator pipeline
+
+All three IOC types share one data model and one execution path. The shape is
+deliberately uniform, so the same change usually applies to IP, domain, and hash.
+
+- **Normalized model** lives in `lib/ti/types.ts`. Every source returns a
+  `SourceFinding` (`status`, `score` 0-100, `malicious`, `summary`, `categories`,
+  `details`, plus optional `geo` / `domainContext` / `hashContext`). The
+  orchestrator wraps it into a `SourceResult`, and the per-type result is
+  `CheckResult` / `DomainCheckResult` / `HashCheckResult`.
+- **A source** implements the `TiSource` interface: `meta` (`SourceMeta`),
+  `isEnabled()`, and `check(indicator, signal)`. See `lib/ti/sources/feodo.ts`
+  for a clean reference adapter.
+- **Orchestration** is shared in `lib/ti/orchestrate.ts`: `runSource` (handles
+  skip/timeout/error, drops the `raw` payload before returning), `runAll`
+  (parallel, with an `onSettled` callback used for streaming), and `mergeFields`
+  (first-non-empty merge of context objects).
+- **Per-type orchestrators** wire registry + orchestrate + aggregate:
+  `lib/ti/check.ts` (IP), `lib/ti/domain/check.ts`, `lib/ti/hash/check.ts`.
+- **Scoring** is in `lib/ti/aggregate.ts`. `aggregateRisk` blends the strongest
+  weighted signal (0.6) with the weighted consensus (0.4); any hard `malicious`
+  listing sets a floor of 75. `verdictFor` maps score to
+  clean/low/suspicious/malicious/unknown.
+- **Route factory** `lib/ti/route-handler.ts` (`makeIndicatorRoute`) builds the
+  shared GET/POST handlers: GET and plain POST return one JSON result;
+  a POST with `Accept: application/x-ndjson` streams per-source progress
+  (`start` / `source` / `done` / `error` events). It also reads/writes the cache
+  and records history. Each route file (`app/api/check/route.ts`,
+  `check-domain`, `check-hash`) only supplies validation + the type-specific
+  cache/run functions.
+- **IOC detection** `lib/ioc.ts`: `refangIOC` undoes analyst defanging
+  (`evil[.]com`, `hxxps://`, etc.); `detectIOC` picks ip/domain/hash so the
+  unified `app/check/[ioc]/` route works without a manual mode toggle.
+
+### Directory map
+
+```
+lib/ip.ts, lib/domain.ts, lib/hash.ts   parsing + scope/algo detection
+lib/ti/types.ts                          shared normalized model + TiSource
+lib/ti/orchestrate.ts                    runSource / runAll / mergeFields
+lib/ti/aggregate.ts                      risk scoring + verdict
+lib/ti/http.ts                           timeout-aware fetch helpers (getJson, isTimeout, errorMessage)
+lib/ti/route-handler.ts                  makeIndicatorRoute (GET/POST + streaming)
+lib/ti/cache.ts                          Upstash Redis cache (optional)
+lib/ti/history.ts                        reputation timeline in Redis (optional)
+lib/ti/{sources,domain/sources,hash/sources}/*   one adapter per source
+lib/ti/{registry,domain/registry,hash/registry}.ts   the source lists
+lib/ti/{check,domain/check,hash/check}.ts            per-type orchestrators
+app/api/{check,check-domain,check-hash}/route.ts     indicator routes
+app/check/[ioc]/                         unified result page (+ OG image)
+components/Checker.tsx, CheckResults.tsx UI entry points
+components/ui/                           shadcn primitives
+```
+
+## Conventions
+
+- **Adding a source** is the most common extension. Create an adapter under the
+  right `sources/` dir implementing `TiSource`, then register it in that type's
+  `registry.ts`. Mirror `feodo.ts`: catch errors and return
+  `{ status: isTimeout(err) ? "timeout" : "error", error: errorMessage(err) }`
+  rather than throwing; honor the `AbortSignal`; set a `weight` reflecting how
+  authoritative the source is (context-only sources use `0` so they do not move
+  the score). Key-gated sources set `requiresKey: true` + `keyEnv` and gate
+  `isEnabled()` on the env var.
+- **HTTP**: use the helpers in `lib/ti/http.ts`, not bare `fetch`, so timeouts
+  and errors are uniform.
+- **Tests**: Vitest, files are `lib/**/*.test.ts` (colocated next to source).
+  They are pure/unit (no network) and use the `@/` alias. Run `npm test` before
+  declaring work done. Parsing, scoring, and refang are all covered; add cases
+  there when you touch that logic.
+- **Untrusted input** is validated at the boundary: route `validate` functions
+  reject bad/non-routable indicators (see `validateIp` rejecting private/reserved
+  ranges with 422). Keep validation at these edges.
+- **Env / secrets**: `.env.local` wins over `.env` (Next.js loads both, with
+  `.env.local` taking priority). `.env*` files are gitignored; never commit keys.
+  The cache reads either `UPSTASH_REDIS_REST_*` or the `KV_REST_API_*` names that
+  Vercel's Upstash integration injects.
+
+## Verifying changes
+
+1. `npm test` and `npm run lint` should both pass.
+2. For lookup/source logic, the no-key sources (ip-api, Shodan InternetDB,
+   DNSBLs, Feodo, etc.) work without any credentials, so you can exercise the
+   real pipeline end-to-end against a known-bad and a known-clean indicator.
+3. For UI changes, run `npm run dev` and check the feature in a browser. There
+   are Playwright screenshot helpers in `scripts/` (e.g. `node scripts/shot.mjs`)
+   used for visual checks. If you cannot verify the UI, say so explicitly.
