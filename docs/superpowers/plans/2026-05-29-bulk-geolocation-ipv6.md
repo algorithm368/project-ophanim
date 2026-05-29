@@ -679,10 +679,9 @@ export interface GeoRow {
   error?: string;
 }
 
-/** A single entry in an ip-api `/batch` response (single payload + echoed query). */
-export interface IpApiBatchEntry extends IpApiResponse {
-  query?: string;
-}
+/** A single entry in an ip-api `/batch` response — a single-lookup payload
+ *  whose `query` echoes the requested IP (`query` lives on IpApiResponse). */
+export type IpApiBatchEntry = IpApiResponse;
 
 /**
  * Zip the requested IPs against the batch response. ip-api preserves request
