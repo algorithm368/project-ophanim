@@ -5,46 +5,91 @@ import type {
   TiSource,
 } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
+import { hostFromUrl } from "@/lib/url";
 
-interface VtRelationList {
-  data?: { id?: string }[];
+interface VtRelItem {
+  id?: string;
+  attributes?: { url?: string };
+}
+interface VtRelList {
+  data?: VtRelItem[];
 }
 
+/** File/IP/domain relationship endpoints → typed RelatedIndicators. */
+const INDICATOR_RELS: {
+  kind: string;
+  type: IndicatorType;
+  relation: string;
+}[] = [
+  { kind: "contacted_ips", type: "ip", relation: "contacts" },
+  { kind: "contacted_domains", type: "domain", relation: "contacts" },
+  { kind: "dropped_files", type: "hash", relation: "drops" },
+  { kind: "execution_parents", type: "hash", relation: "parent" },
+];
+
+/** URL relationship endpoints → distribution URLs (+ host relations). */
+const URL_RELS = ["itw_urls", "contacted_urls"];
+
 /**
- * Pull what the sample reaches out to: contacted IPs + domains, the highest-
- * value pivots for a malware investigation. Best-effort, two parallel calls.
+ * Pull what the sample reaches out to / drops / came from. Each list is fetched
+ * best-effort and independently; any failure (timeout, quota, premium-gated)
+ * just contributes nothing. Returns relation pivots plus the raw URLs to show.
  */
 async function fetchHashRelations(
   hash: string,
   signal: AbortSignal,
   headers: Record<string, string>,
-): Promise<RelatedIndicator[]> {
-  const fetchList = async (
-    kind: "contacted_ips" | "contacted_domains",
-  ): Promise<RelatedIndicator[]> => {
+): Promise<{ relations: RelatedIndicator[]; distributionUrls: string[] }> {
+  const getList = async (kind: string): Promise<VtRelItem[]> => {
     try {
-      const { ok, data } = await getJson<VtRelationList>(
-        `https://www.virustotal.com/api/v3/files/${hash}/${kind}?limit=8`,
+      const { ok, data } = await getJson<VtRelList>(
+        `https://www.virustotal.com/api/v3/files/${hash}/${kind}?limit=10`,
         signal,
         headers,
       );
-      if (!ok || !Array.isArray(data?.data)) return [];
-      const type: IndicatorType = kind === "contacted_ips" ? "ip" : "domain";
-      const values = data.data
-        .map((d) => d?.id)
-        .filter((v): v is string => typeof v === "string" && v.length > 0);
-      return [...new Set(values)]
-        .slice(0, 6)
-        .map((value) => ({ value, type, relation: "contacts" }));
+      return ok && Array.isArray(data?.data) ? data.data : [];
     } catch {
       return [];
     }
   };
-  const [ips, doms] = await Promise.all([
-    fetchList("contacted_ips"),
-    fetchList("contacted_domains"),
+
+  const [indicatorLists, urlLists] = await Promise.all([
+    Promise.all(INDICATOR_RELS.map((r) => getList(r.kind))),
+    Promise.all(URL_RELS.map((k) => getList(k))),
   ]);
-  return [...ips, ...doms];
+
+  const relations: RelatedIndicator[] = [];
+  INDICATOR_RELS.forEach((r, i) => {
+    const values = [
+      ...new Set(
+        indicatorLists[i]
+          .map((d) => d.id)
+          .filter((v): v is string => typeof v === "string" && v.length > 0),
+      ),
+    ].slice(0, 6);
+    for (const value of values)
+      relations.push({ value, type: r.type, relation: r.relation });
+  });
+
+  const distributionUrls = [
+    ...new Set(
+      urlLists
+        .flat()
+        .map((d) => d.attributes?.url)
+        .filter((v): v is string => typeof v === "string" && v.length > 0),
+    ),
+  ].slice(0, 8);
+
+  const seenHosts = new Set<string>();
+  for (const u of distributionUrls) {
+    const host = hostFromUrl(u);
+    if (host && !seenHosts.has(host)) {
+      seenHosts.add(host);
+      relations.push({ value: host, type: "domain", relation: "distribution" });
+    }
+  }
+
+  return { relations, distributionUrls };
 }
 
 interface VtFileResponse {
@@ -101,7 +146,7 @@ export const virusTotalHashSource: TiSource = {
     if (!key) return { status: "skipped" };
     try {
       const headers = { "x-apikey": key };
-      const [main, relations] = await Promise.all([
+      const [main, rel] = await Promise.all([
         getJson<VtFileResponse>(
           `https://www.virustotal.com/api/v3/files/${hash}`,
           signal,
@@ -167,6 +212,9 @@ export const virusTotalHashSource: TiSource = {
           magic: attr.magic,
           firstSeen: isoFromEpoch(attr.first_submission_date),
           lastSeen: isoFromEpoch(attr.last_analysis_date),
+          distributionUrls: rel.distributionUrls.length
+            ? rel.distributionUrls
+            : undefined,
         },
         details: {
           maliciousEngines: malicious,
@@ -177,7 +225,7 @@ export const virusTotalHashSource: TiSource = {
           threatLabel,
           reputation: attr.reputation,
         },
-        relations: relations.length ? relations : undefined,
+        relations: rel.relations.length ? rel.relations : undefined,
         raw: data,
       };
     } catch (err) {
