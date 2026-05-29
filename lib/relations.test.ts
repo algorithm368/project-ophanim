@@ -229,7 +229,6 @@ describe("relationsFor", () => {
         flagged: 0,
         skipped: 0,
         errored: 0,
-        rateLimited: 0,
       },
     };
     const mkSource = (
