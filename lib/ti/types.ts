@@ -88,6 +88,10 @@ export interface HashContext {
   /** Fuzzy hash for similarity matching. */
   ssdeep?: string;
   tags?: string[];
+  /** URLs the sample has been served/downloaded from (distribution + in-the-wild). */
+  distributionUrls?: string[];
+  /** AV/engine detection labels, e.g. "Trojan.Win32.Emotet". */
+  detectionNames?: string[];
 }
 
 export interface GeoContext {
