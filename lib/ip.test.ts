@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseIPv4, reverseOctets } from "@/lib/ip";
-import { parseIPv6, parseIP } from "@/lib/ip";
+import { parseIPv4, reverseOctets, parseIPv6, parseIP } from "@/lib/ip";
 
 describe("parseIPv4", () => {
   it("parses a routable public address", () => {
@@ -78,9 +77,11 @@ describe("parseIPv6", () => {
     expect(parseIPv6("::1")?.ip).toBe("::1");
   });
 
-  it("compresses the leftmost-longest run of zero groups", () => {
-    // Two equal-length runs -> the leftmost is compressed.
+  it("compresses the longest run of zero groups; leftmost wins on a tie", () => {
+    // Longer run (length 3) on the right is the one compressed.
     expect(parseIPv6("2001:0:0:1:0:0:0:1")?.ip).toBe("2001:0:0:1::1");
+    // Two equal-length runs (length 2 each) -> the leftmost is compressed.
+    expect(parseIPv6("1:0:0:2:0:0:3:4")?.ip).toBe("1::2:0:0:3:4");
   });
 
   it("parses an embedded IPv4 tail into hextets", () => {
