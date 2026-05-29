@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       typeof val === "string"
         ? val
         : Array.isArray(val)
-          ? val.join("\n")
+          ? val.filter((x): x is string => typeof x === "string").join("\n")
           : null;
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    // One ip-api /batch request; 8s is generous for up to 100 IPs.
     const results = await bulkGeolocate(ips, AbortSignal.timeout(8000));
     return Response.json({ results });
   } catch (err) {
