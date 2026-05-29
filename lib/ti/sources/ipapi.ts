@@ -3,6 +3,8 @@ import { errorMessage, getJson, isTimeout } from "../http";
 
 export interface IpApiResponse {
   status: "success" | "fail";
+  /** The IP echoed back by ip-api (notably in /batch responses). */
+  query?: string;
   message?: string;
   country?: string;
   countryCode?: string;
