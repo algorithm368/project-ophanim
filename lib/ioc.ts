@@ -1,4 +1,4 @@
-import { parseIPv4 } from "@/lib/ip";
+import { parseIP, type ParsedIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
 import { parseHash } from "@/lib/hash";
 
@@ -41,7 +41,29 @@ export function detectIOC(input: string): IOCType | null {
   const value = refangIOC(input);
   if (!value) return null;
   if (parseHash(value)) return "hash";
-  if (parseIPv4(value)) return "ip";
+  if (parseIP(value)) return "ip";
   if (parseDomain(value)) return "domain";
   return null;
+}
+
+/**
+ * Pull every distinct, routable IP (v4 or v6) out of a free-form blob — the
+ * input the bulk-geolocation path receives. Tokens split on whitespace,
+ * commas, and semicolons; each is refanged then parsed. Private/reserved/
+ * non-IP tokens are dropped, results are deduped by canonical form, and the
+ * count is capped (ip-api's batch limit). Order of first appearance is kept.
+ */
+export function extractIps(input: string, cap = 100): ParsedIP[] {
+  const out: ParsedIP[] = [];
+  const seen = new Set<string>();
+  for (const token of input.split(/[\s,;]+/)) {
+    if (!token) continue;
+    const parsed = parseIP(refangIOC(token));
+    if (!parsed || parsed.isPrivate || parsed.isReserved) continue;
+    if (seen.has(parsed.ip)) continue;
+    seen.add(parsed.ip);
+    out.push(parsed);
+    if (out.length >= cap) break;
+  }
+  return out;
 }

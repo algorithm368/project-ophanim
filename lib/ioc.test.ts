@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectIOC, refangIOC } from "@/lib/ioc";
+import { detectIOC, refangIOC, extractIps } from "@/lib/ioc";
 
 describe("refangIOC", () => {
   it.each([
@@ -43,4 +43,50 @@ describe("detectIOC", () => {
       expect(detectIOC(input)).toBeNull();
     },
   );
+});
+
+describe("detectIOC (IPv6)", () => {
+  it.each([
+    ["2606:4700:4700::1111"],
+    ["fe80::1"],
+    ["::1"],
+  ])("detects %s as ip", (input) => {
+    expect(detectIOC(input)).toBe("ip");
+  });
+});
+
+describe("extractIps", () => {
+  it("splits on whitespace, commas, and semicolons", () => {
+    const ips = extractIps("8.8.8.8, 1.1.1.1; 9.9.9.9\n2606:4700:4700::1111");
+    expect(ips.map((p) => p.ip)).toEqual([
+      "8.8.8.8",
+      "1.1.1.1",
+      "9.9.9.9",
+      "2606:4700:4700::1111",
+    ]);
+  });
+
+  it("dedupes by canonical form (v4 exact, v6 across spellings)", () => {
+    const ips = extractIps(
+      "1.1.1.1 1.1.1.1 2606:4700:4700::1111 2606:4700:4700:0:0:0:0:1111",
+    );
+    expect(ips.map((p) => p.ip)).toEqual(["1.1.1.1", "2606:4700:4700::1111"]);
+  });
+
+  it("drops private, reserved, and non-IP tokens", () => {
+    const ips = extractIps("10.0.0.1 192.168.1.1 ::1 google.com hello 1.1.1.1");
+    expect(ips.map((p) => p.ip)).toEqual(["1.1.1.1"]);
+  });
+
+  it("refangs defanged tokens", () => {
+    expect(extractIps("8.8.8[.]8 1.1.1.1").map((p) => p.ip)).toEqual([
+      "8.8.8.8",
+      "1.1.1.1",
+    ]);
+  });
+
+  it("caps the number of IPs", () => {
+    const many = Array.from({ length: 150 }, (_, i) => `1.1.${(i >> 8) & 255}.${i & 255}`).join(" ");
+    expect(extractIps(many).length).toBe(100);
+  });
 });
