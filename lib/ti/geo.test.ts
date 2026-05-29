@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapBatchResults, type IpApiBatchEntry } from "./geo";
+import { bulkGeolocate, mapBatchResults, type IpApiBatchEntry } from "./geo";
 import { parseIP, type ParsedIP } from "@/lib/ip";
 
 const ip = (s: string): ParsedIP => {
@@ -41,6 +41,18 @@ describe("mapBatchResults", () => {
 
   it("treats a missing entry as an error row", () => {
     const rows = mapBatchResults([ip("1.1.1.1")], []);
-    expect(rows[0]).toMatchObject({ ip: "1.1.1.1", version: 4, status: "error" });
+    expect(rows[0]).toMatchObject({
+      ip: "1.1.1.1",
+      version: 4,
+      status: "error",
+      error: "Lookup failed",
+    });
+  });
+});
+
+describe("bulkGeolocate", () => {
+  it("throws when given more than 100 IPs", async () => {
+    const ips = Array.from({ length: 101 }, () => ip("8.8.8.8"));
+    await expect(bulkGeolocate(ips, AbortSignal.timeout(1000))).rejects.toThrow(/100/);
   });
 });

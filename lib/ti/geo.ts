@@ -48,13 +48,18 @@ export function mapBatchResults(
 /**
  * Geolocate up to 100 IPs in a single ip-api batch request. Geo-only — no
  * threat-intel scoring. The caller is responsible for validating/deduping
- * (see extractIps).
+ * (see extractIps). Throws if given more than 100 IPs.
  */
 export async function bulkGeolocate(
   ips: ParsedIP[],
   signal: AbortSignal,
 ): Promise<GeoRow[]> {
   if (ips.length === 0) return [];
+  if (ips.length > 100) {
+    throw new RangeError(
+      `bulkGeolocate: ip-api batch limit is 100 IPs, got ${ips.length}`,
+    );
+  }
   const { data } = await postJson<IpApiBatchEntry[]>(
     `http://ip-api.com/batch?fields=${IP_API_FIELDS}`,
     signal,
