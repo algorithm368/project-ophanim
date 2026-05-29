@@ -214,4 +214,71 @@ describe("relationsFor", () => {
     const { related } = relationsFor({ ...baseIp, sources: [erroredSource] });
     expect(related.find((r) => r.value === "x.example.com")).toBeUndefined();
   });
+
+  it("collects new hash relation labels from multiple sources and dedupes", () => {
+    const baseHash: HashCheckResult = {
+      hash: "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+      algorithm: "sha256",
+      checkedAt: "",
+      riskScore: 0,
+      verdict: "clean",
+      sources: [],
+      stats: {
+        total: 0,
+        queried: 0,
+        flagged: 0,
+        skipped: 0,
+        errored: 0,
+        rateLimited: 0,
+      },
+    };
+    const mkSource = (
+      id: string,
+      relations: HashCheckResult["sources"][number]["relations"],
+    ): SourceResult => ({
+      source: {
+        id,
+        name: id,
+        url: "",
+        category: "reputation",
+        requiresKey: true,
+        weight: 1,
+      },
+      enabled: true,
+      status: "ok",
+      durationMs: 1,
+      relations,
+    });
+    const result: HashCheckResult = {
+      ...baseHash,
+      sources: [
+        mkSource("virustotal", [
+          { value: "1.2.3.4", type: "ip", relation: "contacts" },
+          { value: "drop1", type: "hash", relation: "drops" },
+          { value: "evil.example.com", type: "domain", relation: "distribution" },
+        ]),
+        mkSource("urlhaus", [
+          // duplicate host from another source must collapse to one node
+          { value: "evil.example.com", type: "domain", relation: "distribution" },
+        ]),
+        mkSource("malwarebazaar", [
+          { value: "sibling1", type: "hash", relation: "similar" },
+        ]),
+      ],
+    };
+    const { related } = relationsFor(result);
+    expect(related).toContainEqual({
+      value: "drop1",
+      type: "hash",
+      relation: "drops",
+    });
+    expect(related).toContainEqual({
+      value: "sibling1",
+      type: "hash",
+      relation: "similar",
+    });
+    expect(
+      related.filter((r) => r.value === "evil.example.com"),
+    ).toHaveLength(1);
+  });
 });
