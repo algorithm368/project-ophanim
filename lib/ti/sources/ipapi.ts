@@ -1,7 +1,7 @@
-import type { SourceFinding, TiSource } from "../types";
+import type { GeoContext, SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
 
-interface IpApiResponse {
+export interface IpApiResponse {
   status: "success" | "fail";
   message?: string;
   country?: string;
@@ -20,8 +20,29 @@ interface IpApiResponse {
   hosting?: boolean;
 }
 
-const FIELDS =
+/** ip-api field selector, shared by the single source and the bulk batch call. */
+export const IP_API_FIELDS =
   "status,message,country,countryCode,regionName,city,lat,lon,isp,org,as,asname,reverse,mobile,proxy,hosting,query";
+
+/** Map an ip-api success payload to the normalized GeoContext. */
+export function ipApiToGeo(data: IpApiResponse): GeoContext {
+  return {
+    country: data.country,
+    countryCode: data.countryCode,
+    region: data.regionName,
+    city: data.city,
+    lat: data.lat,
+    lon: data.lon,
+    asn: data.as,
+    asnOrg: data.asname,
+    isp: data.isp,
+    org: data.org,
+    reverse: data.reverse,
+    isHosting: data.hosting,
+    isProxy: data.proxy,
+    isMobile: data.mobile,
+  };
+}
 
 /** ip-api.com: free geolocation/ASN context (no key). Context only, no risk score. */
 export const ipApiSource: TiSource = {
@@ -37,7 +58,7 @@ export const ipApiSource: TiSource = {
   async check(ip, signal): Promise<SourceFinding> {
     try {
       const { data } = await getJson<IpApiResponse>(
-        `http://ip-api.com/json/${ip}?fields=${FIELDS}`,
+        `http://ip-api.com/json/${ip}?fields=${IP_API_FIELDS}`,
         signal,
       );
       if (!data || data.status !== "success") {
@@ -66,22 +87,7 @@ export const ipApiSource: TiSource = {
           reverseDns: data.reverse,
           flags: flags.length ? flags : ["none"],
         },
-        geo: {
-          country: data.country,
-          countryCode: data.countryCode,
-          region: data.regionName,
-          city: data.city,
-          lat: data.lat,
-          lon: data.lon,
-          asn: data.as,
-          asnOrg: data.asname,
-          isp: data.isp,
-          org: data.org,
-          reverse: data.reverse,
-          isHosting: data.hosting,
-          isProxy: data.proxy,
-          isMobile: data.mobile,
-        },
+        geo: ipApiToGeo(data),
         raw: data,
       };
     } catch (err) {
