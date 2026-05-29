@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import {
   CircleX,
   FileDigit,
+  Gauge,
   Globe,
   Loader2,
   Network,
@@ -13,6 +14,7 @@ import {
   Search,
   SearchX,
   ServerCrash,
+  ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
   Sparkles,
@@ -20,16 +22,19 @@ import {
   X,
 } from "lucide-react";
 import {
+  isDomainResult,
+  isHashResult,
   type CheckResult,
   type DomainCheckResult,
   type HashCheckResult,
   type SourceMeta,
   type SourceResult,
 } from "@/lib/ti/types";
-import { parseIPv4 } from "@/lib/ip";
+import { parseIPv4, type ParsedIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
 import { parseHash } from "@/lib/hash";
-import { detectIOC, refangIOC } from "@/lib/ioc";
+import { detectIOC, refangIOC, extractIps } from "@/lib/ioc";
+import type { GeoRow } from "@/lib/ti/geo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,14 +76,21 @@ function progressStatus(result?: SourceResult): {
       spin: true,
     };
   }
+  const score = result.score ?? 0;
   const flagged =
-    result.status === "ok" &&
-    (result.malicious === true || (result.score ?? 0) >= 40);
+    result.status === "ok" && (result.malicious === true || score >= 40);
   if (flagged) {
     return {
       icon: TriangleAlert,
       cls: "text-red-600 dark:text-red-400",
       label: "flagged",
+    };
+  }
+  if (result.status === "ok" && score > 0) {
+    return {
+      icon: ShieldAlert,
+      cls: "text-amber-600 dark:text-amber-400",
+      label: "low risk",
     };
   }
   switch (result.status) {
@@ -95,11 +107,17 @@ function progressStatus(result?: SourceResult): {
         cls: "text-orange-500",
         label: result.status === "timeout" ? "timeout" : "no response",
       };
+    case "rate_limited":
+      return {
+        icon: Gauge,
+        cls: "text-amber-600 dark:text-amber-400",
+        label: "rate limited",
+      };
     default:
       return {
         icon: ShieldQuestion,
         cls: "text-muted-foreground/50",
-        label: "no key",
+        label: result.enabled ? "n/a" : "no key",
       };
   }
 }
@@ -118,18 +136,6 @@ const HASH_EXAMPLES = [
 
 // One example per IOC type, since detection picks the checker automatically.
 const EXAMPLES = [IP_EXAMPLES[0], DOMAIN_EXAMPLES[0], HASH_EXAMPLES[0]];
-
-function isDomainResult(
-  r: CheckResult | DomainCheckResult | HashCheckResult,
-): r is DomainCheckResult {
-  return "domain" in r;
-}
-
-function isHashResult(
-  r: CheckResult | DomainCheckResult | HashCheckResult,
-): r is HashCheckResult {
-  return "hash" in r;
-}
 
 /** Validate input before hitting the network, returning a friendly error or null. */
 function validateInput(value: string, mode: Mode): string | null {
@@ -157,8 +163,35 @@ function validateInput(value: string, mode: Mode): string | null {
   return null;
 }
 
+/**
+ * The exact value the lookup runs on: the refanged input reduced to its
+ * canonical IOC — the parsed IPv4, the apex domain (so a pasted URL becomes
+ * just its host), or the normalized hash. Falls back to the input until a type
+ * is recognized. Used both for the "we'll check …" hint and the permalink.
+ */
+function canonicalFor(value: string, detected: Mode | null): string {
+  if (detected === "ip") return parseIPv4(value)?.ip ?? value;
+  if (detected === "domain") return parseDomain(value)?.domain ?? value;
+  if (detected === "hash") return parseHash(value)?.hash ?? value;
+  return value;
+}
+
 const loadCheckResults = () => import("./CheckResults");
 const CheckResults = dynamic(loadCheckResults, { ssr: false });
+const loadBulkGeo = () => import("./BulkGeoResults");
+const BulkGeoResults = dynamic(loadBulkGeo, { ssr: false });
+
+/**
+ * The IPs a value would bulk-geolocate, or null if it isn't a bulk case.
+ * Bulk applies to 2+ routable IPs, or a single IPv6 (the full TI pipeline is
+ * IPv4-only, so a lone v6 goes to the geo table instead).
+ */
+function bulkTargets(value: string): ParsedIP[] | null {
+  const ips = extractIps(value);
+  if (ips.length >= 2) return ips;
+  if (ips.length === 1 && ips[0].version === 6) return ips;
+  return null;
+}
 
 export default function Checker({ initialQuery }: { initialQuery?: string }) {
   const [mode, setMode] = useState<Mode>(
@@ -172,6 +205,9 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
   const [result, setResult] = useState<
     CheckResult | DomainCheckResult | HashCheckResult | null
   >(null);
+  const [bulkRows, setBulkRows] = useState<GeoRow[] | null>(null);
+  const [bulkPending, setBulkPending] = useState(0);
+  const [isBulk, setIsBulk] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Captures the mount-time runCheck so the init effect can fire it once without
   // listing the (re-created-each-render) function as a dependency.
@@ -210,10 +246,12 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
   }, []);
 
   const trimmed = query.trim();
-  // Refanged form (e.g. "evil[.]com" -> "evil.com") that we actually look up, so
-  // we can show the user what will be checked when it differs from their input.
-  const normalized = refangIOC(query);
   const detected = detectIOC(query);
+  const bulkPreview = bulkTargets(refangIOC(query));
+  // What we actually look up: the input refanged ("evil[.]com" -> "evil.com")
+  // and reduced to its canonical IOC (a pasted URL becomes just its host), so
+  // the hint shows the real target when it differs from what was typed.
+  const canonical = canonicalFor(refangIOC(query), detected);
   const DetectedIcon = detected ? MODE_META[detected].icon : ShieldQuestion;
 
   // Live auto-detection: as the user types, switch the active checker to match
@@ -226,11 +264,57 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
     if (detected && detected !== mode) setMode(detected);
   }
 
+  async function runBulk(value: string, ips: ParsedIP[]) {
+    setLoading(true);
+    setIsBulk(true);
+    setBulkPending(ips.length);
+    setBulkRows(null);
+    setProgress(null);
+    setError(null);
+    setResult(null);
+    void loadBulkGeo();
+
+    try {
+      const res = await fetch("/api/geo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ips: value }),
+      });
+      if (!res.ok) {
+        let message = `The lookup failed (HTTP ${res.status}). Please try again.`;
+        try {
+          const data = (await res.json()) as { error?: string };
+          if (data?.error) message = data.error;
+        } catch {
+          /* keep default */
+        }
+        setError({ kind: "request", message });
+        return;
+      }
+      const data = (await res.json()) as { results: GeoRow[] };
+      setBulkRows(data.results);
+    } catch {
+      setError({
+        kind: "request",
+        message:
+          "Couldn't reach the server. Check your connection and try again.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function runCheck(target: string, opts?: { refresh?: boolean }) {
     // Refang first so defanged input ("evil[.]com", "hxxp://bad[.]site") still
     // resolves and the server receives a clean, checkable indicator.
     const value = refangIOC(target);
     if (!value || loading) return;
+
+    const bulk = bulkTargets(value);
+    if (bulk) {
+      void runBulk(value, bulk);
+      return;
+    }
 
     // Auto-detect the IOC type from the value itself so the right checker runs
     // regardless of which tab is active.
@@ -256,12 +340,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
 
     // Reflect the lookup in a shareable URL (/check/<ioc>) without a full
     // navigation, so a result can be linked into a ticket and reopened.
-    const canonical =
-      detected === "ip"
-        ? (parseIPv4(value)?.ip ?? value)
-        : detected === "domain"
-          ? (parseDomain(value)?.domain ?? value)
-          : (parseHash(value)?.hash ?? value);
+    const canonical = canonicalFor(value, detected);
     const url = `/check/${encodeURIComponent(canonical)}`;
     if (window.location.pathname !== url) {
       window.history.pushState(null, "", url);
@@ -272,6 +351,8 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
     setProgress(null);
     setError(null);
     setResult(null);
+    setBulkRows(null);
+    setIsBulk(false);
     // Warm the lazy results chunk while the lookup runs so it renders instantly.
     void loadCheckResults();
 
@@ -454,7 +535,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
           <Button
             type="submit"
             size="lg"
-            disabled={loading || !query.trim()}
+            disabled={loading || !query.trim() || (!detected && !bulkPreview)}
             className="font-hand sketch-shadow-primary h-12 rotate-1 rounded-[16px_26px_14px_24px/24px_14px_26px_16px] border-2 border-primary/50 px-7 text-lg font-bold transition-transform hover:rotate-0 hover:bg-primary/90"
           >
             {loading ? (
@@ -477,14 +558,22 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
               <Sparkles className="size-4 text-primary" />
               Type or paste an indicator and we&apos;ll detect the type for you.
             </span>
+          ) : bulkPreview ? (
+            <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
+              <Network className="size-4" />
+              {bulkPreview.length === 1
+                ? "Detected an IPv6 address"
+                : `Detected ${bulkPreview.length} IP addresses`}{" "}
+              <span className="text-muted-foreground">— bulk geolocation</span>
+            </span>
           ) : detected ? (
             <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
               <DetectedIcon className="size-4" />
               Detected {detected === "ip" ? "an" : "a"} {MODE_META[detected].label}
-              {normalized !== trimmed && (
+              {canonical !== trimmed && (
                 <span className="text-muted-foreground">
                   (we&apos;ll check{" "}
-                  <span className="font-mono text-foreground">{normalized}</span>)
+                  <span className="font-mono text-foreground">{canonical}</span>)
                 </span>
               )}
             </span>
@@ -509,17 +598,34 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
         />
       )}
 
-      {loading && (
+      {loading && isBulk && <BulkProgress count={bulkPending} />}
+
+      {loading && !isBulk && (
         <SearchProgress progress={progress} indicator={pending} mode={mode} />
       )}
 
-      {!loading && !error && !result && <EmptyState mode={mode} />}
+      {!loading && !error && !result && !bulkRows && <EmptyState mode={mode} />}
+
+      {!loading && bulkRows && <BulkGeoResults rows={bulkRows} />}
 
       {!loading && result && (
         <CheckResults result={result} onRefresh={refresh} onPivot={pivot} />
       )}
 
     </div>
+  );
+}
+
+function BulkProgress({ count }: { count: number }) {
+  return (
+    <Card className="sketch-shadow mt-8 overflow-hidden rounded-[22px_34px_18px_30px/30px_18px_34px_22px] border-2 border-foreground/20 bg-gradient-to-br from-primary/8 to-transparent">
+      <CardContent className="flex items-center gap-3 py-8">
+        <Loader2 className="size-6 animate-spin text-primary" />
+        <div className="font-hand text-2xl font-bold">
+          Looking up {count} {count === 1 ? "address" : "addresses"}…
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
