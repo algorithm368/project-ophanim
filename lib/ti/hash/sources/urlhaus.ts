@@ -1,5 +1,6 @@
-import type { SourceFinding, TiSource } from "../../types";
+import type { RelatedIndicator, SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout, postForm } from "../../http";
+import { hostFromUrl } from "@/lib/url";
 
 interface UrlhausUrlEntry {
   url?: string;
@@ -87,6 +88,28 @@ export const urlhausHashSource: TiSource = {
       const onlineUrls =
         data.urls?.filter((u) => u.url_status === "online").length ?? 0;
 
+      const distributionUrls = [
+        ...new Set(
+          (data.urls ?? [])
+            .map((u) => u.url)
+            .filter((v): v is string => typeof v === "string" && v.length > 0),
+        ),
+      ].slice(0, 8);
+
+      const hostRelations: RelatedIndicator[] = [];
+      const seenHosts = new Set<string>();
+      for (const u of distributionUrls) {
+        const host = hostFromUrl(u);
+        if (host && !seenHosts.has(host)) {
+          seenHosts.add(host);
+          hostRelations.push({
+            value: host,
+            type: "domain",
+            relation: "distribution",
+          });
+        }
+      }
+
       return {
         status: "ok",
         malicious: true,
@@ -106,7 +129,11 @@ export const urlhausHashSource: TiSource = {
           malwareFamily: family,
           firstSeen: data.firstseen ?? undefined,
           lastSeen: data.lastseen ?? undefined,
+          distributionUrls: distributionUrls.length
+            ? distributionUrls
+            : undefined,
         },
+        relations: hostRelations.length ? hostRelations : undefined,
         details: {
           fileType: data.file_type,
           signature: family,
