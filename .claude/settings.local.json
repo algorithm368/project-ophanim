@@ -3,7 +3,21 @@
     "allow": [
       "Bash(git init *)",
       "Bash(git remote *)",
-      "Bash(apt list *)"
+      "Bash(apt list *)",
+      "Bash(npm run *)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(awk '{print $1}')",
+      "Bash(npm test *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://192.168.1.47:3000/check/1.1.1.1)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://192.168.1.47:3000/api/check/1.1.1.1)",
+      "Bash(curl -s http://192.168.1.47:3000/check/1.1.1.1)",
+      "Bash(curl -s \"http://localhost:3000/api/check?indicator=8.8.8.8\")",
+      "Bash(python3 -c ' *)",
+      "Bash(claude mcp *)",
+      "Bash(git -C /home/siriwat-dev-debian/Documents/project-ophanim diff lib/ti/cache.ts)"
     ]
-  }
+  },
+  "prefersReducedMotion": true
 }

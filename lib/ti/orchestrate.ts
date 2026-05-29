@@ -2,6 +2,24 @@ import type { SourceResult, TiSource } from "./types";
 
 const PER_SOURCE_TIMEOUT_MS = 8000;
 
+/**
+ * Coerce a field that should be a string into one. Sources are meant to return
+ * string `summary`/`error`, but upstream error envelopes sometimes nest an
+ * object there (e.g. Censys returns `{ error: { code, message, ... } }`). Pull
+ * out the human-readable message so the UI never tries to render an object —
+ * React throws "Objects are not valid as a React child" if it does.
+ */
+function asMessage(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    const msg = rec.message ?? rec.reason ?? rec.detail ?? rec.error;
+    return typeof msg === "string" ? msg : JSON.stringify(value);
+  }
+  return String(value);
+}
+
 /** Run one source, normalizing skips, findings, and failures into a SourceResult. */
 export async function runSource(
   source: TiSource,
@@ -32,6 +50,8 @@ export async function runSource(
       enabled: true,
       durationMs: Date.now() - started,
       ...finding,
+      summary: asMessage(finding.summary),
+      error: asMessage(finding.error),
     };
     // The raw upstream payload is never surfaced in the UI; drop it so it
     // doesn't bloat the cache entry and the streamed response.

@@ -1,5 +1,5 @@
 import type { SourceFinding, TiSource } from "../../types";
-import { errorMessage, isTimeout } from "../../http";
+import { errorMessage, isTimeout, postJson } from "../../http";
 
 interface ThreatMatch {
   threatType?: string;
@@ -34,36 +34,24 @@ export const safeBrowsingSource: TiSource = {
     const key = process.env.GOOGLE_SAFE_BROWSING_API_KEY;
     if (!key) return { status: "skipped" };
     try {
-      const res = await fetch(
+      const { ok, status, data } = await postJson<SbResponse>(
         `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${key}`,
+        signal,
         {
-          method: "POST",
-          signal,
-          cache: "no-store",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            client: { clientId: "project-ophanim", clientVersion: "0.1" },
-            threatInfo: {
-              threatTypes: Object.keys(THREAT_LABEL),
-              platformTypes: ["ANY_PLATFORM"],
-              threatEntryTypes: ["URL"],
-              threatEntries: [{ url: domain }],
-            },
-          }),
+          client: { clientId: "project-ophanim", clientVersion: "0.1" },
+          threatInfo: {
+            threatTypes: Object.keys(THREAT_LABEL),
+            platformTypes: ["ANY_PLATFORM"],
+            threatEntryTypes: ["URL"],
+            threatEntries: [{ url: domain }],
+          },
         },
       );
-      const text = await res.text();
-      let data: SbResponse | null = null;
-      try {
-        data = text ? (JSON.parse(text) as SbResponse) : null;
-      } catch {
-        data = null;
-      }
 
-      if (!res.ok) {
+      if (!ok) {
         return {
           status: "error",
-          error: data?.error?.message ?? `HTTP ${res.status}`,
+          error: data?.error?.message ?? `HTTP ${status}`,
         };
       }
 

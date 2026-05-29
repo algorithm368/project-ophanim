@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
+import { algoFromLength } from "@/lib/hash";
 
 interface HashlookupResponse {
   FileName?: string;
@@ -13,14 +14,6 @@ interface HashlookupResponse {
   /** Present (comma-separated source list) when the hash is known malicious. */
   KnownMalicious?: string;
   message?: string;
-}
-
-/** Pick the CIRCL endpoint segment from the hash length. */
-function endpointFor(hash: string): "md5" | "sha1" | "sha256" | null {
-  if (hash.length === 32) return "md5";
-  if (hash.length === 40) return "sha1";
-  if (hash.length === 64) return "sha256";
-  return null;
 }
 
 function toNumber(value: string | number | undefined): number | undefined {
@@ -48,7 +41,7 @@ export const hashlookupSource: TiSource = {
   },
   isEnabled: () => true,
   async check(hash, signal): Promise<SourceFinding> {
-    const endpoint = endpointFor(hash);
+    const endpoint = algoFromLength(hash);
     if (!endpoint) return { status: "error", error: "Unsupported hash length" };
     try {
       const { ok, status, data } = await getJson<HashlookupResponse>(

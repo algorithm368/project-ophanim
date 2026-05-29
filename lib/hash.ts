@@ -37,6 +37,11 @@ export function parseHash(input: string): ParsedHash | null {
   return { hash: value, algorithm };
 }
 
+/** Map a hex hash to its algorithm by digest length, or null if not a known length. */
+export function algoFromLength(hash: string): HashAlgorithm | null {
+  return LENGTH_TO_ALGO[hash.length] ?? null;
+}
+
 export const HASH_ALGO_LABEL: Record<HashAlgorithm, string> = {
   md5: "MD5",
   sha1: "SHA-1",

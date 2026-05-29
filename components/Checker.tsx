@@ -511,9 +511,9 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
               autoComplete="off"
               spellCheck={false}
               aria-label="IOC to check"
-              placeholder="Paste an IP, domain, or file hash and we'll detect it"
+              placeholder="IP, domain, or file hash"
               className={cn(
-                "h-12 rounded-none border-0 bg-transparent pl-10 font-mono text-lg shadow-none focus-visible:ring-0",
+                "h-12 rounded-none border-0 bg-transparent pl-10 font-mono text-lg shadow-none placeholder:text-base focus-visible:ring-0 sm:placeholder:text-lg",
                 query ? "pr-11" : "pr-3",
               )}
             />
@@ -604,7 +604,9 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
         <SearchProgress progress={progress} indicator={pending} mode={mode} />
       )}
 
-      {!loading && !error && !result && !bulkRows && <EmptyState mode={mode} />}
+      {!loading && !error && !result && !bulkRows && (
+        <EmptyState detected={detected} />
+      )}
 
       {!loading && bulkRows && <BulkGeoResults rows={bulkRows} />}
 
@@ -629,7 +631,18 @@ function BulkProgress({ count }: { count: number }) {
   );
 }
 
-function EmptyState({ mode }: { mode: Mode }) {
+function EmptyState({ detected }: { detected: Mode | null }) {
+  // Before a type is recognized (the default on first load), describe all three
+  // IOCs so the tool doesn't read as IP-only; once detection has picked a type,
+  // tailor the copy to what that lookup will actually return.
+  const copy = !detected
+    ? "Paste an IP address, domain, or file hash above — we'll detect the type, then tell you what it is, where it lives, and whether any threat-intel source has flagged it, summarized into one risk score."
+    : detected === "ip"
+      ? "Enter an IPv4 address above and we'll tell you what kind of address it is, where it's located, and whether any threat-intel source has flagged it, summarized into one risk score."
+      : detected === "domain"
+        ? "Enter a domain above and we'll tell you when it was registered, where it resolves, and whether any threat-intel source has flagged it, summarized into one risk score."
+        : "Paste a file hash (MD5, SHA-1, or SHA-256) above and we'll tell you what the file is, its name and type, any malware family it belongs to, and whether threat-intel sources have flagged it.";
+
   return (
     <Card className="mt-10 border-dashed bg-card/50">
       <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
@@ -641,11 +654,7 @@ function EmptyState({ mode }: { mode: Mode }) {
             Ready when you are
           </p>
           <p className="mx-auto max-w-md text-sm text-muted-foreground">
-            {mode === "ip"
-              ? "Enter an IPv4 address above and we'll tell you what kind of address it is, where it's located, and whether any threat-intel source has flagged it, summarized into one risk score."
-              : mode === "domain"
-                ? "Enter a domain above and we'll tell you when it was registered, where it resolves, and whether any threat-intel source has flagged it, summarized into one risk score."
-                : "Paste a file hash (MD5, SHA-1, or SHA-256) above and we'll tell you what the file is, its name and type, any malware family it belongs to, and whether threat-intel sources have flagged it."}
+            {copy}
           </p>
         </div>
       </CardContent>
@@ -800,7 +809,17 @@ function SearchProgress({
           </div>
         </div>
 
-        <div className="h-3.5 w-full overflow-hidden rounded-full border-2 border-foreground/15 bg-muted">
+        <div
+          role="progressbar"
+          aria-label="Threat-intel sources checked"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={total > 0 ? pct : undefined}
+          aria-valuetext={
+            total > 0 ? `${done} of ${total} sources checked` : undefined
+          }
+          className="h-3.5 w-full overflow-hidden rounded-full border-2 border-foreground/15 bg-muted"
+        >
           <div
             className={cn(
               "h-full rounded-full bg-primary transition-[width] duration-500 ease-out",
@@ -809,6 +828,17 @@ function SearchProgress({
             style={total > 0 ? { width: `${Math.max(pct, 3)}%` } : undefined}
           />
         </div>
+
+        {/* Screen-reader-only narration: one concise, polite announcement per
+            settled source. The visible source grid below updates too often to
+            announce in full, so it's left out of the live region. */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {total > 0
+            ? `${done} of ${total} sources checked${
+                lastSettled ? `, last in ${lastSettled.source.name}` : ""
+              }`
+            : "Reaching out to threat-intel sources…"}
+        </p>
 
         <p className="font-hand text-base text-muted-foreground">
           {lastSettled

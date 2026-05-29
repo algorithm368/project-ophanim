@@ -35,7 +35,14 @@ const baseIp: CheckResult = {
   riskScore: 0,
   verdict: "clean",
   sources: [],
-  stats: { total: 0, queried: 0, flagged: 0, skipped: 0, errored: 0 },
+  stats: {
+    total: 0,
+    queried: 0,
+    flagged: 0,
+    skipped: 0,
+    errored: 0,
+    rateLimited: 0,
+  },
 };
 
 describe("ipRelations", () => {
@@ -69,7 +76,14 @@ describe("domainRelations", () => {
       riskScore: 0,
       verdict: "clean",
       sources: [],
-      stats: { total: 0, queried: 0, flagged: 0, skipped: 0, errored: 0 },
+      stats: {
+        total: 0,
+        queried: 0,
+        flagged: 0,
+        skipped: 0,
+        errored: 0,
+        rateLimited: 0,
+      },
       context: {
         resolvedIps: ["9.9.9.9"],
         nameservers: ["ns1.example.com"],
@@ -100,7 +114,14 @@ describe("hashRelations", () => {
       riskScore: 0,
       verdict: "clean",
       sources: [],
-      stats: { total: 0, queried: 0, flagged: 0, skipped: 0, errored: 0 },
+      stats: {
+        total: 0,
+        queried: 0,
+        flagged: 0,
+        skipped: 0,
+        errored: 0,
+        rateLimited: 0,
+      },
       context: {
         md5: "44d88612fea8a8f36de82e1278abb02f",
         sha256:

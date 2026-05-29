@@ -1,6 +1,6 @@
 import type { CheckStats, SourceResult, Verdict } from "./types";
 
-const FLAG_THRESHOLD = 40;
+export const FLAG_THRESHOLD = 40;
 
 export function verdictFor(score: number, hasData: boolean): Verdict {
   if (!hasData) return "unknown";
@@ -74,5 +74,6 @@ export function computeStats(results: SourceResult[]): CheckStats {
     errored: results.filter(
       (r) => r.status === "error" || r.status === "timeout",
     ).length,
+    rateLimited: results.filter((r) => r.status === "rate_limited").length,
   };
 }

@@ -1,5 +1,5 @@
 import type { SourceFinding, TiSource } from "../../types";
-import { errorMessage, isTimeout } from "../../http";
+import { errorMessage, isTimeout, postForm } from "../../http";
 
 interface UrlhausUrlEntry {
   url?: string;
@@ -58,36 +58,27 @@ export const urlhausHashSource: TiSource = {
           ? "sha256_hash"
           : null;
     if (!field) {
-      return { status: "ok", summary: "URLhaus supports MD5/SHA-256 only" };
+      return {
+        status: "skipped",
+        summary: "MD5/SHA-256 only — paste an MD5 or SHA-256 hash for URLhaus",
+      };
     }
 
     try {
-      const res = await fetch("https://urlhaus-api.abuse.ch/v1/payload/", {
-        method: "POST",
+      const { ok, status, data } = await postForm<UrlhausPayloadResponse>(
+        "https://urlhaus-api.abuse.ch/v1/payload/",
         signal,
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-          "Auth-Key": key,
-        },
-        body: new URLSearchParams({ [field]: hash }).toString(),
-      });
-      const text = await res.text();
-      let data: UrlhausPayloadResponse | null = null;
-      try {
-        data = text ? (JSON.parse(text) as UrlhausPayloadResponse) : null;
-      } catch {
-        data = null;
-      }
+        { [field]: hash },
+        { "Auth-Key": key },
+      );
 
       if (data?.query_status === "no_results") {
         return { status: "ok", summary: "Not seen in URLhaus payloads" };
       }
-      if (!res.ok || data?.query_status !== "ok") {
+      if (!ok || data?.query_status !== "ok") {
         return {
           status: "error",
-          error: data?.query_status ?? `HTTP ${res.status}`,
+          error: data?.query_status ?? `HTTP ${status}`,
         };
       }
 

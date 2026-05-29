@@ -42,6 +42,14 @@ export const greyNoiseSource: TiSource = {
           summary: "Not observed scanning the internet",
         };
       }
+      // The free Community API has a tight daily quota; surface that as a
+      // distinct state rather than a red error card.
+      if (status === 429 || /limit|quota/i.test(data?.message ?? "")) {
+        return {
+          status: "rate_limited",
+          summary: data?.message ?? "Daily quota exceeded",
+        };
+      }
       if (!ok || !data) {
         return { status: "error", error: data?.message ?? `HTTP ${status}` };
       }

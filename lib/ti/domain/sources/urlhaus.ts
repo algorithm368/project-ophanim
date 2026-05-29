@@ -1,5 +1,5 @@
 import type { SourceFinding, TiSource } from "../../types";
-import { errorMessage, isTimeout } from "../../http";
+import { errorMessage, isTimeout, postForm } from "../../http";
 
 interface UrlhausUrl {
   url?: string;
@@ -34,32 +34,20 @@ export const urlhausSource: TiSource = {
     const key = process.env.THREATFOX_API_KEY;
     if (!key) return { status: "skipped" };
     try {
-      const res = await fetch("https://urlhaus-api.abuse.ch/v1/host/", {
-        method: "POST",
+      const { ok, status, data } = await postForm<UrlhausResponse>(
+        "https://urlhaus-api.abuse.ch/v1/host/",
         signal,
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-          "Auth-Key": key,
-        },
-        body: new URLSearchParams({ host: domain }).toString(),
-      });
-      const text = await res.text();
-      let data: UrlhausResponse | null = null;
-      try {
-        data = text ? (JSON.parse(text) as UrlhausResponse) : null;
-      } catch {
-        data = null;
-      }
+        { host: domain },
+        { "Auth-Key": key },
+      );
 
       if (data?.query_status === "no_results") {
         return { status: "ok", score: 0, summary: "No malicious URLs on record" };
       }
-      if (!res.ok || data?.query_status !== "ok") {
+      if (!ok || data?.query_status !== "ok") {
         return {
           status: "error",
-          error: data?.query_status ?? `HTTP ${res.status}`,
+          error: data?.query_status ?? `HTTP ${status}`,
         };
       }
 

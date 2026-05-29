@@ -103,6 +103,19 @@ describe("computeStats", () => {
       flagged: 2,
       skipped: 1,
       errored: 2,
+      rateLimited: 0,
     });
+  });
+
+  it("counts rate-limited sources separately from errors and the query count", () => {
+    const stats = computeStats([
+      src({ status: "ok", score: 10, id: "a" }),
+      src({ status: "rate_limited", id: "b" }),
+      src({ status: "error", id: "c" }),
+    ]);
+    expect(stats.rateLimited).toBe(1);
+    // A quota hit is neither a genuine error nor a successful query.
+    expect(stats.errored).toBe(1);
+    expect(stats.queried).toBe(2);
   });
 });

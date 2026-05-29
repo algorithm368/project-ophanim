@@ -14,15 +14,57 @@ function ttlSeconds(): number {
 // `undefined` = not yet resolved, `null` = no credentials (cache disabled).
 let client: Redis | null | undefined;
 
+/** First value that is set and non-blank; treats "" the same as unset. */
+function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
 function getClient(): Redis | null {
   if (client !== undefined) return client;
   // Accept both the standard Upstash names and the KV_* names that Vercel's
-  // Upstash Marketplace integration injects.
-  const url =
-    process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
-  const token =
-    process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
-  client = url && token ? new Redis({ url, token }) : null;
+  // Upstash Marketplace integration injects. Empty strings count as unset, so a
+  // blank UPSTASH_* var doesn't shadow a populated KV_* one.
+  const url = firstNonEmpty(
+    process.env.UPSTASH_REDIS_REST_URL,
+    process.env.KV_REST_API_URL,
+  );
+  const token = firstNonEmpty(
+    process.env.UPSTASH_REDIS_REST_TOKEN,
+    process.env.KV_REST_API_TOKEN,
+  );
+  if (!url || !token) {
+    client = null;
+    return client;
+  }
+  // The REST client needs the https:// endpoint, not the rediss:// connection
+  // string (Vercel exposes that one as KV_URL / REDIS_URL). Reject a non-REST
+  // URL up front with an actionable hint — and never log the value itself,
+  // since a rediss:// string embeds the password.
+  if (!/^https:\/\//i.test(url)) {
+    console.error(
+      "[ti] cache disabled: REST URL must start with https:// — got a " +
+        "non-REST URL (likely a rediss:// connection string). Point " +
+        "UPSTASH_REDIS_REST_URL / KV_REST_API_URL at the Upstash REST endpoint.",
+    );
+    client = null;
+    return client;
+  }
+  // Any other malformed URL makes `new Redis` throw; degrade to "no cache"
+  // rather than crashing the page. Log only the message head, never the URL.
+  try {
+    client = new Redis({ url, token });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      "[ti] cache disabled - invalid Redis config:",
+      message.replace(/\s*Received:.*/s, ""),
+    );
+    client = null;
+  }
   return client;
 }
 
@@ -35,86 +77,65 @@ export function getRedis(): Redis | null {
   return getClient();
 }
 
-/** Returns the cached result for an IP, or null on miss / when caching is off. */
-export async function getCachedResult(ip: string): Promise<CheckResult | null> {
+/** Read a cached value by prefix+key, or null on miss / when caching is off. */
+async function getCached<T>(prefix: string, key: string): Promise<T | null> {
   const redis = getClient();
   if (!redis) return null;
   try {
-    return (await redis.get<CheckResult>(KEY_PREFIX + ip)) ?? null;
+    return (await redis.get<T>(prefix + key)) ?? null;
   } catch (err) {
     console.error("[ti] cache read failed:", err);
     return null;
   }
+}
+
+/** Store a value under prefix+key with the default TTL. Failures are swallowed. */
+async function setCached<T>(prefix: string, key: string, value: T): Promise<void> {
+  const redis = getClient();
+  if (!redis) return;
+  try {
+    await redis.set(prefix + key, value, { ex: ttlSeconds() });
+  } catch (err) {
+    console.error("[ti] cache write failed:", err);
+  }
+}
+
+/** Returns the cached result for an IP, or null on miss / when caching is off. */
+export function getCachedResult(ip: string): Promise<CheckResult | null> {
+  return getCached<CheckResult>(KEY_PREFIX, ip);
 }
 
 /** Stores a result under its IP with the default TTL. Failures are swallowed. */
-export async function setCachedResult(
-  ip: string,
-  result: CheckResult,
-): Promise<void> {
-  const redis = getClient();
-  if (!redis) return;
-  try {
-    await redis.set(KEY_PREFIX + ip, result, { ex: ttlSeconds() });
-  } catch (err) {
-    console.error("[ti] cache write failed:", err);
-  }
+export function setCachedResult(ip: string, result: CheckResult): Promise<void> {
+  return setCached(KEY_PREFIX, ip, result);
 }
 
 /** Returns the cached result for a domain, or null on miss / when caching is off. */
-export async function getCachedDomainResult(
+export function getCachedDomainResult(
   domain: string,
 ): Promise<DomainCheckResult | null> {
-  const redis = getClient();
-  if (!redis) return null;
-  try {
-    return (
-      (await redis.get<DomainCheckResult>(DOMAIN_KEY_PREFIX + domain)) ?? null
-    );
-  } catch (err) {
-    console.error("[ti] cache read failed:", err);
-    return null;
-  }
+  return getCached<DomainCheckResult>(DOMAIN_KEY_PREFIX, domain);
 }
 
 /** Stores a domain result with the default TTL. Failures are swallowed. */
-export async function setCachedDomainResult(
+export function setCachedDomainResult(
   domain: string,
   result: DomainCheckResult,
 ): Promise<void> {
-  const redis = getClient();
-  if (!redis) return;
-  try {
-    await redis.set(DOMAIN_KEY_PREFIX + domain, result, { ex: ttlSeconds() });
-  } catch (err) {
-    console.error("[ti] cache write failed:", err);
-  }
+  return setCached(DOMAIN_KEY_PREFIX, domain, result);
 }
 
 /** Returns the cached result for a hash, or null on miss / when caching is off. */
-export async function getCachedHashResult(
+export function getCachedHashResult(
   hash: string,
 ): Promise<HashCheckResult | null> {
-  const redis = getClient();
-  if (!redis) return null;
-  try {
-    return (await redis.get<HashCheckResult>(HASH_KEY_PREFIX + hash)) ?? null;
-  } catch (err) {
-    console.error("[ti] cache read failed:", err);
-    return null;
-  }
+  return getCached<HashCheckResult>(HASH_KEY_PREFIX, hash);
 }
 
 /** Stores a hash result with the default TTL. Failures are swallowed. */
-export async function setCachedHashResult(
+export function setCachedHashResult(
   hash: string,
   result: HashCheckResult,
 ): Promise<void> {
-  const redis = getClient();
-  if (!redis) return;
-  try {
-    await redis.set(HASH_KEY_PREFIX + hash, result, { ex: ttlSeconds() });
-  } catch (err) {
-    console.error("[ti] cache write failed:", err);
-  }
+  return setCached(HASH_KEY_PREFIX, hash, result);
 }

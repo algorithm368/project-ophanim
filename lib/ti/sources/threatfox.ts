@@ -1,5 +1,5 @@
 import type { SourceFinding, TiSource } from "../types";
-import { errorMessage, isTimeout } from "../http";
+import { errorMessage, isTimeout, postJson } from "../http";
 
 interface ThreatFoxEntry {
   ioc?: string;
@@ -34,24 +34,12 @@ export const threatFoxSource: TiSource = {
     const key = process.env.THREATFOX_API_KEY;
     if (!key) return { status: "skipped" };
     try {
-      const res = await fetch("https://threatfox-api.abuse.ch/api/v1/", {
-        method: "POST",
+      const { ok, status, data } = await postJson<ThreatFoxResponse>(
+        "https://threatfox-api.abuse.ch/api/v1/",
         signal,
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "Auth-Key": key,
-        },
-        body: JSON.stringify({ query: "search_ioc", search_term: ip }),
-      });
-      const text = await res.text();
-      let data: ThreatFoxResponse | null = null;
-      try {
-        data = text ? (JSON.parse(text) as ThreatFoxResponse) : null;
-      } catch {
-        data = null;
-      }
+        { query: "search_ioc", search_term: ip },
+        { "Auth-Key": key },
+      );
 
       if (data?.query_status === "no_result") {
         return {
@@ -60,10 +48,10 @@ export const threatFoxSource: TiSource = {
           summary: "No malware IOCs reference this IP",
         };
       }
-      if (!res.ok || data?.query_status !== "ok" || !Array.isArray(data.data)) {
+      if (!ok || data?.query_status !== "ok" || !Array.isArray(data.data)) {
         const msg =
           typeof data?.data === "string" ? data.data : data?.query_status;
-        return { status: "error", error: msg ?? `HTTP ${res.status}` };
+        return { status: "error", error: msg ?? `HTTP ${status}` };
       }
 
       const entries = data.data;

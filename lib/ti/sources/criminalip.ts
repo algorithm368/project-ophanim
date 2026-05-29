@@ -51,6 +51,14 @@ export const criminalIpSource: TiSource = {
         signal,
         { "x-api-key": key },
       );
+      // The free plan returns "limit exceeded" (often HTTP 200 with a message)
+      // once the daily quota is spent; treat that as a quota state, not an error.
+      if (status === 429 || /limit\s*exceed|quota|too many/i.test(data?.message ?? "")) {
+        return {
+          status: "rate_limited",
+          summary: data?.message ?? "Daily quota exceeded",
+        };
+      }
       if (!ok || !data?.ip_scoring) {
         return { status: "error", error: data?.message ?? `HTTP ${status}` };
       }

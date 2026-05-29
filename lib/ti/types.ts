@@ -7,7 +7,12 @@ export type SourceCategory =
 
 export type Verdict = "clean" | "low" | "suspicious" | "malicious" | "unknown";
 
-export type SourceStatus = "ok" | "error" | "timeout" | "skipped";
+export type SourceStatus =
+  | "ok"
+  | "error"
+  | "timeout"
+  | "skipped"
+  | "rate_limited";
 
 export type IndicatorType = "ip" | "domain" | "hash";
 
@@ -146,6 +151,9 @@ export interface CheckStats {
   flagged: number;
   skipped: number;
   errored: number;
+  /** Sources that hit a provider quota (HTTP 429 / "limit exceeded"), kept
+   *  separate from genuine errors and from the consensus count. */
+  rateLimited: number;
 }
 
 /** One point in an indicator's reputation history, recorded per fresh check. */
@@ -196,6 +204,19 @@ export interface HashCheckResult {
   history?: HistorySnapshot[];
   /** True when this response was served from the cache rather than freshly computed. */
   cached?: boolean;
+}
+
+/** Narrow a result union by the indicator field unique to each type. */
+export function isDomainResult(
+  r: CheckResult | DomainCheckResult | HashCheckResult,
+): r is DomainCheckResult {
+  return "domain" in r;
+}
+
+export function isHashResult(
+  r: CheckResult | DomainCheckResult | HashCheckResult,
+): r is HashCheckResult {
+  return "hash" in r;
 }
 
 export interface TiSource {

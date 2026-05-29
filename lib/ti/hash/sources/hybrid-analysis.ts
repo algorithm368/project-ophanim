@@ -39,11 +39,13 @@ export const hybridAnalysisSource: TiSource = {
     const key = process.env.HYBRID_ANALYSIS_API_KEY;
     if (!key) return { status: "skipped" };
 
-    // The overview endpoint only accepts SHA-256.
+    // The overview endpoint only accepts SHA-256. Skip (rather than report a
+    // clean "ok") for MD5/SHA-1 so the UI shows "N/A · SHA-256 only", not a
+    // green pass the source never actually made.
     if (hash.length !== 64) {
       return {
-        status: "ok",
-        summary: "Hybrid Analysis lookup requires a SHA-256 hash",
+        status: "skipped",
+        summary: "SHA-256 only — paste a SHA-256 hash to query Hybrid Analysis",
       };
     }
 

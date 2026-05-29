@@ -41,8 +41,8 @@ export const metadefenderHashSource: TiSource = {
   async check(hash, signal): Promise<SourceFinding> {
     if (hash.length !== 64) {
       return {
-        status: "ok",
-        summary: "MetaDefender reputation requires a SHA-256 hash",
+        status: "skipped",
+        summary: "SHA-256 only — paste a SHA-256 hash to query MetaDefender",
       };
     }
     try {

@@ -1,5 +1,5 @@
 import type { SourceFinding, TiSource } from "../../types";
-import { errorMessage, isTimeout } from "../../http";
+import { errorMessage, isTimeout, postJson } from "../../http";
 
 interface ThreatFoxEntry {
   threat_type?: string;
@@ -34,24 +34,12 @@ export const threatFoxHashSource: TiSource = {
     const key = process.env.THREATFOX_API_KEY;
     if (!key) return { status: "skipped" };
     try {
-      const res = await fetch("https://threatfox-api.abuse.ch/api/v1/", {
-        method: "POST",
+      const { ok, status, data } = await postJson<ThreatFoxResponse>(
+        "https://threatfox-api.abuse.ch/api/v1/",
         signal,
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "Auth-Key": key,
-        },
-        body: JSON.stringify({ query: "search_hash", hash }),
-      });
-      const text = await res.text();
-      let data: ThreatFoxResponse | null = null;
-      try {
-        data = text ? (JSON.parse(text) as ThreatFoxResponse) : null;
-      } catch {
-        data = null;
-      }
+        { query: "search_hash", hash },
+        { "Auth-Key": key },
+      );
 
       // Absence from a malware-only IOC DB isn't a clean signal, so no score.
       if (
@@ -63,10 +51,10 @@ export const threatFoxHashSource: TiSource = {
           summary: "No malware IOCs reference this hash",
         };
       }
-      if (!res.ok || data?.query_status !== "ok" || !Array.isArray(data.data)) {
+      if (!ok || data?.query_status !== "ok" || !Array.isArray(data.data)) {
         const msg =
           typeof data?.data === "string" ? data.data : data?.query_status;
-        return { status: "error", error: msg ?? `HTTP ${res.status}` };
+        return { status: "error", error: msg ?? `HTTP ${status}` };
       }
 
       const entries = data.data;

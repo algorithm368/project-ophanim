@@ -12,9 +12,20 @@ interface CensysService {
   labels?: CensysLabel[];
 }
 
+/** Censys error envelope, e.g. `{ code, status, reason, message }` on a 401. */
+interface CensysError {
+  code?: number;
+  status?: string;
+  reason?: string;
+  message?: string;
+}
+
 interface CensysResponse {
-  error?: string;
+  error?: string | CensysError;
   detail?: string;
+  /** Platform error envelope: `{ title, status, detail, errors: [{ message }] }`. */
+  title?: string;
+  errors?: { message?: string }[];
   result?: {
     resource?: {
       ip?: string;
@@ -25,6 +36,38 @@ interface CensysResponse {
       autonomous_system?: { asn?: number; name?: string };
     };
   };
+}
+
+/**
+ * Pull the most specific human-readable reason from a Censys error body.
+ * The Platform API puts the useful text in `errors[].message` (e.g.
+ * "insufficient balance" on a 422), while `detail`/`title` are generic.
+ */
+export function censysErrorMessage(
+  data: CensysResponse | null,
+  status: number,
+): string {
+  const err = data?.error;
+  const fromError =
+    typeof err === "string" ? err : (err?.message ?? err?.reason);
+  return (
+    fromError ??
+    data?.errors?.map((e) => e?.message).find(Boolean) ??
+    data?.detail ??
+    data?.title ??
+    `HTTP ${status}`
+  );
+}
+
+/**
+ * True when a Censys error signals a spent credit balance / quota rather than
+ * a genuine failure. The Platform API charges credits per lookup and returns
+ * 429, or a 422 whose message is "insufficient balance", once they run out.
+ */
+export function isCensysQuota(message: string, status: number): boolean {
+  return (
+    status === 429 || /insufficient balance|limit|quota|too many/i.test(message)
+  );
 }
 
 const RISKY_LABELS = new Set([
@@ -64,10 +107,12 @@ export const censysSource: TiSource = {
         return { status: "ok", score: 0, summary: "Host not found in Censys" };
       }
       if (!ok || !data?.result?.resource) {
-        return {
-          status: "error",
-          error: data?.error ?? data?.detail ?? `HTTP ${status}`,
-        };
+        const message = censysErrorMessage(data, status);
+        // A spent credit balance is a quota state, not a red error card.
+        if (isCensysQuota(message, status)) {
+          return { status: "rate_limited", summary: message };
+        }
+        return { status: "error", error: message };
       }
 
       const r = data.result.resource;
