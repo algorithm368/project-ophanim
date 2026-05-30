@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
     BarChart3,
     CircleX,
@@ -272,6 +273,9 @@ function SourceCard({
     const rateLimited = status === "rate_limited";
     const slow = result.durationMs >= SLOW_MS;
     const score = result.score;
+    // Serialize the raw-details payload only once the disclosure is opened, so
+    // the eager JSON.stringify doesn't run for every source on the result mount.
+    const [detailsOpen, setDetailsOpen] = useState(false);
     const lookupUrl = sourceLookupUrl(source, indicator, kind);
 
     function openLookup() {
@@ -395,14 +399,17 @@ function SourceCard({
                     <details
                         className="text-xs"
                         onClick={(e) => e.stopPropagation()}
+                        onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
                     >
                         <summary className="flex cursor-pointer items-center gap-1 text-muted-foreground select-none hover:text-foreground">
                             <ExternalLink className="size-3" />
                             View raw details
                         </summary>
-                        <pre className="mt-2 overflow-x-auto rounded-lg bg-muted/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
-                            {JSON.stringify(result.details, null, 2)}
-                        </pre>
+                        {detailsOpen && (
+                            <pre className="mt-2 overflow-x-auto rounded-lg bg-muted/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
+                                {JSON.stringify(result.details, null, 2)}
+                            </pre>
+                        )}
                     </details>
                 )}
             </CardContent>
