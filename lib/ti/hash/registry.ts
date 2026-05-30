@@ -11,6 +11,7 @@ import { hashlookupSource } from "./sources/hashlookup";
 import { pulsediveSource } from "./sources/pulsedive";
 import { kasperskyOpenTipSource } from "./sources/kaspersky-opentip";
 import { maltiverseSource } from "./sources/maltiverse";
+import { triageSource } from "./sources/triage";
 
 /** All registered file-hash TI sources, in display order. */
 export const hashSources: TiSource[] = [
@@ -26,4 +27,5 @@ export const hashSources: TiSource[] = [
   pulsediveSource,
   kasperskyOpenTipSource,
   maltiverseSource,
+  triageSource,
 ];
