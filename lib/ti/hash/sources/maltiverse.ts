@@ -1,17 +1,18 @@
 import type { RelatedIndicator, SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
-import { hostFromUrl } from "@/lib/url";
+import { detectIOC } from "@/lib/ioc";
 
 interface MaltiverseSample {
   classification?: string; // malicious | suspicious | neutral | whitelist
   filename?: string | string[];
   filetype?: string;
   size?: number;
-  // Detection labels and related indicators vary by record; read defensively.
-  antivirus?: { name?: string; description?: string }[] | null;
+  // Verified against the live public API: detection labels live in
+  // blacklist[].description, and contacted_host is an array of bare
+  // host/IP strings (not objects).
   blacklist?: { description?: string }[] | null;
-  contacted_host?: { hostname?: string; ip_addr?: string }[] | null;
-  download_url?: { url?: string }[] | null;
+  contacted_host?: string[] | null;
+  error?: string;
 }
 
 /** classification → score; undefined when neutral/unknown (absence ≠ clean). */
@@ -25,23 +26,24 @@ function classificationScore(c: string | undefined): {
   return { score: undefined, malicious: false };
 }
 
-/** Maltiverse — sample classification + related indicators (free bearer key). */
+/**
+ * Maltiverse — sample classification + related indicators. The /sample
+ * endpoint is public, so this runs without a key; a MALTIVERSE_API_KEY (free
+ * account) is sent when present to raise the rate limit.
+ */
 export const maltiverseSource: TiSource = {
   meta: {
     id: "maltiverse",
     name: "Maltiverse",
     url: "https://maltiverse.com",
     category: "reputation",
-    requiresKey: true,
+    requiresKey: false,
     weight: 0.7,
     keyEnv: "MALTIVERSE_API_KEY",
     timeoutMs: 12000,
   },
-  isEnabled: () => Boolean(process.env.MALTIVERSE_API_KEY),
+  isEnabled: () => true,
   async check(hash, signal): Promise<SourceFinding> {
-    const key = process.env.MALTIVERSE_API_KEY;
-    if (!key) return { status: "skipped" };
-
     // Maltiverse sample lookups are keyed by SHA-256 only.
     if (hash.length !== 64) {
       return {
@@ -50,51 +52,48 @@ export const maltiverseSource: TiSource = {
       };
     }
 
+    const key = process.env.MALTIVERSE_API_KEY;
+    const headers: Record<string, string> = key
+      ? { Authorization: `Bearer ${key}` }
+      : {};
+
     try {
       const { ok, status, data } = await getJson<MaltiverseSample>(
         `https://api.maltiverse.com/sample/${hash}`,
         signal,
-        { Authorization: `Bearer ${key}` },
+        headers,
       );
 
       if (status === 404) {
         return { status: "ok", summary: "Not indexed by Maltiverse" };
       }
-      if (!ok || !data) {
-        return { status: "error", error: `HTTP ${status}` };
+      if (!ok || !data || data.error) {
+        return { status: "error", error: data?.error ?? `HTTP ${status}` };
       }
 
       const { score, malicious } = classificationScore(data.classification);
-      const detectionNames = (data.antivirus ?? [])
-        .map((a) => a.description || a.name)
-        .filter((v): v is string => Boolean(v));
+      // blacklist[].description is sometimes a single label, sometimes a
+      // comma-joined set ("ransomware,wcry,..."); split into distinct chips.
+      const detectionNames = [
+        ...new Set(
+          (data.blacklist ?? [])
+            .flatMap((b) => (b.description ?? "").split(","))
+            .map((s) => s.trim())
+            .filter(Boolean),
+        ),
+      ].slice(0, 12);
 
       const relations: RelatedIndicator[] = [];
       const seen = new Set<string>();
       for (const h of data.contacted_host ?? []) {
-        const v = h.hostname || h.ip_addr;
-        if (v && !seen.has(v)) {
-          seen.add(v);
-          relations.push({
-            value: v,
-            type: h.hostname ? "domain" : "ip",
-            relation: "contacts",
-          });
-        }
-      }
-      const distributionUrls = [
-        ...new Set(
-          (data.download_url ?? [])
-            .map((d) => d.url)
-            .filter((v): v is string => Boolean(v)),
-        ),
-      ].slice(0, 8);
-      for (const u of distributionUrls) {
-        const host = hostFromUrl(u);
-        if (host && !seen.has(host)) {
-          seen.add(host);
-          relations.push({ value: host, type: "domain", relation: "distribution" });
-        }
+        if (typeof h !== "string" || !h || seen.has(h)) continue;
+        seen.add(h);
+        relations.push({
+          value: h,
+          type: detectIOC(h) === "ip" ? "ip" : "domain",
+          relation: "contacts",
+        });
+        if (relations.length >= 10) break;
       }
 
       const name = Array.isArray(data.filename)
@@ -105,7 +104,7 @@ export const maltiverseSource: TiSource = {
         status: "ok",
         malicious,
         score,
-        categories: detectionNames.slice(0, 10),
+        categories: detectionNames,
         summary: `Maltiverse classification: ${data.classification ?? "unknown"}`,
         hashContext: {
           sha256: hash,
@@ -113,9 +112,8 @@ export const maltiverseSource: TiSource = {
           fileType: data.filetype,
           fileSize: data.size,
           detectionNames: detectionNames.length ? detectionNames : undefined,
-          distributionUrls: distributionUrls.length ? distributionUrls : undefined,
         },
-        relations: relations.slice(0, 10).length ? relations.slice(0, 10) : undefined,
+        relations: relations.length ? relations : undefined,
         raw: data,
       };
     } catch (err) {
