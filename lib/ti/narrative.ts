@@ -120,9 +120,38 @@ function formatAge(ageDays: number): string {
   return `about ${years} ${years === 1 ? "year" : "years"} ago`;
 }
 
+/** Bare platform/architecture words that some feeds emit as "categories" but
+ *  which don't read as a reason a file is malicious. */
+const PLATFORM_NOISE = new Set([
+  "windows",
+  "linux",
+  "macos",
+  "osx",
+  "android",
+  "ios",
+  "win32",
+  "win64",
+  "x86",
+  "x64",
+  "x86-64",
+  "amd64",
+  "arm",
+  "arm64",
+]);
+
+/** Keep junk out of the "flagged it for …" reason clause: md5/sha1/sha256 or
+ *  imphash hex blobs (which some sources list as categories) and bare platform
+ *  words are not threat categories. */
+function isMeaningfulCategory(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  if (!n) return false;
+  if (/^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(n)) return false;
+  if (PLATFORM_NOISE.has(n)) return false;
+  return true;
+}
+
 /** Shared "what the TI sources say" sentences, used by every narrative. */
 export function threatSentences(result: ResultLike, noun: string): string[] {
-  const s = result.stats;
   // Only scoring (weighted) feeds count as "TI sources" here: context-only
   // sources like geolocation/RDAP respond "ok" but can never flag, so counting
   // them would inflate the denominator (issue #5).
@@ -139,8 +168,9 @@ export function threatSentences(result: ResultLike, noun: string): string[] {
     // Categories must come from the flagging sources only, so the "for …"
     // clause reflects why it was flagged — not labels from quiet/context sources.
     const cats = aggregateCategories(flaggedSources)
-      .slice(0, 3)
-      .map((c) => c.name);
+      .map((c) => c.name)
+      .filter(isMeaningfulCategory)
+      .slice(0, 3);
     out.push(
       `${flaggedSources.length} of ${responded} TI sources flagged it${
         cats.length ? ` for ${cats.join(", ")}` : ""
@@ -155,9 +185,6 @@ export function threatSentences(result: ResultLike, noun: string): string[] {
     out.push(`None of the ${responded} TI sources flagged this ${noun}.`);
   }
 
-  const gaps: string[] = [];
-  if (s.skipped > 0) gaps.push(`${s.skipped} need an API key`);
-  if (gaps.length) out.push(`(${gaps.join(", ")}.)`);
   return out;
 }
 
@@ -300,10 +327,22 @@ export function buildHashNarrative(result: HashCheckResult): string[] {
     }
     const type = ctx.fileType ?? ctx.mimeType;
     const size = formatBytes(ctx.fileSize);
-    if (type) parts.push(`a ${type}${size ? ` of ${size}` : ""} file`);
-    else if (size) parts.push(`${size} in size`);
+    if (type) {
+      // Size is a trailing parenthetical, not an "of {size}" infix; the article
+      // matches the type's initial sound; and a redundant " file" is dropped
+      // when the type already names the kind ("PDF document", "PE32 executable").
+      const article = /^[aeiou]/i.test(type) ? "an" : "a";
+      const noun =
+        /\b(file|document|executable|text|image|archive|script|library)\b/i.test(
+          type,
+        )
+          ? ""
+          : " file";
+      parts.push(`${article} ${type}${noun}${size ? ` (${size})` : ""}`);
+    } else if (size) parts.push(`${size} in size`);
     if (parts.length) {
-      const name = ctx.fileName ? `, first seen as "${ctx.fileName}"` : "";
+      // fileName is the best-known name, not provably the earliest seen.
+      const name = ctx.fileName ? `, seen as "${ctx.fileName}"` : "";
       sentences.push(`It is ${parts.join(", ")}${name}.`);
     } else if (ctx.fileName) {
       sentences.push(`It has been seen as "${ctx.fileName}".`);

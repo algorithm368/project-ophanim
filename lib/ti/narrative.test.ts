@@ -212,8 +212,8 @@ describe("threatSentences — denominator excludes context sources (issue #5)", 
   });
 });
 
-describe("threatSentences — no rate-limit clause in the gap note", () => {
-  it("omits 'hit a rate limit' but keeps the API-key gap", () => {
+describe("threatSentences — no gap note", () => {
+  it("never emits an 'N need an API key' (or rate-limit) parenthetical", () => {
     const feed = makeSource({ name: "Feodo", score: 0 });
     const result: ResultLike = {
       riskScore: 0,
@@ -223,20 +223,8 @@ describe("threatSentences — no rate-limit clause in the gap note", () => {
       stats: makeStats({ skipped: 2, rateLimited: 3 }),
     };
     const text = threatSentences(result, "address").join(" ");
+    expect(text).not.toContain("need an API key");
     expect(text).not.toContain("rate limit");
-    expect(text).toContain("2 need an API key");
-  });
-
-  it("emits no gap note at all when only rate limits would have shown", () => {
-    const feed = makeSource({ name: "Feodo", score: 0 });
-    const result: ResultLike = {
-      riskScore: 0,
-      verdict: "clean",
-      checkedAt: "2026-05-29T00:00:00Z",
-      sources: [feed],
-      stats: makeStats({ skipped: 0, rateLimited: 3 }),
-    };
-    const text = threatSentences(result, "address").join(" ");
     expect(text).not.toContain("(");
   });
 });
@@ -385,5 +373,82 @@ describe("consensusBuckets — excludes weight-0 context sources (issue #8)", ()
     expect(b.responded).toBe(1);
     expect(b.skipped).toBe(1);
     expect(b.errored).toBe(1);
+  });
+});
+
+describe("buildHashNarrative — file description soundness (HN-2/3/4)", () => {
+  function mkHash(over: Partial<HashCheckResult>): HashCheckResult {
+    return {
+      hash: "a".repeat(64),
+      algorithm: "sha256",
+      checkedAt: "2026-05-30T00:00:00Z",
+      riskScore: 95,
+      verdict: "malicious",
+      sources: [makeSource({ name: "VirusTotal", score: 100, malicious: true })],
+      stats: makeStats({ flagged: 1 }),
+      ...over,
+    };
+  }
+
+  // HN-2: size is a trailing parenthetical (not an "of {size}" infix) and the
+  // indefinite article matches the file type's initial sound.
+  it("renders 'an exe file (3.4 MB)' — fixed word order + article", () => {
+    const text = buildHashNarrative(
+      mkHash({
+        context: {
+          malwareFamily: "WannaCry",
+          fileType: "exe",
+          fileSize: 3514368,
+          fileName: "x.exe",
+        },
+      }),
+    ).join(" ");
+    expect(text).toContain("an exe file (3.4 MB)");
+    expect(text).not.toContain("of 3.4 MB file");
+    expect(text).not.toContain("a exe");
+  });
+
+  it("uses 'a' for a consonant-initial type", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { fileType: "Powershell", fileSize: 68 } }),
+    ).join(" ");
+    expect(text).toContain("a Powershell file (68 B)");
+  });
+
+  // HN-3: hex/imphash tokens and bare platform words are not threat categories.
+  it("drops hex/imphash and bare-platform tokens from the 'flagged for' clause", () => {
+    const text = buildHashNarrative(
+      mkHash({
+        context: { malwareFamily: "WannaCry" },
+        sources: [
+          makeSource({
+            name: "VirusTotal",
+            score: 100,
+            malicious: true,
+            categories: [
+              "WannaCry",
+              "9698f46495ce9401c8bcaf9a2afe1598", // imphash (32 hex)
+              "Windows", // platform, not a threat reason
+              "calls-wmi",
+            ],
+          }),
+        ],
+      }),
+    ).join(" ");
+    expect(text).toContain("flagged it for");
+    expect(text).not.toContain("9698f46495ce9401c8bcaf9a2afe1598");
+    expect(text).not.toMatch(/flagged it for[^.]*\bWindows\b/);
+    expect(text).toContain("WannaCry");
+  });
+
+  // HN-4: fileName is the best-known name, not provably the earliest seen.
+  it("says 'seen as' rather than 'first seen as'", () => {
+    const text = buildHashNarrative(
+      mkHash({
+        context: { malwareFamily: "Emotet", fileType: "exe", fileName: "invoice.exe" },
+      }),
+    ).join(" ");
+    expect(text).toContain('seen as "invoice.exe"');
+    expect(text).not.toContain('first seen as');
   });
 });
