@@ -11,11 +11,7 @@ import {
     Smartphone,
     Sparkles,
 } from "lucide-react";
-import type {
-    DomainContext,
-    GeoContext,
-    HashContext,
-} from "@/lib/ti/types";
+import type { DomainContext, GeoContext, HashContext } from "@/lib/ti/types";
 import type { IconType } from "./types";
 
 export function scoreBarColor(score: number): string {

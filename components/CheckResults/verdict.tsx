@@ -314,11 +314,41 @@ function ConsensusBar({
     // One source of truth for colors/labels. The bar drops empty buckets;
     // the legend always lists the core ones (rate-limited only when nonzero).
     const buckets = [
-        { key: "flagged", count: c.flagged, color: "bg-red-500", label: "Flagged", inLegend: true },
-        { key: "clean", count: c.clean, color: "bg-emerald-500", label: "Clean", inLegend: true },
-        { key: "errored", count: c.errored, color: "bg-orange-400", label: "Error", inLegend: true },
-        { key: "rate", count: c.rateLimited, color: "bg-amber-400", label: "Rate limited", inLegend: false },
-        { key: "skipped", count: c.skipped, color: "bg-muted-foreground/30", label: "No key", inLegend: true },
+        {
+            key: "flagged",
+            count: c.flagged,
+            color: "bg-red-500",
+            label: "Flagged",
+            inLegend: true,
+        },
+        {
+            key: "clean",
+            count: c.clean,
+            color: "bg-emerald-500",
+            label: "Clean",
+            inLegend: true,
+        },
+        {
+            key: "errored",
+            count: c.errored,
+            color: "bg-orange-400",
+            label: "Error",
+            inLegend: true,
+        },
+        {
+            key: "rate",
+            count: c.rateLimited,
+            color: "bg-amber-400",
+            label: "Rate limited",
+            inLegend: false,
+        },
+        {
+            key: "skipped",
+            count: c.skipped,
+            color: "bg-muted-foreground/30",
+            label: "No key",
+            inLegend: true,
+        },
     ];
     const segments = buckets.filter((b) => b.count > 0);
     const legend = buckets.filter((b) => b.inLegend || b.count > 0);
@@ -343,8 +373,7 @@ function ConsensusBar({
                 </span>
                 <span className="text-xs text-muted-foreground">
                     <span className="font-mono">{c.responded}</span> of{" "}
-                    <span className="font-mono">{c.total}</span>{" "}
-                    responded
+                    <span className="font-mono">{c.total}</span> responded
                 </span>
             </div>
             <div
