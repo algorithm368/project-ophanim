@@ -9,6 +9,7 @@ import { cymruMhrSource } from "./sources/cymru-mhr";
 import { otxHashSource } from "./sources/otx";
 import { hashlookupSource } from "./sources/hashlookup";
 import { pulsediveSource } from "./sources/pulsedive";
+import { kasperskyOpenTipSource } from "./sources/kaspersky-opentip";
 
 /** All registered file-hash TI sources, in display order. */
 export const hashSources: TiSource[] = [
@@ -22,4 +23,5 @@ export const hashSources: TiSource[] = [
   hashlookupSource,
   otxHashSource,
   pulsediveSource,
+  kasperskyOpenTipSource,
 ];
