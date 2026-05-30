@@ -74,34 +74,6 @@ export async function postForm<T>(
   return asJsonResponse<T>(res);
 }
 
-/** POST a urlencoded form, parsing the JSON response without throwing on non-2xx. */
-export async function postForm<T>(
-  url: string,
-  signal: AbortSignal,
-  form: Record<string, string>,
-  headers: Record<string, string> = {},
-): Promise<HttpResponse<T>> {
-  const res = await fetch(url, {
-    method: "POST",
-    signal,
-    cache: "no-store",
-    headers: {
-      ...DEFAULT_HEADERS,
-      "Content-Type": "application/x-www-form-urlencoded",
-      ...headers,
-    },
-    body: new URLSearchParams(form).toString(),
-  });
-  const text = await res.text();
-  let data: T | null = null;
-  try {
-    data = text ? (JSON.parse(text) as T) : null;
-  } catch {
-    data = null;
-  }
-  return { ok: res.ok, status: res.status, data, text };
-}
-
 /** Fetch raw text (for plain-text APIs like blocklist.de). */
 export async function getText(
   url: string,
