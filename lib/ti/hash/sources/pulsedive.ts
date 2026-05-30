@@ -82,8 +82,14 @@ export const pulsediveSource: TiSource = {
       const relations: RelatedIndicator[] = (hit.links ?? [])
         .map((l) => {
           const type = linkType(l.type);
+          // A linked file is a related sample, not something the file
+          // "contacts" — keep the C2/network label for ip/domain links only.
           return type && l.indicator
-            ? { value: l.indicator, type, relation: "contacts" }
+            ? {
+                value: l.indicator,
+                type,
+                relation: type === "hash" ? "similar" : "contacts",
+              }
             : null;
         })
         .filter((r): r is RelatedIndicator => r !== null)

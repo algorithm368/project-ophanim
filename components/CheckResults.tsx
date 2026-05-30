@@ -1818,6 +1818,7 @@ const RELATION_META: Record<string, { label: string; icon: IconType }> = {
     distribution: { label: "Distribution hosts", icon: Globe },
     hosted: { label: "Hosted domains", icon: Globe },
     A: { label: "Resolves to (A)", icon: Link2 },
+    resolved: { label: "Resolves to (passive DNS)", icon: Link2 },
     NS: { label: "Nameservers", icon: Server },
     MX: { label: "Mail (MX)", icon: Mail },
     rDNS: { label: "Reverse DNS", icon: SignalHigh },
@@ -1831,6 +1832,7 @@ const RELATION_ORDER = [
     "distribution",
     "hosted",
     "A",
+    "resolved",
     "NS",
     "MX",
     "rDNS",
@@ -1908,6 +1910,7 @@ function DistributionUrlRow({ url }: { url: string }) {
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label={`Open ${url} in a new tab`}
                 title="Open in a new tab (may be a live malware URL)"
                 className="shrink-0 text-muted-foreground hover:text-foreground"
             >

@@ -1,5 +1,6 @@
 import type { RelatedIndicator, SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
+import { detectIOC } from "@/lib/ioc";
 
 interface TriageSearch {
   data?: { id?: string; status?: string }[];
@@ -20,6 +21,22 @@ interface TriageOverview {
 }
 
 const API = "https://tria.ge/api/v0";
+
+/**
+ * Reduce a raw Triage config entry — which may carry a scheme, path, or :port —
+ * to a bare host. Triage `c2`/`domains`/`hosts` strings are not normalized
+ * upstream and routinely mix hostnames and IPs.
+ */
+function bareHost(raw: string): string {
+  const noScheme = raw.replace(/^\w+:\/\//, "").split("/")[0].trim();
+  // IPv6 in brackets, optionally with a port: "[2001:db8::1]:443" -> "2001:db8::1".
+  const v6 = noScheme.match(/^\[([^\]]+)\]/);
+  if (v6) return v6[1];
+  // host:port (IPv4 or domain; single colon) -> drop the trailing :port.
+  // An unbracketed IPv6 has multiple colons and is left intact by [^:]+.
+  const hostPort = noScheme.match(/^([^:]+):\d{1,5}$/);
+  return hostPort ? hostPort[1] : noScheme;
+}
 
 /** Hatching Triage — sandbox family/score + network IOCs (free research key). */
 export const triageSource: TiSource = {
@@ -85,20 +102,26 @@ export const triageSource: TiSource = {
 
       const relations: RelatedIndicator[] = [];
       const seen = new Set<string>();
+      // c2 / domains / hosts mix hostnames and raw IPs (sometimes with a
+      // scheme, path, or :port). Normalize to a bare host, skip non-strings
+      // so one malformed entry can't fail the whole finding, and type each
+      // by what it actually parses as rather than which list it came from.
       for (const e of data.extracted ?? []) {
         const cfg = e.config ?? {};
-        for (const d of [...(cfg.c2 ?? []), ...(cfg.domains ?? [])]) {
-          const host = d.replace(/^https?:\/\//, "").split("/")[0];
-          if (host && !seen.has(host)) {
-            seen.add(host);
-            relations.push({ value: host, type: "domain", relation: "contacts" });
-          }
-        }
-        for (const h of cfg.hosts ?? []) {
-          if (h && !seen.has(h)) {
-            seen.add(h);
-            relations.push({ value: h, type: "ip", relation: "contacts" });
-          }
+        for (const raw of [
+          ...(cfg.c2 ?? []),
+          ...(cfg.domains ?? []),
+          ...(cfg.hosts ?? []),
+        ]) {
+          if (typeof raw !== "string") continue;
+          const host = bareHost(raw);
+          if (!host || seen.has(host)) continue;
+          seen.add(host);
+          relations.push({
+            value: host,
+            type: detectIOC(host) === "ip" ? "ip" : "domain",
+            relation: "contacts",
+          });
         }
       }
 
