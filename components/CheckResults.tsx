@@ -54,6 +54,7 @@ import {
 } from "@/lib/ti/types";
 import { algoFromLength, HASH_ALGO_LABEL } from "@/lib/hash";
 import { relationsFor } from "@/lib/relations";
+import { hostFromUrl } from "@/lib/url";
 import {
     aggregateCategories,
     buildDomainNarrative,
@@ -258,6 +259,10 @@ const HASH_LOOKUP_URL: Record<string, (h: string) => string> = {
     otx: (h) => `https://otx.alienvault.com/indicator/file/${h}`,
     hashlookup: (h) =>
         `https://hashlookup.circl.lu/lookup/${algoFromLength(h) ?? "sha256"}/${h}`,
+    maltiverse: (h) => `https://maltiverse.com/sample/${h}`,
+    triage: (h) => `https://tria.ge/s?q=${h}`,
+    pulsedive: (h) => `https://pulsedive.com/indicator/?ioc=${h}`,
+    "kaspersky-opentip": (h) => `https://opentip.kaspersky.com/${h}/results`,
 };
 
 /** Where clicking a source card should take you: that source's lookup for this indicator. */
@@ -540,6 +545,7 @@ function HashResults({
             </div>
             <HistoryCard result={result} />
             <ConnectionsCard result={result} />
+            <DistributionUrlsCard result={result} />
             <ScoreChart result={result} subject="this file" />
             <SourceBreakdown
                 sources={result.sources}
@@ -1881,6 +1887,75 @@ function ConnectionsCard({
                         );
                     })}
                 </dl>
+            </CardContent>
+        </Card>
+    );
+}
+
+function DistributionUrlRow({ url }: { url: string }) {
+    const [copied, copy] = useCopied();
+    const host = hostFromUrl(url);
+    return (
+        <li className="flex items-center gap-2 rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border border-foreground/10 bg-muted/40 p-2 text-xs">
+            <code
+                className="min-w-0 flex-1 truncate font-mono text-[12px]"
+                title={url}
+            >
+                {url}
+            </code>
+            {host && <Pivot value={host} label={`check ${host}`} />}
+            <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open in a new tab (may be a live malware URL)"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+            >
+                <ExternalLink className="size-3.5" />
+            </a>
+            <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                aria-label="Copy URL"
+                className="size-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                onClick={() => copy(url)}
+            >
+                {copied ? (
+                    <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                    <Copy className="size-3.5" />
+                )}
+            </Button>
+        </li>
+    );
+}
+
+function DistributionUrlsCard({ result }: { result: HashCheckResult }) {
+    const urls = result.context?.distributionUrls ?? [];
+    if (urls.length === 0) return null;
+    const shown = urls.slice(0, 8);
+    const extra = urls.length - shown.length;
+    return (
+        <Card className="sketch-shadow rounded-[20px_28px_16px_24px/24px_16px_28px_20px] border-2 border-foreground/15">
+            <CardContent className="space-y-3">
+                <SectionHeading icon={Link2}>
+                    Where it&apos;s been served
+                </SectionHeading>
+                <p className="text-xs text-muted-foreground">
+                    URLs that distributed this file. Use the pivot to check the
+                    host — open links cautiously; they may still be live.
+                </p>
+                <ul className="space-y-1.5">
+                    {shown.map((u) => (
+                        <DistributionUrlRow key={u} url={u} />
+                    ))}
+                </ul>
+                {extra > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                        +{extra} more
+                    </p>
+                )}
             </CardContent>
         </Card>
     );
