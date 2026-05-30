@@ -53,6 +53,7 @@ import {
     type Verdict,
 } from "@/lib/ti/types";
 import { algoFromLength, HASH_ALGO_LABEL } from "@/lib/hash";
+import { relationsFor } from "@/lib/relations";
 import {
     aggregateCategories,
     buildDomainNarrative,
@@ -484,6 +485,7 @@ function Results({
             </div>
             <ExposedServicesCard result={result} />
             <HistoryCard result={result} />
+            <ConnectionsCard result={result} />
             <ScoreChart result={result} subject="this IP" />
             <SourceBreakdown
                 sources={result.sources}
@@ -510,6 +512,7 @@ function DomainResults({
                 <ActivityCard result={result} noun="domain" />
             </div>
             <HistoryCard result={result} />
+            <ConnectionsCard result={result} />
             <ScoreChart result={result} subject="this domain" />
             <SourceBreakdown
                 sources={result.sources}
@@ -536,6 +539,7 @@ function HashResults({
                 <ActivityCard result={result} noun="file" />
             </div>
             <HistoryCard result={result} />
+            <ConnectionsCard result={result} />
             <ScoreChart result={result} subject="this file" />
             <SourceBreakdown
                 sources={result.sources}
@@ -1794,6 +1798,89 @@ function HashProfileCard({ result }: { result: HashCheckResult }) {
                         ))}
                     </div>
                 )}
+            </CardContent>
+        </Card>
+    );
+}
+
+/** Display + ordering for relation labels surfaced in the Connections card. */
+const RELATION_META: Record<string, { label: string; icon: IconType }> = {
+    contacts: { label: "Contacts (C2 / network)", icon: Network },
+    drops: { label: "Drops", icon: FileDigit },
+    parent: { label: "Parent samples", icon: FileDigit },
+    similar: { label: "Similar samples", icon: Fingerprint },
+    distribution: { label: "Distribution hosts", icon: Globe },
+    hosted: { label: "Hosted domains", icon: Globe },
+    A: { label: "Resolves to (A)", icon: Link2 },
+    NS: { label: "Nameservers", icon: Server },
+    MX: { label: "Mail (MX)", icon: Mail },
+    rDNS: { label: "Reverse DNS", icon: SignalHigh },
+    host: { label: "Observed hostnames", icon: Globe },
+};
+const RELATION_ORDER = [
+    "contacts",
+    "drops",
+    "parent",
+    "similar",
+    "distribution",
+    "hosted",
+    "A",
+    "NS",
+    "MX",
+    "rDNS",
+    "host",
+];
+/** A file's other digests are shown in the profile card, not as "connections". */
+const DIGEST_RELATIONS = new Set(["MD5", "SHA-1", "SHA-256"]);
+
+function ConnectionsCard({
+    result,
+}: {
+    result: CheckResult | DomainCheckResult | HashCheckResult;
+}) {
+    const { related } = relationsFor(result);
+    const groups = new Map<string, string[]>();
+    for (const r of related) {
+        if (DIGEST_RELATIONS.has(r.relation)) continue;
+        const list = groups.get(r.relation) ?? [];
+        list.push(r.value);
+        groups.set(r.relation, list);
+    }
+    if (groups.size === 0) return null;
+
+    // Known relations in priority order, then any unknown ones alphabetically.
+    const keys = [
+        ...RELATION_ORDER.filter((k) => groups.has(k)),
+        ...[...groups.keys()]
+            .filter((k) => !RELATION_ORDER.includes(k))
+            .sort(),
+    ];
+
+    return (
+        <Card className="sketch-shadow rounded-[20px_28px_16px_24px/24px_16px_28px_20px] border-2 border-foreground/15">
+            <CardContent className="space-y-4">
+                <SectionHeading icon={Link2}>What it connects to</SectionHeading>
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                    {keys.map((key) => {
+                        const meta = RELATION_META[key] ?? {
+                            label: key,
+                            icon: Link2,
+                        };
+                        return (
+                            <Field
+                                key={key}
+                                icon={meta.icon}
+                                label={meta.label}
+                                wrap
+                            >
+                                <PivotList
+                                    values={groups.get(key) ?? []}
+                                    max={6}
+                                />
+                            </Field>
+                        );
+                    })}
+                </dl>
             </CardContent>
         </Card>
     );
