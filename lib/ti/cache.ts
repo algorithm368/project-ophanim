@@ -61,7 +61,7 @@ function getClient(): Redis | null {
     const message = err instanceof Error ? err.message : String(err);
     console.error(
       "[ti] cache disabled - invalid Redis config:",
-      message.replace(/\s*Received:.*/s, ""),
+      message.replace(/\s*Received:[\s\S]*/, ""),
     );
     client = null;
   }
