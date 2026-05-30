@@ -69,7 +69,7 @@ computed from a line-by-line usage map of the original file.
 | `VerdictHero` | 849–866 | verdict.tsx (unified — Task 4) |
 | `DomainVerdictHero` | 868–893 | verdict.tsx (folded into unified) |
 | `HashVerdictHero` | 896–918 | verdict.tsx (folded into unified) |
-| `ConsensusBar` | 920–1024 | verdict.tsx |
+| `ConsensusBar` | 920–999 | verdict.tsx |
 | `useCopied` | 1026–1035 | primitives.tsx |
 | `CopyableSummary` | 1037–1069 | primitives.tsx |
 | `SectionHeading` | 1071–1088 | primitives.tsx |
