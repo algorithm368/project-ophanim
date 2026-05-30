@@ -8,6 +8,7 @@ import { hybridAnalysisSource } from "./sources/hybrid-analysis";
 import { cymruMhrSource } from "./sources/cymru-mhr";
 import { otxHashSource } from "./sources/otx";
 import { hashlookupSource } from "./sources/hashlookup";
+import { pulsediveSource } from "./sources/pulsedive";
 
 /** All registered file-hash TI sources, in display order. */
 export const hashSources: TiSource[] = [
@@ -20,4 +21,5 @@ export const hashSources: TiSource[] = [
   cymruMhrSource,
   hashlookupSource,
   otxHashSource,
+  pulsediveSource,
 ];
