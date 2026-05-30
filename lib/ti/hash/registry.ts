@@ -13,19 +13,22 @@ import { kasperskyOpenTipSource } from "./sources/kaspersky-opentip";
 import { maltiverseSource } from "./sources/maltiverse";
 import { triageSource } from "./sources/triage";
 
-/** All registered file-hash TI sources, in display order. */
+/**
+ * All registered file-hash TI sources, in display order: authoritative
+ * "what is this file" sources first, then enrichment/relationship sources.
+ */
 export const hashSources: TiSource[] = [
   malwareBazaarSource,
   virusTotalHashSource,
+  kasperskyOpenTipSource,
   metadefenderHashSource,
+  triageSource,
+  maltiverseSource,
   threatFoxHashSource,
   urlhausHashSource,
+  pulsediveSource,
   hybridAnalysisSource,
   cymruMhrSource,
   hashlookupSource,
   otxHashSource,
-  pulsediveSource,
-  kasperskyOpenTipSource,
-  maltiverseSource,
-  triageSource,
 ];
