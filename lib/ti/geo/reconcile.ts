@@ -214,9 +214,15 @@ export function reconcileGeo(
   return reconcileGeoInputs(inputs);
 }
 
-/** Overlay reconciled winning values onto a base GeoContext (compatibility
- *  view). Base-only fields (e.g. org, ip-api flags) are preserved. */
-export function flattenResolution(
+/** Project a GeoResolution onto a base GeoContext (the legacy flat view used by
+ *  the OG image, history, and bulk geo). Present reconciled winners overlay the
+ *  base; absent winners leave the base value intact (so provider-only fields
+ *  like `org`, and `reverse`/`fcrdns` passed in via `base`, survive). Flags are
+ *  written explicitly from the resolution (already OR'd across providers).
+ *
+ *  This is the single flattening helper; `checkIp` passes `{ reverse, fcrdns }`
+ *  as the base since those are not reconciled fields. */
+export function overlayResolution(
   res: GeoResolution,
   base: GeoContext = {},
 ): GeoContext {
@@ -232,8 +238,8 @@ export function flattenResolution(
     geo.lat = res.coordinates.value.lat;
     geo.lon = res.coordinates.value.lon;
   }
-  if (res.flags.isHosting) geo.isHosting = true;
-  if (res.flags.isProxy) geo.isProxy = true;
-  if (res.flags.isMobile) geo.isMobile = true;
+  geo.isHosting = res.flags.isHosting;
+  geo.isProxy = res.flags.isProxy;
+  geo.isMobile = res.flags.isMobile;
   return geo;
 }

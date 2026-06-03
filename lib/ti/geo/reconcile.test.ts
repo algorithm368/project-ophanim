@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GeoContext, SourceResult } from "../types";
-import { flattenResolution, reconcileGeo, reconcileGeoInputs } from "./reconcile";
+import { overlayResolution, reconcileGeo, reconcileGeoInputs } from "./reconcile";
 
 /** Minimal SourceResult factory for reconcile tests. */
 function r(id: string, geo: Record<string, unknown>): SourceResult {
@@ -158,14 +158,14 @@ describe("reconcileGeoInputs — refactor-safety", () => {
   });
 });
 
-describe("flattenResolution", () => {
+describe("overlayResolution", () => {
   it("overlays reconciled winners onto a base GeoContext", () => {
     const res = reconcileGeoInputs([
       { id: "a", geo: { countryCode: "US", country: "United States", isp: "X" } },
       { id: "b", geo: { countryCode: "US", country: "United States" } },
     ])!;
     const base: GeoContext = { org: "Acme", countryCode: "ZZ" };
-    const geo = flattenResolution(res, base);
+    const geo = overlayResolution(res, base);
     expect(geo.countryCode).toBe("US");      // reconciled winner overrides base
     expect(geo.org).toBe("Acme");            // base-only field preserved
   });
@@ -175,6 +175,14 @@ describe("flattenResolution", () => {
       { id: "a", geo: { countryCode: "US", isProxy: true } },
       { id: "b", geo: { countryCode: "US" } },
     ])!;
-    expect(flattenResolution(res).isProxy).toBe(true);
+    expect(overlayResolution(res).isProxy).toBe(true);
+  });
+
+  it("always emits the three flags (false when none voted)", () => {
+    const res = reconcileGeoInputs([{ id: "a", geo: { countryCode: "US" } }])!;
+    const geo = overlayResolution(res);
+    expect(geo.isHosting).toBe(false);
+    expect(geo.isProxy).toBe(false);
+    expect(geo.isMobile).toBe(false);
   });
 });
