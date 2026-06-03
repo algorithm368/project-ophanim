@@ -59,6 +59,20 @@ export interface DomainContext {
   resolvedIps?: string[];
   ipv6?: string[];
   mx?: string[];
+  /** PTR hostnames for the resolved IPs. */
+  reverse?: string[];
+  /** DNSSEC posture from the resolver's AD flag. */
+  dnssec?: "signed" | "unsigned" | "unknown";
+  txt?: string[];
+  /** SPF record extracted from TXT. */
+  spf?: string;
+  /** DMARC record from the _dmarc subdomain. */
+  dmarc?: string;
+  caa?: string[];
+  soa?: string;
+  cname?: string[];
+  /** false when DoH resolvers returned differing A answer sets. */
+  resolverAgreement?: boolean;
 }
 
 /** File identity + malware metadata for a hash (contributed by file sources). */
@@ -94,6 +108,52 @@ export interface HashContext {
   detectionNames?: string[];
 }
 
+export type Confidence = "high" | "medium" | "low";
+
+/** One reconciled field: winning value + how sure we are + what else was seen. */
+export interface ResolvedField<T> {
+  value: T;
+  /** high = providers agree, low = single provider or tie. */
+  confidence: Confidence;
+  /** agreeing providers / providers that reported this field (0–1). */
+  agreement: number;
+  /** provider ids backing the winning value. */
+  sources: string[];
+  /** dissenting values, when providers disagreed. */
+  alternatives?: { value: T; sources: string[] }[];
+}
+
+export interface GeoFlags {
+  isHosting: boolean;
+  isProxy: boolean;
+  isMobile: boolean;
+  /** flag name -> provider ids that asserted it. */
+  sources: Record<string, string[]>;
+}
+
+/** Forward-confirmed reverse DNS result for an IP. */
+export interface FcrdnsResult {
+  hostname: string;
+  /** PTR host forward-resolves back to the original IP. */
+  verified: boolean;
+}
+
+/** Reconciled geolocation. Each estimated field carries confidence. */
+export interface GeoResolution {
+  country?: ResolvedField<string>;
+  /** ISO code paired with the winning country value. */
+  countryCode?: string;
+  region?: ResolvedField<string>;
+  city?: ResolvedField<string>;
+  coordinates?: ResolvedField<{ lat: number; lon: number }>;
+  asn?: ResolvedField<string>;
+  asnOrg?: ResolvedField<string>;
+  isp?: ResolvedField<string>;
+  flags: GeoFlags;
+  /** how many providers returned any geo at all. */
+  providerCount: number;
+}
+
 export interface GeoContext {
   country?: string;
   countryCode?: string;
@@ -109,6 +169,8 @@ export interface GeoContext {
   isHosting?: boolean;
   isProxy?: boolean;
   isMobile?: boolean;
+  /** Forward-confirmed reverse DNS (contributed by the reverse-dns source). */
+  fcrdns?: FcrdnsResult;
 }
 
 /** Normalized output produced by a source adapter's check(). */
@@ -173,6 +235,8 @@ export interface CheckResult {
   riskScore: number;
   verdict: Verdict;
   geo?: GeoContext;
+  /** Multi-provider reconciled geo with per-field confidence. */
+  geoResolution?: GeoResolution;
   sources: SourceResult[];
   stats: CheckStats;
   /** Past reputation snapshots (oldest to newest), for the history timeline. */
