@@ -4,6 +4,7 @@ import { ipWhoIsSource } from "./sources/ipwhois";
 import { rdapIpSource } from "./sources/rdap-ip";
 import { ipInfoSource } from "./sources/ipinfo";
 import { ipGeolocationSource } from "./sources/ipgeolocation";
+import { reverseDnsSource } from "./sources/reverse-dns";
 import { shodanInternetDbSource } from "./sources/shodan-internetdb";
 import { dnsblSource } from "./sources/dnsbl";
 import { blocklistDeSource } from "./sources/blocklist-de";
@@ -25,6 +26,7 @@ export const sources: TiSource[] = [
   rdapIpSource,
   ipInfoSource,
   ipGeolocationSource,
+  reverseDnsSource,
   shodanInternetDbSource,
   dnsblSource,
   blocklistDeSource,
