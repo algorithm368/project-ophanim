@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, Globe, MapPin } from "lucide-react";
+import { Check, Copy, Globe } from "lucide-react";
 import type { GeoRow } from "@/lib/ti/geo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -126,8 +126,7 @@ function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
           )}
         </Button>
       </div>
-      <div className="flex items-start gap-2.5 rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 select-all">
-        <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+      <div className="rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 select-all">
         <p className="font-sans text-sm leading-relaxed text-foreground/90">
           {joinIps(same.ips)} are located in the same country,{" "}
           <span className="font-semibold">
