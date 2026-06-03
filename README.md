@@ -11,20 +11,29 @@ TypeScript.
 
 Works out of the box, **no API key required**:
 
-| Source            | What it provides                          |
-| ----------------- | ----------------------------------------- |
-| ip-api.com        | Geolocation, ASN, ISP, proxy/hosting flag |
-| Shodan InternetDB | Open ports, known CVEs, host tags         |
-| DNS Blocklists    | Spamhaus, SpamCop, Barracuda, DroneBL, …  |
-| blocklist.de      | Recent attack/abuse report counts         |
-| Feodo Tracker     | Known botnet C2 IPs (abuse.ch)            |
-| ET Open           | Known compromised hosts (Emerging Threats)|
-| Tor Project       | Tor relay / exit node membership          |
+| Source             | What it provides                                |
+| ------------------ | ----------------------------------------------- |
+| ip-api.com         | Geolocation, ASN, ISP, proxy/hosting flag       |
+| ipwho.is           | Second geolocation/ASN opinion (reconciled)     |
+| RDAP (RIR)         | Authoritative allocation country + network name |
+| Reverse DNS (FCrDNS)| PTR + forward-confirmed reverse DNS             |
+| Shodan InternetDB  | Open ports, known CVEs, host tags               |
+| DNS Blocklists     | Spamhaus, SpamCop, Barracuda, DroneBL, …        |
+| blocklist.de       | Recent attack/abuse report counts               |
+| Feodo Tracker      | Known botnet C2 IPs (abuse.ch)                  |
+| ET Open            | Known compromised hosts (Emerging Threats)      |
+| Tor Project        | Tor relay / exit node membership                |
+
+Geolocation is **reconciled across multiple providers**: matching values raise a
+per-field confidence (country, city, ASN, coordinates), disagreements are
+surfaced, and the RIR allocation country (RDAP) breaks country ties.
 
 Enabled only when an API key is set (free signup):
 
 | Source         | Env var                              |
 | -------------- | ------------------------------------ |
+| ipinfo.io      | `IPINFO_TOKEN` (extra geo/ASN vote)  |
+| ipgeolocation.io | `IPGEOLOCATION_API_KEY` (extra geo vote) |
 | VirusTotal     | `VIRUSTOTAL_API_KEY`                 |
 | AbuseIPDB      | `ABUSEIPDB_API_KEY`                  |
 | AlienVault OTX | `OTX_API_KEY`                        |
@@ -42,7 +51,7 @@ Works out of the box, **no API key required**:
 
 | Source        | What it provides                                  |
 | ------------- | ------------------------------------------------- |
-| DNS Records   | A/AAAA/MX/NS resolution (Cloudflare DoH)          |
+| DNS Records   | A/AAAA/MX/NS/TXT/SOA/CNAME/CAA, SPF/DMARC, PTR, DNSSEC, multi-resolver agreement (Cloudflare + Google DoH) |
 | RDAP / WHOIS  | Registration date, registrar, age, status         |
 | Spamhaus DBL  | Domain block list (spam/phish/malware/botnet)     |
 | SURBL         | Domain reputation block list                      |
