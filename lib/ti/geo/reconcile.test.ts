@@ -80,3 +80,61 @@ describe("reconcileGeo — categorical fields", () => {
     expect(res.providerCount).toBe(2);
   });
 });
+
+describe("reconcileGeo — coordinates", () => {
+  it("returns undefined coordinates when none reported", () => {
+    const res = reconcileGeo([r("a", { city: "Berlin" })])!;
+    expect(res.coordinates).toBeUndefined();
+  });
+
+  it("clustered points are high confidence at the centroid", () => {
+    const res = reconcileGeo([
+      r("a", { lat: 52.52, lon: 13.405 }),
+      r("b", { lat: 52.5, lon: 13.4 }),
+    ])!;
+    expect(res.coordinates!.confidence).toBe("high");
+    expect(res.coordinates!.value.lat).toBeCloseTo(52.51, 1);
+  });
+
+  it("far-apart points drop to low confidence and record alternatives", () => {
+    const res = reconcileGeo([
+      r("a", { lat: 37.77, lon: -122.42 }),
+      r("b", { lat: 34.05, lon: -118.24 }),
+    ])!;
+    expect(res.coordinates!.confidence).toBe("low");
+    expect(res.coordinates!.alternatives!.length).toBe(2);
+  });
+
+  it("a single coordinate is low confidence", () => {
+    const res = reconcileGeo([r("a", { lat: 52.52, lon: 13.405 })])!;
+    expect(res.coordinates!.confidence).toBe("low");
+  });
+});
+
+describe("reconcileGeo — flags", () => {
+  it("ORs flags across providers and attributes each", () => {
+    const res = reconcileGeo([
+      r("a", { isProxy: true }),
+      r("b", { isHosting: true }),
+      r("c", { isProxy: true, isMobile: false }),
+    ])!;
+    expect(res.flags.isProxy).toBe(true);
+    expect(res.flags.isHosting).toBe(true);
+    expect(res.flags.isMobile).toBe(false);
+    expect(res.flags.sources.isProxy.sort()).toEqual(["a", "c"]);
+    expect(res.flags.sources.isHosting).toEqual(["b"]);
+  });
+});
+
+describe("reconcileGeo — country authority", () => {
+  it("RDAP breaks a country split and is high confidence", () => {
+    const res = reconcileGeo([
+      r("a", { country: "United States", countryCode: "US" }),
+      r("b", { country: "Canada", countryCode: "CA" }),
+      r("rdap-ip", { country: "Canada", countryCode: "CA" }),
+    ])!;
+    expect(res.country!.value).toBe("Canada");
+    expect(res.country!.confidence).toBe("high");
+    expect(res.countryCode).toBe("CA");
+  });
+});
