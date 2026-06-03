@@ -98,7 +98,6 @@ function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
   const same = sameCountryOf(rows);
   const [copied, copy] = useCopied();
   if (!same) return null;
-  const flag = flagUrl(same.code);
   const sentence = sameCountrySentence(same);
   return (
     <div className="space-y-1.5">
@@ -131,18 +130,7 @@ function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
         <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
         <p className="font-sans text-sm leading-relaxed text-foreground/90">
           {joinIps(same.ips)} are located in the same country,{" "}
-          <span className="inline-flex items-center gap-1.5 font-semibold">
-            {flag && (
-              // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
-              <img
-                src={flag}
-                alt=""
-                width={20}
-                height={14}
-                loading="lazy"
-                className="inline-block h-3.5 w-5 rounded-[2px] border border-foreground/20 object-cover align-[-1px]"
-              />
-            )}
+          <span className="font-semibold">
             {same.country} ({same.code})
           </span>
           {", as verified by "}
