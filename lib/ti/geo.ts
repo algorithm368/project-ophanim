@@ -1,7 +1,16 @@
-import type { GeoContext } from "./types";
+import type { GeoContext, GeoResolution } from "./types";
 import type { ParsedIP } from "@/lib/ip";
 import { postJson } from "./http";
 import { IP_API_FIELDS, ipApiToGeo, type IpApiResponse } from "./sources/ipapi";
+import { bulkIpInfo } from "./sources/ipinfo";
+import { overlayResolution, reconcileGeoInputs } from "./geo/reconcile";
+import {
+  bulkRdapConcurrency,
+  bulkRdapMax,
+  fetchRdapCountries,
+  selectUncertainIps,
+  transposeByIp,
+} from "./geo/bulk";
 
 /** One row in a bulk-geolocation response. */
 export interface GeoRow {
@@ -10,6 +19,8 @@ export interface GeoRow {
   version: 4 | 6;
   status: "ok" | "error";
   geo?: GeoContext;
+  /** Multi-provider reconciliation with per-field confidence (when available). */
+  resolution?: GeoResolution;
   error?: string;
 }
 
@@ -60,10 +71,59 @@ export async function bulkGeolocate(
       `bulkGeolocate: ip-api batch limit is 100 IPs, got ${ips.length}`,
     );
   }
+  const addresses = ips.map((p) => p.ip);
+
+  // 1. ip-api /batch (always; baseline, no key).
   const { data } = await postJson<IpApiBatchEntry[]>(
     `http://ip-api.com/batch?fields=${IP_API_FIELDS}`,
     signal,
-    ips.map((p) => p.ip),
+    addresses,
   );
-  return mapBatchResults(ips, data ?? []);
+  const ipapiRows = mapBatchResults(ips, data ?? []);
+  const byIpRow = new Map(ipapiRows.map((row) => [row.ip, row]));
+  const ipApiByIp = new Map<string, GeoContext>();
+  for (const row of ipapiRows) {
+    if (row.status === "ok" && row.geo) ipApiByIp.set(row.ip, row.geo);
+  }
+
+  // 2. ipinfo /batch (one extra voter when IPINFO_TOKEN is set).
+  const ipinfoByIp = await bulkIpInfo(addresses, signal);
+
+  // 3. Transpose into per-IP reconciliation inputs.
+  const perIp = transposeByIp(addresses, [
+    { id: "ip-api", byIp: ipApiByIp },
+    { id: "ipinfo", byIp: ipinfoByIp },
+  ]);
+
+  // 4. Adaptive RDAP country authority for uncertain IPs (capped + logged).
+  const qualifying = selectUncertainIps(perIp, Number.POSITIVE_INFINITY);
+  const cap = bulkRdapMax();
+  if (qualifying.length > cap) {
+    console.warn(
+      `bulkGeolocate: ${qualifying.length - cap} uncertain IP(s) skipped RDAP (cap ${cap})`,
+    );
+  }
+  const uncertain = qualifying.slice(0, cap);
+  const rdapByIp = await fetchRdapCountries(
+    uncertain,
+    signal,
+    bulkRdapConcurrency(),
+  );
+  for (const [ip, geo] of rdapByIp) {
+    perIp.get(ip)?.push({ id: "rdap-ip", geo });
+  }
+
+  // 5. Reconcile per IP; keep the error row when nothing resolved.
+  return ips.map((parsed) => {
+    const base = byIpRow.get(parsed.ip)!;
+    const resolution = reconcileGeoInputs(perIp.get(parsed.ip) ?? []);
+    if (!resolution) return base;
+    return {
+      ip: base.ip,
+      version: base.version,
+      status: "ok" as const,
+      geo: overlayResolution(resolution, base.geo),
+      resolution,
+    };
+  });
 }
