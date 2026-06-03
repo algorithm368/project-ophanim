@@ -1,5 +1,5 @@
 import type { GeoContext } from "../types";
-import { getJson } from "../http";
+import { getJson, isTimeout } from "../http";
 import { type RdapIpResponse, rdapIpToGeo } from "../sources/rdap-ip";
 import { normalizeKey } from "./geokit";
 import type { GeoInput } from "./reconcile";
@@ -10,7 +10,8 @@ export interface ProviderContexts {
   byIp: Map<string, GeoContext>;
 }
 
-/** Build per-IP reconciliation inputs from each provider's answers. */
+/** Build per-IP reconciliation inputs from each provider's answers. Every
+ *  requested IP gets an entry (an empty array when no provider knew it). */
 export function transposeByIp(
   ips: string[],
   providers: ProviderContexts[],
@@ -27,7 +28,8 @@ export function transposeByIp(
   return perIp;
 }
 
-/** Normalized country key for an input: ISO code preferred, else country name. */
+/** Normalized country key for an input: ISO code preferred, else country name.
+ *  Returns "" (falsy sentinel) when the input carries no country data. */
 function countryKey(geo: GeoContext): string {
   return geo.countryCode?.trim().toUpperCase() || normalizeKey(geo.country);
 }
@@ -94,8 +96,9 @@ export async function fetchRdapCountries(
         const geo = rdapIpToGeo(data);
         if (geo.countryCode) out.set(ip, geo);
       }
-    } catch {
-      // drop this IP's authority boost
+    } catch (err) {
+      if (isTimeout(err)) throw err; // propagate abort/cancel; degrade on real errors
+      // else: drop this IP's authority boost
     }
   });
   return out;

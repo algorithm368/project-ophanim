@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { selectUncertainIps, transposeByIp } from "./bulk";
+import { describe, expect, it, vi } from "vitest";
+import { fetchRdapCountries, selectUncertainIps, transposeByIp } from "./bulk";
+import { getJson } from "../http";
+
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
 
 describe("transposeByIp", () => {
   it("collects each provider's GeoContext per IP, skipping gaps", () => {
@@ -41,5 +47,21 @@ describe("selectUncertainIps", () => {
       ["c", [{ id: "x", geo: { countryCode: "US" } }]],
     ]);
     expect(selectUncertainIps(perIp, 2)).toHaveLength(2);
+  });
+});
+
+describe("fetchRdapCountries", () => {
+  it("propagates an abort/timeout instead of swallowing it", async () => {
+    const abortErr = new DOMException("The operation was aborted", "AbortError");
+    vi.mocked(getJson).mockRejectedValue(abortErr);
+    await expect(
+      fetchRdapCountries(["1.1.1.1"], new AbortController().signal, 2),
+    ).rejects.toBe(abortErr);
+  });
+
+  it("degrades to an empty map on a real network error", async () => {
+    vi.mocked(getJson).mockRejectedValue(new Error("ECONNRESET"));
+    const out = await fetchRdapCountries(["1.1.1.1"], new AbortController().signal, 2);
+    expect(out.size).toBe(0);
   });
 });
