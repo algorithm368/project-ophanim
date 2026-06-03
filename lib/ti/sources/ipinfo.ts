@@ -1,5 +1,5 @@
 import type { GeoContext, SourceFinding, TiSource } from "../types";
-import { errorMessage, getJson, isTimeout } from "../http";
+import { errorMessage, getJson, isTimeout, postJson } from "../http";
 
 export interface IpInfoResponse {
   city?: string;
@@ -34,6 +34,43 @@ export function ipInfoToGeo(data: IpInfoResponse): GeoContext {
     }
   }
   return geo;
+}
+
+/** Pure: shape an ipinfo /batch response (ip -> entry) into ip -> GeoContext.
+ *  Non-object entries (string echoes), bogons, and missing IPs are omitted. */
+export function mapIpInfoBatch(
+  ips: string[],
+  data: Record<string, IpInfoResponse | string>,
+): Map<string, GeoContext> {
+  const out = new Map<string, GeoContext>();
+  for (const ip of ips) {
+    const entry = data[ip];
+    if (entry && typeof entry === "object" && !entry.bogon) {
+      out.set(ip, ipInfoToGeo(entry));
+    }
+  }
+  return out;
+}
+
+/** Geolocate many IPs in one ipinfo /batch call. Empty map when no token or on
+ *  any failure — the caller treats that as "ipinfo did not vote". */
+export async function bulkIpInfo(
+  ips: string[],
+  signal: AbortSignal,
+): Promise<Map<string, GeoContext>> {
+  const token = process.env.IPINFO_TOKEN;
+  if (!token || ips.length === 0) return new Map();
+  try {
+    const { ok, data } = await postJson<Record<string, IpInfoResponse | string>>(
+      `https://ipinfo.io/batch?token=${token}`,
+      signal,
+      ips,
+    );
+    if (!ok || !data) return new Map();
+    return mapIpInfoBatch(ips, data);
+  } catch {
+    return new Map();
+  }
 }
 
 /** ipinfo.io: strong ASN/company + geo (free token via IPINFO_TOKEN). Context only. */
