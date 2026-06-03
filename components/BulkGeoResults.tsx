@@ -146,16 +146,6 @@ function placeOf(row: GeoRow): string {
   return [g.city, g.region].filter(Boolean).join(", ") || "—";
 }
 
-function flagsOf(row: GeoRow): string[] {
-  const g = row.geo;
-  if (!g) return [];
-  const out: string[] = [];
-  if (g.isProxy) out.push("proxy/VPN");
-  if (g.isHosting) out.push("hosting");
-  if (g.isMobile) out.push("mobile");
-  return out;
-}
-
 export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
   if (!rows.length) return null;
   return (
@@ -179,14 +169,12 @@ export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
                 <th scope="col" className="px-2 py-1.5 font-semibold">City / Region</th>
                 <th scope="col" className="px-2 py-1.5 font-semibold">ASN</th>
                 <th scope="col" className="px-2 py-1.5 font-semibold">ISP / Org</th>
-                <th scope="col" className="px-2 py-1.5 font-semibold">Flags</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => {
                 const g = row.geo;
                 const flag = flagUrl(g?.countryCode);
-                const flags = flagsOf(row);
                 return (
                   <tr
                     key={row.ip}
@@ -224,22 +212,6 @@ export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
                     </td>
                     <td className="px-2 py-2 text-muted-foreground">
                       {g?.isp ?? g?.org ?? "—"}
-                    </td>
-                    <td className="px-2 py-2">
-                      {flags.length ? (
-                        <span className="flex flex-wrap gap-1">
-                          {flags.map((f) => (
-                            <span
-                              key={f}
-                              className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-600 dark:text-amber-400"
-                            >
-                              {f}
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
                     </td>
                   </tr>
                 );
