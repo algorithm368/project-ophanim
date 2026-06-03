@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { SourceResult } from "../types";
-import { reconcileGeo } from "./reconcile";
+import type { GeoContext, SourceResult } from "../types";
+import { flattenResolution, reconcileGeo, reconcileGeoInputs } from "./reconcile";
 
 /** Minimal SourceResult factory for reconcile tests. */
 function r(id: string, geo: Record<string, unknown>): SourceResult {
@@ -136,5 +136,45 @@ describe("reconcileGeo — country authority", () => {
     expect(res.country!.value).toBe("Canada");
     expect(res.country!.confidence).toBe("high");
     expect(res.countryCode).toBe("CA");
+  });
+});
+
+describe("reconcileGeoInputs — refactor-safety", () => {
+  it("matches reconcileGeo on the same data", () => {
+    const results = [
+      r("a", { city: "Berlin", countryCode: "DE" }),
+      r("b", { city: "Berlin", countryCode: "DE" }),
+    ];
+    const viaResults = reconcileGeo(results);
+    const viaInputs = reconcileGeoInputs([
+      { id: "a", geo: { city: "Berlin", countryCode: "DE" } },
+      { id: "b", geo: { city: "Berlin", countryCode: "DE" } },
+    ]);
+    expect(viaInputs).toEqual(viaResults);
+  });
+
+  it("returns undefined on empty inputs", () => {
+    expect(reconcileGeoInputs([])).toBeUndefined();
+  });
+});
+
+describe("flattenResolution", () => {
+  it("overlays reconciled winners onto a base GeoContext", () => {
+    const res = reconcileGeoInputs([
+      { id: "a", geo: { countryCode: "US", country: "United States", isp: "X" } },
+      { id: "b", geo: { countryCode: "US", country: "United States" } },
+    ])!;
+    const base: GeoContext = { org: "Acme", countryCode: "ZZ" };
+    const geo = flattenResolution(res, base);
+    expect(geo.countryCode).toBe("US");      // reconciled winner overrides base
+    expect(geo.org).toBe("Acme");            // base-only field preserved
+  });
+
+  it("OR's flags from the resolution", () => {
+    const res = reconcileGeoInputs([
+      { id: "a", geo: { countryCode: "US", isProxy: true } },
+      { id: "b", geo: { countryCode: "US" } },
+    ])!;
+    expect(flattenResolution(res).isProxy).toBe(true);
   });
 });

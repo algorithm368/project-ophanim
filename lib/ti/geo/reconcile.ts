@@ -7,7 +7,7 @@ import type {
 } from "../types";
 import { canonicalAsn, haversineKm, normalizeKey } from "./geokit";
 
-interface GeoInput {
+export interface GeoInput {
   id: string;
   geo: GeoContext;
 }
@@ -182,11 +182,10 @@ function reconcileCountry(inputs: GeoInput[]): {
   return { field, code: winner.code || undefined };
 }
 
-export function reconcileGeo(results: SourceResult[]): GeoResolution | undefined {
-  const inputs: GeoInput[] = results
-    .filter((res) => res.status === "ok" && res.geo)
-    .map((res) => ({ id: res.source.id, geo: res.geo as GeoContext }));
-
+/** Pure reconciliation core: votes over already-extracted provider inputs. */
+export function reconcileGeoInputs(
+  inputs: GeoInput[],
+): GeoResolution | undefined {
   if (inputs.length === 0) return undefined;
 
   const country = reconcileCountry(inputs);
@@ -203,4 +202,38 @@ export function reconcileGeo(results: SourceResult[]): GeoResolution | undefined
     flags: reconcileFlags(inputs),
     providerCount: inputs.length,
   };
+}
+
+/** Thin adapter for single-IP callers that hold full SourceResults. */
+export function reconcileGeo(
+  results: SourceResult[],
+): GeoResolution | undefined {
+  const inputs: GeoInput[] = results
+    .filter((res) => res.status === "ok" && res.geo)
+    .map((res) => ({ id: res.source.id, geo: res.geo as GeoContext }));
+  return reconcileGeoInputs(inputs);
+}
+
+/** Overlay reconciled winning values onto a base GeoContext (compatibility
+ *  view). Base-only fields (e.g. org, ip-api flags) are preserved. */
+export function flattenResolution(
+  res: GeoResolution,
+  base: GeoContext = {},
+): GeoContext {
+  const geo: GeoContext = { ...base };
+  if (res.country) geo.country = res.country.value;
+  if (res.countryCode) geo.countryCode = res.countryCode;
+  if (res.region) geo.region = res.region.value;
+  if (res.city) geo.city = res.city.value;
+  if (res.asn) geo.asn = res.asn.value;
+  if (res.asnOrg) geo.asnOrg = res.asnOrg.value;
+  if (res.isp) geo.isp = res.isp.value;
+  if (res.coordinates) {
+    geo.lat = res.coordinates.value.lat;
+    geo.lon = res.coordinates.value.lon;
+  }
+  if (res.flags.isHosting) geo.isHosting = true;
+  if (res.flags.isProxy) geo.isProxy = true;
+  if (res.flags.isMobile) geo.isMobile = true;
+  return geo;
 }
