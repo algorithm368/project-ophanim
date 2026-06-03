@@ -73,21 +73,21 @@ export async function bulkGeolocate(
   }
   const addresses = ips.map((p) => p.ip);
 
-  // 1. ip-api /batch (always; baseline, no key).
-  const { data } = await postJson<IpApiBatchEntry[]>(
-    `http://ip-api.com/batch?fields=${IP_API_FIELDS}`,
-    signal,
-    addresses,
-  );
-  const ipapiRows = mapBatchResults(ips, data ?? []);
+  // 1+2. Fan out the two batch providers concurrently (independent calls).
+  const [ipapiResponse, ipinfoByIp] = await Promise.all([
+    postJson<IpApiBatchEntry[]>(
+      `http://ip-api.com/batch?fields=${IP_API_FIELDS}`,
+      signal,
+      addresses,
+    ),
+    bulkIpInfo(addresses, signal),
+  ]);
+  const ipapiRows = mapBatchResults(ips, ipapiResponse.data ?? []);
   const byIpRow = new Map(ipapiRows.map((row) => [row.ip, row]));
   const ipApiByIp = new Map<string, GeoContext>();
   for (const row of ipapiRows) {
     if (row.status === "ok" && row.geo) ipApiByIp.set(row.ip, row.geo);
   }
-
-  // 2. ipinfo /batch (one extra voter when IPINFO_TOKEN is set).
-  const ipinfoByIp = await bulkIpInfo(addresses, signal);
 
   // 3. Transpose into per-IP reconciliation inputs.
   const perIp = transposeByIp(addresses, [
@@ -115,6 +115,7 @@ export async function bulkGeolocate(
 
   // 5. Reconcile per IP; keep the error row when nothing resolved.
   return ips.map((parsed) => {
+    // Safe: mapBatchResults(ips, …) yields one row per ips[i].ip; caller dedupes.
     const base = byIpRow.get(parsed.ip)!;
     const resolution = reconcileGeoInputs(perIp.get(parsed.ip) ?? []);
     if (!resolution) return base;
