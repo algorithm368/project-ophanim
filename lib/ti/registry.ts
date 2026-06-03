@@ -1,5 +1,9 @@
 import type { TiSource } from "./types";
 import { ipApiSource } from "./sources/ipapi";
+import { ipWhoIsSource } from "./sources/ipwhois";
+import { rdapIpSource } from "./sources/rdap-ip";
+import { ipInfoSource } from "./sources/ipinfo";
+import { ipGeolocationSource } from "./sources/ipgeolocation";
 import { shodanInternetDbSource } from "./sources/shodan-internetdb";
 import { dnsblSource } from "./sources/dnsbl";
 import { blocklistDeSource } from "./sources/blocklist-de";
@@ -17,6 +21,10 @@ import { censysSource } from "./sources/censys";
 /** All registered TI sources, in display order. */
 export const sources: TiSource[] = [
   ipApiSource,
+  ipWhoIsSource,
+  rdapIpSource,
+  ipInfoSource,
+  ipGeolocationSource,
   shodanInternetDbSource,
   dnsblSource,
   blocklistDeSource,
