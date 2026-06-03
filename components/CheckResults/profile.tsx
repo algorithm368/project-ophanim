@@ -405,6 +405,33 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                 {s}
                             </span>
                         ))}
+                        {ctx.dnssec && ctx.dnssec !== "unknown" && (
+                            <span
+                                className={cn(
+                                    "font-hand sketch-shadow inline-flex items-center gap-1.5 rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-foreground/20 bg-background px-2.5 py-1 text-base font-semibold",
+                                    ctx.dnssec === "signed"
+                                        ? "text-emerald-600 dark:text-emerald-400"
+                                        : "text-foreground/70",
+                                )}
+                                title={
+                                    ctx.dnssec === "signed"
+                                        ? "Zone is DNSSEC-signed (resolver set the AD flag)"
+                                        : "Zone is not DNSSEC-signed"
+                                }
+                            >
+                                <ShieldCheck className="size-4" />
+                                DNSSEC {ctx.dnssec}
+                            </span>
+                        )}
+                        {ctx.resolverAgreement === false && (
+                            <span
+                                className="font-hand sketch-shadow inline-flex items-center gap-1.5 rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-red-500/50 bg-background px-2.5 py-1 text-base font-semibold text-red-600 dark:text-red-400"
+                                title="DoH resolvers returned different A records (GeoDNS, split-horizon, or possible poisoning)"
+                            >
+                                <ShieldAlert className="size-4" />
+                                resolvers disagree
+                            </span>
+                        )}
                     </div>
                 )}
 
@@ -449,6 +476,32 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                             {mx.length > 0 && (
                                 <Field icon={Mail} label="Mail (MX)" wrap>
                                     <PivotList values={mx} />
+                                </Field>
+                            )}
+                            {(ctx.reverse?.length ?? 0) > 0 && (
+                                <Field icon={SignalHigh} label="Reverse DNS (PTR)" wrap>
+                                    <PivotList values={ctx.reverse!} />
+                                </Field>
+                            )}
+                            {ctx.spf && (
+                                <Field icon={Mail} label="SPF" wrap>
+                                    <span className="font-mono text-[12px] break-all">
+                                        {ctx.spf}
+                                    </span>
+                                </Field>
+                            )}
+                            {ctx.dmarc && (
+                                <Field icon={Mail} label="DMARC" wrap>
+                                    <span className="font-mono text-[12px] break-all">
+                                        {ctx.dmarc}
+                                    </span>
+                                </Field>
+                            )}
+                            {(ctx.caa?.length ?? 0) > 0 && (
+                                <Field icon={ShieldCheck} label="CAA" wrap>
+                                    <span className="font-mono text-[12px] break-all">
+                                        {ctx.caa!.join(", ")}
+                                    </span>
                                 </Field>
                             )}
                         </dl>
