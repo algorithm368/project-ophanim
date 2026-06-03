@@ -52,10 +52,12 @@ import {
     locationQuip,
 } from "./classify";
 import { Field, Pivot, PivotList, SectionHeading, useCopied } from "./primitives";
+import { ConfidenceChip, Disagreement } from "./confidence";
 import type { IconType } from "./types";
 
 export function ProfileCard({ result }: { result: CheckResult }) {
     const geo = result.geo;
+    const res = result.geoResolution;
     const type = classifyType(geo);
     const TypeIcon = type.icon;
     const cityRegion = geo ? joinPlace([geo.city, geo.region]) : "";
@@ -164,10 +166,23 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                         ({geo.countryCode})
                                     </span>
                                 )}
+                                {res?.country && (
+                                    <ConfidenceChip
+                                        confidence={res.country.confidence}
+                                    />
+                                )}
+                                {res?.country && (
+                                    <Disagreement field={res.country} />
+                                )}
                             </div>
                             {cityRegion && (
                                 <div className="truncate text-sm text-muted-foreground">
                                     {cityRegion}
+                                    {res?.city && (
+                                        <ConfidenceChip
+                                            confidence={res.city.confidence}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -208,10 +223,16 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                         </div>
                         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                             {geo!.asn && (
-                                <Field icon={Network} label="Network (ASN)">
+                                <Field icon={Network} label="Network (ASN)" wrap>
                                     <span className="font-mono text-[13px]">
                                         {geo!.asn}
                                     </span>
+                                    {res?.asn && (
+                                        <ConfidenceChip
+                                            confidence={res.asn.confidence}
+                                        />
+                                    )}
+                                    {res?.asn && <Disagreement field={res.asn} />}
                                 </Field>
                             )}
                             {geo!.asnOrg && (
@@ -236,6 +257,25 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                     wrap
                                 >
                                     <Pivot value={geo!.reverse} />
+                                    {geo!.fcrdns && (
+                                        <span
+                                            title={
+                                                geo!.fcrdns.verified
+                                                    ? "Forward-confirmed reverse DNS — the PTR host resolves back to this IP"
+                                                    : "PTR is not forward-confirmed — the hostname does not resolve back to this IP"
+                                            }
+                                            className={cn(
+                                                "ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide",
+                                                geo!.fcrdns.verified
+                                                    ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+                                                    : "border-red-600/40 text-red-700 dark:text-red-400",
+                                            )}
+                                        >
+                                            {geo!.fcrdns.verified
+                                                ? "FCrDNS ✓"
+                                                : "FCrDNS ✗"}
+                                        </span>
+                                    )}
                                 </Field>
                             )}
                             {coords && (
@@ -243,10 +283,24 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                     <span className="font-mono text-[13px]">
                                         {coords}
                                     </span>
+                                    {res?.coordinates && (
+                                        <ConfidenceChip
+                                            confidence={
+                                                res.coordinates.confidence
+                                            }
+                                        />
+                                    )}
                                 </Field>
                             )}
                         </dl>
                     </div>
+                )}
+
+                {res && res.providerCount > 0 && (
+                    <p className="font-hand text-sm text-muted-foreground">
+                        Reconciled from {res.providerCount} geo provider
+                        {res.providerCount > 1 ? "s" : ""}.
+                    </p>
                 )}
             </CardContent>
         </Card>
