@@ -1,0 +1,62 @@
+"use client";
+
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import type { Confidence, ResolvedField } from "@/lib/ti/types";
+
+const TONE: Record<Confidence, string> = {
+  high: "border-emerald-600/40 text-emerald-700 dark:text-emerald-400",
+  medium: "border-amber-600/40 text-amber-700 dark:text-amber-400",
+  low: "border-foreground/25 text-muted-foreground",
+};
+
+const LABEL: Record<Confidence, string> = {
+  high: "high confidence — providers agree",
+  medium: "medium confidence — contested",
+  low: "low confidence — single provider or split",
+};
+
+/** Small inline chip indicating how trustworthy a reconciled field is. */
+export function ConfidenceChip({ confidence }: { confidence: Confidence }) {
+  return (
+    <span
+      title={LABEL[confidence]}
+      className={cn(
+        "ml-2 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide",
+        TONE[confidence],
+      )}
+    >
+      <span className="size-1.5 rounded-full bg-current" aria-hidden />
+      {confidence}
+    </span>
+  );
+}
+
+/** Tappable disclosure of which providers disagreed on a field. */
+export function Disagreement<T>({ field }: { field: ResolvedField<T> }) {
+  const [open, setOpen] = useState(false);
+  const alts = field.alternatives;
+  if (!alts || alts.length === 0) return null;
+  const dissenters = alts.reduce((n, a) => n + a.sources.length, 0);
+
+  return (
+    <span className="ml-2 align-middle text-[11px]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="underline decoration-dotted underline-offset-2 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {field.sources.length} agree · {dissenters} disagree
+      </button>
+      {open && (
+        <ul className="mt-1 space-y-0.5 text-muted-foreground">
+          {alts.map((a, i) => (
+            <li key={i}>
+              {String(a.value)} — {a.sources.join(", ")}
+            </li>
+          ))}
+        </ul>
+      )}
+    </span>
+  );
+}
