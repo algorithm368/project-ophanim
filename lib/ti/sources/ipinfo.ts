@@ -59,6 +59,7 @@ export async function bulkIpInfo(
   signal: AbortSignal,
 ): Promise<Map<string, GeoContext>> {
   const token = process.env.IPINFO_TOKEN;
+  // ipinfo /batch accepts up to 1,000 IPs; callers are responsible for chunking.
   if (!token || ips.length === 0) return new Map();
   try {
     const { ok, data } = await postJson<Record<string, IpInfoResponse | string>>(
@@ -68,7 +69,8 @@ export async function bulkIpInfo(
     );
     if (!ok || !data) return new Map();
     return mapIpInfoBatch(ips, data);
-  } catch {
+  } catch (err) {
+    if (isTimeout(err)) throw err; // propagate abort/timeout; degrade on real errors
     return new Map();
   }
 }
