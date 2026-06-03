@@ -6,13 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCopied } from "@/components/CheckResults/primitives";
 import { flagUrl } from "@/lib/flag";
+import { ConfidenceChip } from "@/components/CheckResults/confidence";
+import type { Confidence } from "@/lib/ti/types";
 
-/** Source backing the bulk batch lookup (see lib/ti/geo.ts → bulkGeolocate). */
-const GEO_SOURCE = "ip-api.com";
-
-/** Uppercase ISO country code for a row, or "?" when it couldn't be located. */
+/** Uppercase ISO country code for a row (reconciled if available), or "?". */
 function codeOf(row: GeoRow): string {
-  const cc = row.geo?.countryCode;
+  const cc = row.resolution?.countryCode ?? row.geo?.countryCode;
   return row.status === "ok" && cc ? cc.toUpperCase() : "?";
 }
 
@@ -28,21 +27,34 @@ function joinIps(ips: string[]): string {
   return `${ips.slice(0, -1).join(", ")} and ${ips[ips.length - 1]}`;
 }
 
-/** If every located IP shares one country, describe it; otherwise null. */
-function sameCountryOf(
-  rows: GeoRow[],
-): { ips: string[]; country: string; code: string } | null {
-  const located = rows.filter((r) => r.status === "ok" && r.geo?.countryCode);
+const RANK: Record<Confidence, number> = { high: 3, medium: 2, low: 1 };
+
+/** If every located IP shares one country, describe it with the lowest
+ *  confidence seen and how many providers backed the reconciliation. */
+function sameCountryOf(rows: GeoRow[]): {
+  ips: string[];
+  country: string;
+  code: string;
+  confidence: Confidence;
+  providerCount: number;
+} | null {
+  const codeOfRow = (r: GeoRow) =>
+    (r.resolution?.countryCode ?? r.geo?.countryCode)?.toUpperCase();
+  const located = rows.filter((r) => r.status === "ok" && codeOfRow(r));
   if (located.length < 2) return null;
-  const code = located[0].geo!.countryCode!.toUpperCase();
-  if (!located.every((r) => r.geo!.countryCode!.toUpperCase() === code)) {
-    return null;
+  const code = codeOfRow(located[0])!;
+  if (!located.every((r) => codeOfRow(r) === code)) return null;
+
+  let confidence: Confidence = "high";
+  let providerCount = 1;
+  for (const r of located) {
+    const c = r.resolution?.country?.confidence ?? "low";
+    if (RANK[c] < RANK[confidence]) confidence = c;
+    providerCount = Math.max(providerCount, r.resolution?.providerCount ?? 1);
   }
-  return {
-    ips: located.map((r) => r.ip),
-    country: located[0].geo!.country ?? code,
-    code,
-  };
+  const country =
+    located[0].resolution?.country?.value ?? located[0].geo?.country ?? code;
+  return { ips: located.map((r) => r.ip), country, code, confidence, providerCount };
 }
 
 /** A selectable, monospace box of the one-line summary with a copy button. */
@@ -83,13 +95,21 @@ function CopyableList({ rows }: { rows: GeoRow[] }) {
   );
 }
 
-/** Formal plain-text sentence for the same-country result (no flag glyph). */
+/** Formal plain-text sentence for the same-country result. */
 function sameCountrySentence(same: {
   ips: string[];
   country: string;
   code: string;
+  confidence: Confidence;
+  providerCount: number;
 }): string {
-  return `${joinIps(same.ips)} are located in the same country, ${same.country} (${same.code}), as verified by ${GEO_SOURCE}.`;
+  const verb =
+    same.confidence === "high" ? "are located in" : "are likely located in";
+  const basis =
+    same.providerCount >= 2
+      ? `as reconciled across ${same.providerCount} geolocation providers`
+      : "as reported by ip-api.com";
+  return `${joinIps(same.ips)} ${verb} the same country, ${same.country} (${same.code}), ${basis}.`;
 }
 
 /** Callout shown when all located IPs resolve to the same country. Mirrors the
@@ -128,12 +148,16 @@ function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
       </div>
       <div className="rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 select-all">
         <p className="font-sans text-sm leading-relaxed text-foreground/90">
-          {joinIps(same.ips)} are located in the same country,{" "}
+          {joinIps(same.ips)}{" "}
+          {same.confidence === "high" ? "are located in" : "are likely located in"}{" "}
+          the same country,{" "}
           <span className="font-semibold">
             {same.country} ({same.code})
           </span>
-          {", as verified by "}
-          {GEO_SOURCE}.
+          <ConfidenceChip confidence={same.confidence} />
+          {same.providerCount >= 2
+            ? `, as reconciled across ${same.providerCount} geolocation providers.`
+            : ", as reported by ip-api.com."}
         </p>
       </div>
     </div>
@@ -201,6 +225,11 @@ export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
                             />
                           )}
                           {g.country}
+                          {row.resolution?.country && (
+                            <ConfidenceChip
+                              confidence={row.resolution.country.confidence}
+                            />
+                          )}
                         </span>
                       ) : (
                         "—"
