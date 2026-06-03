@@ -24,11 +24,13 @@ export type RecordType =
   | "CAA"
   | "PTR";
 
-/** DoH JSON resolvers, by id. */
+/** DoH JSON (application/dns-json) resolvers, by id. Both reliably support
+ *  GET-with-JSON; Quad9's JSON endpoint is omitted because it is not reachable
+ *  for server-side JSON DoH (the :5053 endpoint hangs). Two resolvers are still
+ *  enough to detect GeoDNS / split-horizon / poisoning disagreement. */
 export const RESOLVERS: Record<string, string> = {
   cloudflare: "https://cloudflare-dns.com/dns-query",
   google: "https://dns.google/resolve",
-  quad9: "https://dns.quad9.net:5053/dns-query",
 };
 
 /** Query one resolver. `dnssec: true` sets the DO bit so the AD flag is meaningful. */

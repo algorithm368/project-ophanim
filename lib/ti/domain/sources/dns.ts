@@ -1,39 +1,29 @@
 import type { SourceFinding, TiSource } from "../../types";
-import { errorMessage, getJson, isTimeout } from "../../http";
+import { errorMessage, isTimeout } from "../../http";
+import { RESOLVERS, answers, dohQuery, type DohResponse } from "../../dns/doh";
+import {
+  decodeCaa,
+  dnssecStatus,
+  extractDmarc,
+  extractSpf,
+  normalizeMxHosts,
+  resolversAgree,
+} from "../../dns/parse";
 
-interface DohAnswer {
-  name?: string;
-  type?: number;
-  data?: string;
-}
+const CF = RESOLVERS.cloudflare;
 
-interface DohResponse {
-  Status?: number;
-  Answer?: DohAnswer[];
-}
-
-const DOH_URL = "https://cloudflare-dns.com/dns-query";
-
-async function query(
-  name: string,
-  type: "A" | "AAAA" | "MX" | "NS",
-  signal: AbortSignal,
-): Promise<DohResponse | null> {
-  const { data } = await getJson<DohResponse>(
-    `${DOH_URL}?name=${encodeURIComponent(name)}&type=${type}`,
-    signal,
-    { Accept: "application/dns-json" },
+/** PTR each resolved IPv4, returning the first hostname per IP. */
+async function ptrAll(ips: string[], signal: AbortSignal): Promise<string[]> {
+  const names = await Promise.all(
+    ips.map(async (ip) => {
+      const ptr = `${ip.split(".").reverse().join(".")}.in-addr.arpa`;
+      return answers(await dohQuery(CF, ptr, "PTR", signal))[0];
+    }),
   );
-  return data;
+  return names.filter((n): n is string => Boolean(n));
 }
 
-function answers(res: DohResponse | null): string[] {
-  return (res?.Answer ?? [])
-    .map((a) => a.data?.replace(/\.$/, ""))
-    .filter((d): d is string => Boolean(d));
-}
-
-/** DNS-over-HTTPS resolution (Cloudflare) - context only, no risk score. */
+/** DNS-over-HTTPS resolution with multi-resolver agreement, records, PTR, DNSSEC. */
 export const dnsSource: TiSource = {
   meta: {
     id: "dns",
@@ -46,23 +36,39 @@ export const dnsSource: TiSource = {
   isEnabled: () => true,
   async check(domain, signal): Promise<SourceFinding> {
     try {
-      const [a, aaaa, mx, ns] = await Promise.all([
-        query(domain, "A", signal),
-        query(domain, "AAAA", signal),
-        query(domain, "MX", signal),
-        query(domain, "NS", signal),
+      // A across multiple resolvers (DNSSEC DO bit set) for an agreement check.
+      const [aCf, aGoogle] = await Promise.all([
+        dohQuery(CF, domain, "A", signal, true),
+        dohQuery(RESOLVERS.google, domain, "A", signal, true),
       ]);
 
-      const resolvedIps = answers(a);
+      // Everything else from Cloudflare only, in parallel.
+      const [aaaa, mx, ns, txt, soa, cname, caa, dmarcTxt] = await Promise.all([
+        dohQuery(CF, domain, "AAAA", signal),
+        dohQuery(CF, domain, "MX", signal),
+        dohQuery(CF, domain, "NS", signal),
+        dohQuery(CF, domain, "TXT", signal),
+        dohQuery(CF, domain, "SOA", signal),
+        dohQuery(CF, domain, "CNAME", signal),
+        dohQuery(CF, domain, "CAA", signal),
+        dohQuery(CF, `_dmarc.${domain}`, "TXT", signal),
+      ]);
+
+      const resolvedIps = answers(aCf);
       const ipv6 = answers(aaaa);
-      // MX answers look like "10 mail.example.com." - keep just the host.
-      const mxHosts = answers(mx).map((m) => m.split(/\s+/).pop() ?? m);
+      const mxHosts = normalizeMxHosts(answers(mx));
       const nsHosts = answers(ns);
+      const txtRecords = answers(txt);
+      const dmarcRecords = answers(dmarcTxt);
+      const reverse = await ptrAll(resolvedIps, signal);
+
+      const aSets = [answers(aCf), answers(aGoogle)];
+      const resolverAgreement = resolversAgree(aSets);
+      const dnssec = dnssecStatus([aCf, aGoogle] as (DohResponse | null)[]);
 
       const resolves = resolvedIps.length > 0 || ipv6.length > 0;
-      const nxdomain = a?.Status === 3;
+      const nxdomain = aCf?.Status === 3;
 
-      // Analyst close-note: state the observed resolution posture + a short read.
       let summary: string;
       if (resolves) {
         const first = resolvedIps[0] ?? ipv6[0];
@@ -75,7 +81,8 @@ export const dnsSource: TiSource = {
           mxHosts.length > 0
             ? ` Mail routed via ${mxHosts[0]}.`
             : " No MX present; not mail-bearing.";
-        summary = `Live infrastructure at check time. Apex resolves to ${first}${extra}.${mail}`;
+        const disagree = resolverAgreement ? "" : " Resolvers disagree on the A record.";
+        summary = `Live infrastructure at check time. Apex resolves to ${first}${extra}.${mail}${disagree}`;
       } else if (nxdomain) {
         summary =
           "Apex returns NXDOMAIN. No live infrastructure (parked, expired, or sinkholed); not currently actionable as a host.";
@@ -92,6 +99,12 @@ export const dnsSource: TiSource = {
           ipv6,
           mx: mxHosts,
           nameservers: nsHosts,
+          reverse,
+          spf: extractSpf(txtRecords),
+          dmarc: extractDmarc(dmarcRecords),
+          caa: answers(caa).map(decodeCaa),
+          dnssec,
+          resolverAgreement,
           nxdomain,
         },
         domainContext: {
@@ -99,14 +112,20 @@ export const dnsSource: TiSource = {
           ipv6,
           mx: mxHosts,
           nameservers: nsHosts,
+          reverse,
+          txt: txtRecords,
+          spf: extractSpf(txtRecords),
+          dmarc: extractDmarc(dmarcRecords),
+          caa: answers(caa).map(decodeCaa),
+          soa: answers(soa)[0],
+          cname: answers(cname),
+          dnssec,
+          resolverAgreement,
         },
-        raw: { a, aaaa, mx, ns },
+        raw: { aCf, aGoogle, aaaa, mx, ns, txt, soa, cname, caa, dmarcTxt },
       };
     } catch (err) {
-      return {
-        status: isTimeout(err) ? "timeout" : "error",
-        error: errorMessage(err),
-      };
+      return { status: isTimeout(err) ? "timeout" : "error", error: errorMessage(err) };
     }
   },
 };

@@ -5,6 +5,7 @@ import {
   normalizeMxHosts,
   resolversAgree,
   dnssecStatus,
+  decodeCaa,
 } from "./parse";
 
 describe("extractSpf", () => {
@@ -55,5 +56,16 @@ describe("dnssecStatus", () => {
   });
   it("unknown when no resolver responded", () => {
     expect(dnssecStatus([null, null])).toBe("unknown");
+  });
+});
+
+describe("decodeCaa", () => {
+  it("decodes RFC 3597 generic CAA hex into tag + value", () => {
+    // flags=00, taglen=05, tag="issue", value="pki.goog"
+    expect(decodeCaa("\\# 15 00 05 69 73 73 75 65 70 6b 69 2e 67 6f 6f 67"))
+      .toBe("issue pki.goog");
+  });
+  it("leaves already-textual records unchanged", () => {
+    expect(decodeCaa('0 issue "letsencrypt.org"')).toBe('0 issue "letsencrypt.org"');
   });
 });

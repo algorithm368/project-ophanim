@@ -27,6 +27,24 @@ export function resolversAgree(answerSets: string[][]): boolean {
   return nonEmpty.every((s) => canon(s) === first);
 }
 
+/**
+ * Decode a CAA record into "<tag> <value>" form (e.g. "issue pki.goog").
+ * Cloudflare's JSON DoH returns CAA as RFC 3597 generic data ("\# <len> <hex>");
+ * decode that. Records already in textual form (e.g. `0 issue "x"`) are
+ * returned unchanged, as is anything that fails to parse.
+ */
+export function decodeCaa(record: string): string {
+  const m = record.match(/^\\#\s+\d+\s+([0-9a-fA-F\s]+)$/);
+  if (!m) return record;
+  const bytes = m[1].trim().split(/\s+/).map((h) => parseInt(h, 16));
+  if (bytes.length < 2 || bytes.some((b) => Number.isNaN(b))) return record;
+  const tagLen = bytes[1];
+  const tag = String.fromCharCode(...bytes.slice(2, 2 + tagLen));
+  const value = String.fromCharCode(...bytes.slice(2 + tagLen));
+  const decoded = `${tag} ${value}`.trim();
+  return decoded || record;
+}
+
 export function dnssecStatus(
   responses: (DohResponse | null)[],
 ): "signed" | "unsigned" | "unknown" {
