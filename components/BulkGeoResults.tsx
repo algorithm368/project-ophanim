@@ -50,6 +50,8 @@ function sameCountryOf(rows: GeoRow[]): {
   for (const r of located) {
     const c = r.resolution?.country?.confidence ?? "low";
     if (RANK[c] < RANK[confidence]) confidence = c;
+    // providerCount is the same across a bulk batch (same provider set per IP);
+    // max is just a defensive pick.
     providerCount = Math.max(providerCount, r.resolution?.providerCount ?? 1);
   }
   const country =
@@ -95,30 +97,19 @@ function CopyableList({ rows }: { rows: GeoRow[] }) {
   );
 }
 
-/** Formal plain-text sentence for the same-country result. */
-function sameCountrySentence(same: {
-  ips: string[];
-  country: string;
-  code: string;
-  confidence: Confidence;
-  providerCount: number;
-}): string {
-  const verb =
-    same.confidence === "high" ? "are located in" : "are likely located in";
-  const basis =
-    same.providerCount >= 2
-      ? `as reconciled across ${same.providerCount} geolocation providers`
-      : "as reported by ip-api.com";
-  return `${joinIps(same.ips)} ${verb} the same country, ${same.country} (${same.code}), ${basis}.`;
-}
-
 /** Callout shown when all located IPs resolve to the same country. Mirrors the
  *  copy-friendly box: a label, a Copy button, and a selectable box. */
 function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
   const same = sameCountryOf(rows);
   const [copied, copy] = useCopied();
   if (!same) return null;
-  const sentence = sameCountrySentence(same);
+  const verb =
+    same.confidence === "high" ? "are located in" : "are likely located in";
+  const basis =
+    same.providerCount >= 2
+      ? `as reconciled across ${same.providerCount} geolocation providers`
+      : "as reported by ip-api.com";
+  const sentence = `${joinIps(same.ips)} ${verb} the same country, ${same.country} (${same.code}), ${basis}.`;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -148,16 +139,12 @@ function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
       </div>
       <div className="rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 select-all">
         <p className="font-sans text-sm leading-relaxed text-foreground/90">
-          {joinIps(same.ips)}{" "}
-          {same.confidence === "high" ? "are located in" : "are likely located in"}{" "}
-          the same country,{" "}
+          {joinIps(same.ips)} {verb} the same country,{" "}
           <span className="font-semibold">
             {same.country} ({same.code})
           </span>
           <ConfidenceChip confidence={same.confidence} />
-          {same.providerCount >= 2
-            ? `, as reconciled across ${same.providerCount} geolocation providers.`
-            : ", as reported by ip-api.com."}
+          {`, ${basis}.`}
         </p>
       </div>
     </div>
@@ -198,7 +185,7 @@ export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
             <tbody>
               {rows.map((row) => {
                 const g = row.geo;
-                const flag = flagUrl(g?.countryCode);
+                const flag = flagUrl(row.resolution?.countryCode ?? g?.countryCode);
                 return (
                   <tr
                     key={row.ip}
