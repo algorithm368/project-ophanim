@@ -196,7 +196,6 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                         {geo!.asn && (
                                             <Field
                                                 label="ASN"
-                                                wrap
                                                 hint="Autonomous System Number — the network block this IP routes through"
                                             >
                                                 <span className="font-mono text-[13px]">
