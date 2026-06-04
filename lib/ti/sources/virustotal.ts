@@ -27,7 +27,7 @@ interface VtResolutionsResponse {
 
 /**
  * Pull recent passive-DNS resolutions for the IP - the domains seen pointing
- * at it - so the investigation graph can pivot IP -> hosted-domain. Best-effort:
+ * at it - so results can surface related IP -> hosted-domain pivots. Best-effort:
  * any failure (timeout, quota, etc.) just yields no relations.
  */
 async function fetchIpResolutions(

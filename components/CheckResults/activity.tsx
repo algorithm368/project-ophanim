@@ -25,7 +25,7 @@ export function SourceHealthNotice({ result }: { result: ResultLike }) {
     if (okCount > 0 || result.stats.queried === 0) return null;
 
     return (
-        <div className="sketch-shadow flex items-start gap-3 rounded-[16px_22px_14px_20px/20px_14px_22px_16px] border-2 border-orange-500/40 bg-orange-500/10 px-4 py-3 text-orange-700 dark:text-orange-300">
+        <div className="sketch-shadow flex items-start gap-3 rounded-xl border-2 border-orange-500/40 bg-orange-500/10 px-4 py-3 text-orange-700 dark:text-orange-300">
             <TriangleAlert className="mt-0.5 size-5 shrink-0" />
             <div className="space-y-0.5">
                 <p className="font-hand text-lg font-bold leading-tight">
@@ -56,14 +56,14 @@ export function ActivityCard({ result, noun }: { result: ResultLike; noun: strin
     const responded = result.sources.filter((s) => s.status === "ok").length;
 
     return (
-        <Card className="sketch-shadow rounded-[20px_28px_16px_24px/24px_16px_28px_20px] border-2 border-foreground/15">
+        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={TriangleAlert}>
                     What it does
                 </SectionHeading>
 
                 {flaggedCount > 0 ? (
-                    <div className="flex items-start gap-2.5 rounded-[14px_18px_12px_16px/16px_12px_18px_14px] border-2 border-red-500/30 bg-red-500/8 p-3 text-sm text-red-700 dark:text-red-300">
+                    <div className="flex items-start gap-2.5 rounded-lg border-2 border-red-500/30 bg-red-500/8 p-3 text-sm text-red-700 dark:text-red-300">
                         <TriangleAlert className="mt-0.5 size-4 shrink-0" />
                         <span>
                             <span className="font-semibold">
@@ -73,7 +73,7 @@ export function ActivityCard({ result, noun }: { result: ResultLike; noun: strin
                         </span>
                     </div>
                 ) : (
-                    <div className="flex items-start gap-2.5 rounded-[14px_18px_12px_16px/16px_12px_18px_14px] border-2 border-emerald-500/30 bg-emerald-500/8 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+                    <div className="flex items-start gap-2.5 rounded-lg border-2 border-emerald-500/30 bg-emerald-500/8 p-3 text-sm text-emerald-700 dark:text-emerald-300">
                         <ShieldCheck className="mt-0.5 size-4 shrink-0" />
                         <span>
                             No source flagged this {noun}
@@ -104,9 +104,9 @@ export function ActivityCard({ result, noun }: { result: ResultLike; noun: strin
                                                 : "sources"}
                                         </span>
                                     </div>
-                                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted ring-1 ring-foreground/5">
+                                    <div className="h-2.5 w-full overflow-hidden rounded-sm bg-muted ring-1 ring-foreground/5">
                                         <div
-                                            className="h-full rounded-full bg-primary/70"
+                                            className="h-full rounded-sm bg-primary/70"
                                             style={{
                                                 width: `${(c.count / maxCount) * 100}%`,
                                             }}
@@ -133,7 +133,7 @@ export function ActivityCard({ result, noun }: { result: ResultLike; noun: strin
                                         {s.source.name}
                                     </span>
                                     {typeof s.score === "number" && (
-                                        <span className="shrink-0 rounded-full bg-red-500/12 px-2 py-0.5 text-xs font-semibold tabular-nums text-red-600 dark:text-red-400">
+                                        <span className="shrink-0 rounded-sm bg-red-500/12 px-2 py-0.5 text-xs font-semibold tabular-nums text-red-600 dark:text-red-400">
                                             {s.score}
                                         </span>
                                     )}
@@ -185,17 +185,19 @@ export function HistoryCard({ result }: { result: ResultLike }) {
     const fmt = (iso: string) => new Date(iso).toLocaleDateString();
 
     return (
-        <Card className="sketch-shadow rounded-[20px_28px_16px_24px/24px_16px_28px_20px] border-2 border-foreground/15">
+        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <SectionHeading icon={History}>
-                        Reputation over time
-                    </SectionHeading>
-                    <span className="text-xs text-muted-foreground">
-                        <span className="font-mono">{n}</span> checks ·{" "}
-                        {fmt(history[0].checkedAt)} → {fmt(latest.checkedAt)}
-                    </span>
-                </div>
+                <SectionHeading
+                    icon={History}
+                    action={
+                        <span className="text-xs text-muted-foreground">
+                            <span className="font-mono">{n}</span> checks ·{" "}
+                            {fmt(history[0].checkedAt)} → {fmt(latest.checkedAt)}
+                        </span>
+                    }
+                >
+                    Reputation over time
+                </SectionHeading>
 
                 <div className="relative h-28 w-full">
                     <svg

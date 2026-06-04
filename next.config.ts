@@ -5,7 +5,10 @@ const nextConfig: NextConfig = {
 };
 
 module.exports = {
-    allowedDevOrigins: ["192.168.1.47"],
+    allowedDevOrigins: [
+        "192.168.1.47",
+        "haywood-sistroid-stephnie.ngrok-free.dev",
+    ],
 };
 
 export default nextConfig;

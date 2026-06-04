@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
     BarChart3,
+    ChevronRight,
     CircleX,
     Clock,
     ExternalLink,
@@ -120,6 +121,40 @@ function relevanceRank(s: SourceResult): number {
     return 3;
 }
 
+/** One semantic state per source, driving both the status rail and the pill so
+ *  the two never disagree. */
+type SourceTone = "flagged" | "low" | "clean" | "error" | "limited" | "skipped";
+
+function sourceTone(result: SourceResult): SourceTone {
+    const { status } = result;
+    const score = result.score ?? 0;
+    if (status === "ok" && (result.malicious === true || score >= 40))
+        return "flagged";
+    if (status === "ok" && score > 0) return "low";
+    if (status === "ok") return "clean";
+    if (status === "error" || status === "timeout") return "error";
+    if (status === "rate_limited") return "limited";
+    return "skipped";
+}
+
+/** Color of the 3px status rail down the left edge of each card. */
+const TONE_RAIL: Record<SourceTone, string> = {
+    flagged: "bg-red-500",
+    low: "bg-amber-500",
+    clean: "bg-emerald-500",
+    error: "bg-destructive",
+    limited: "bg-amber-500",
+    skipped: "bg-foreground/20",
+};
+
+/** Risk number tint — same thresholds as the score bar (see scoreBarColor). */
+function scoreTextColor(score: number): string {
+    if (score >= 70) return "text-red-600 dark:text-red-400";
+    if (score >= 40) return "text-orange-600 dark:text-orange-400";
+    if (score >= 15) return "text-amber-600 dark:text-amber-400";
+    return "text-emerald-600 dark:text-emerald-400";
+}
+
 export function SourceBreakdown({
     sources,
     indicator,
@@ -133,10 +168,15 @@ export function SourceBreakdown({
         relevanceRank(a) - relevanceRank(b) || (b.score ?? 0) - (a.score ?? 0);
 
     return (
-        <div className="space-y-5">
-            <h2 className="px-1 text-sm font-medium text-muted-foreground">
-                Source breakdown ({sources.length})
-            </h2>
+        <div className="space-y-6">
+            <div className="flex items-baseline justify-between border-b border-foreground/15 pb-2">
+                <h2 className="font-mono text-[12px] font-semibold tracking-[0.16em] text-foreground/75 uppercase">
+                    Source breakdown
+                </h2>
+                <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
+                    {sources.length} sources
+                </span>
+            </div>
             {CATEGORY_ORDER.filter((cat) =>
                 sources.some((s) => s.source.category === cat),
             ).map((cat) => {
@@ -145,16 +185,16 @@ export function SourceBreakdown({
                     .sort(byRelevance);
                 return (
                     <div key={cat} className="space-y-3">
-                        <div className="flex items-center gap-3 px-1">
-                            <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                        <div className="flex items-center gap-3">
+                            <h3 className="font-mono text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
                                 {CATEGORY_LABEL[cat] ?? cat}
                             </h3>
-                            <span className="text-xs tabular-nums text-muted-foreground">
-                                {group.length}
+                            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/70">
+                                {group.length.toString().padStart(2, "0")}
                             </span>
                             <div className="h-px flex-1 bg-border" />
                         </div>
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             {group.map((s) => (
                                 <SourceCard
                                     key={s.source.id}
@@ -199,13 +239,13 @@ export function ScoreChart({
     ].filter(Boolean);
 
     return (
-        <Card className="sketch-shadow rounded-[20px_28px_16px_24px/24px_16px_28px_20px] border-2 border-foreground/15">
+        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={BarChart3}>
                     How each source rates {subject}
                 </SectionHeading>
                 {explanation.length > 0 && (
-                    <div className="space-y-1.5 rounded-[14px_18px_12px_16px/16px_12px_18px_14px] border-2 border-dashed border-foreground/20 bg-muted/40 p-3">
+                    <div className="space-y-1.5 rounded-lg border-2 border-dashed border-foreground/20 bg-muted/40 p-3">
                         <div className="font-hand text-base font-bold text-muted-foreground">
                             why this score
                         </div>
@@ -230,10 +270,10 @@ export function ScoreChart({
                                 <span className="truncate text-xs text-muted-foreground">
                                     {s.source.name}
                                 </span>
-                                <div className="h-2.5 overflow-hidden rounded-full bg-foreground/10">
+                                <div className="h-2.5 overflow-hidden rounded-sm bg-foreground/10">
                                     <div
                                         className={cn(
-                                            "h-full rounded-full transition-all duration-500",
+                                            "h-full rounded-sm transition-all duration-500",
                                             scoreBarColor(score),
                                         )}
                                         style={{
@@ -282,6 +322,10 @@ function SourceCard({
         window.open(lookupUrl, "_blank", "noopener,noreferrer");
     }
 
+    const tone = sourceTone(result);
+    const hasScore = !skipped && typeof score === "number";
+    const seen = result.lastSeen ? formatDate(result.lastSeen) : null;
+
     return (
         <Card
             role="link"
@@ -295,35 +339,39 @@ function SourceCard({
             }}
             title={`Look up ${indicator} on ${source.name}`}
             className={cn(
-                "cursor-pointer transition-all hover:ring-foreground/20",
-                (skipped || rateLimited) && "opacity-65",
+                "relative h-full cursor-pointer gap-0 py-0 transition-colors",
+                "hover:bg-accent/40 hover:ring-foreground/25",
+                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                (skipped || rateLimited) && "opacity-70",
             )}
         >
-            <CardContent className="flex flex-col gap-3">
-                <div className="flex items-start justify-between gap-2">
+            {/* Status rail — instant red/amber/green read across the whole grid. */}
+            <span
+                aria-hidden
+                className={cn(
+                    "absolute inset-y-0 left-0 w-[3px]",
+                    TONE_RAIL[tone],
+                )}
+            />
+
+            <CardContent className="flex h-full flex-col gap-3 py-3.5 pl-5">
+                {/* Header: name + technical meta on the left, status pill aligned right. */}
+                <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                         <a
                             href={lookupUrl}
                             target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="group inline-flex items-center gap-1 font-heading text-lg font-bold leading-tight hover:text-primary"
+                            className="group/name inline-flex items-center gap-1.5 text-[15px] font-semibold leading-tight tracking-tight hover:text-primary"
                         >
-                            {source.name}
-                            <ExternalLink className="size-3 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
+                            <span className="truncate">{source.name}</span>
+                            <ExternalLink className="size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover/name:opacity-100" />
                         </a>
-                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                            <Badge
-                                variant="secondary"
-                                className="px-1.5 font-normal"
-                            >
-                                {CATEGORY_LABEL[source.category] ??
-                                    source.category}
-                            </Badge>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground uppercase tabular-nums">
                             {result.durationMs > 0 && (
                                 <span
                                     className={cn(
-                                        "tabular-nums",
                                         slow &&
                                             "text-amber-600 dark:text-amber-400",
                                     )}
@@ -333,14 +381,18 @@ function SourceCard({
                                             : undefined
                                     }
                                 >
-                                    {result.durationMs} ms
-                                    {slow ? " · slow" : ""}
+                                    {result.durationMs} ms{slow ? " · slow" : ""}
                                 </span>
                             )}
-                            {result.lastSeen && formatDate(result.lastSeen) && (
+                            {result.durationMs > 0 && seen && (
+                                <span className="text-muted-foreground/40">
+                                    ·
+                                </span>
+                            )}
+                            {seen && (
                                 <span className="inline-flex items-center gap-1">
                                     <Clock className="size-3" />
-                                    seen {formatDate(result.lastSeen)}
+                                    seen {seen}
                                 </span>
                             )}
                         </div>
@@ -348,65 +400,79 @@ function SourceCard({
                     <StatusPill result={result} />
                 </div>
 
-                {!skipped && typeof score === "number" && (
-                    <div className="flex items-center gap-3">
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-foreground/10">
+                {/* Score readout — fixed-width label + number so every card aligns. */}
+                {hasScore && (
+                    <div className="flex items-center gap-2.5">
+                        <span className="w-8 shrink-0 font-mono text-[10px] tracking-[0.1em] text-muted-foreground uppercase">
+                            risk
+                        </span>
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-[2px] bg-foreground/10">
                             <div
                                 className={cn(
-                                    "h-full rounded-full transition-all duration-500",
+                                    "h-full rounded-[2px] transition-all duration-500",
                                     scoreBarColor(score),
                                 )}
                                 style={{ width: `${Math.max(score, 1)}%` }}
                             />
                         </div>
-                        <span className="w-9 text-right text-xs font-semibold tabular-nums text-muted-foreground">
+                        <span
+                            className={cn(
+                                "w-7 shrink-0 text-right font-mono text-sm font-bold tabular-nums",
+                                scoreTextColor(score),
+                            )}
+                        >
                             {score}
                         </span>
                     </div>
                 )}
 
-                <p
-                    className={cn(
-                        "text-sm leading-relaxed",
-                        errored ? "text-destructive" : "text-foreground/85",
-                    )}
-                >
-                    {errored
-                        ? (result.error ?? "Lookup failed")
-                        : (result.summary ??
-                          (skipped
-                              ? source.keyEnv
-                                  ? `Set ${source.keyEnv} to enable this source.`
-                                  : "Disabled."
-                              : "No data."))}
-                </p>
+                {/* Summary grows so raw-details footers line up across a row. */}
+                <div className="flex-1 space-y-2.5">
+                    <p
+                        className={cn(
+                            "text-[13px] leading-relaxed",
+                            errored
+                                ? "text-destructive"
+                                : "text-foreground/85",
+                        )}
+                    >
+                        {errored
+                            ? (result.error ?? "Lookup failed")
+                            : (result.summary ??
+                              (skipped
+                                  ? source.keyEnv
+                                      ? `Set ${source.keyEnv} to enable this source.`
+                                      : "Disabled."
+                                  : "No data."))}
+                    </p>
 
-                {result.categories && result.categories.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                        {result.categories.slice(0, 8).map((c, i) => (
-                            <Badge
-                                key={`${c}-${i}`}
-                                variant="outline"
-                                className="font-normal"
-                            >
-                                {c}
-                            </Badge>
-                        ))}
-                    </div>
-                )}
+                    {result.categories && result.categories.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                            {result.categories.slice(0, 8).map((c, i) => (
+                                <Badge
+                                    key={`${c}-${i}`}
+                                    variant="outline"
+                                    className="rounded-[3px] border-foreground/15 px-1.5 py-0 font-mono text-[10px] font-normal tracking-wide text-muted-foreground"
+                                >
+                                    {c}
+                                </Badge>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 {result.details && Object.keys(result.details).length > 0 && (
                     <details
-                        className="text-xs"
+                        className="group/raw border-t border-foreground/10 pt-2.5"
                         onClick={(e) => e.stopPropagation()}
                         onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
                     >
-                        <summary className="flex cursor-pointer items-center gap-1 text-muted-foreground select-none hover:text-foreground">
-                            <ExternalLink className="size-3" />
-                            View raw details
+                        <summary className="inline-flex cursor-pointer items-center gap-1 font-mono text-[10px] tracking-[0.1em] text-muted-foreground uppercase select-none hover:text-foreground">
+                            <ChevronRight className="size-3 transition-transform group-open/raw:rotate-90" />
+                            Raw details
                         </summary>
                         {detailsOpen && (
-                            <pre className="mt-2 overflow-x-auto rounded-lg bg-muted/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
+                            <pre className="mt-2 overflow-x-auto rounded-[4px] border border-foreground/10 bg-muted/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
                                 {JSON.stringify(result.details, null, 2)}
                             </pre>
                         )}
@@ -417,6 +483,10 @@ function SourceCard({
     );
 }
 
+/** Shared chrome for every status chip: fixed height, mono, uppercase — so the
+ *  pills form a tidy right-hand column down the grid. */
+const PILL = "h-5 shrink-0 gap-1 rounded-[3px] border-transparent px-1.5 font-mono text-[10px] font-semibold tracking-[0.1em] uppercase [&>svg]:size-3";
+
 function StatusPill({ result }: { result: SourceResult }) {
     const { status } = result;
     const score = result.score ?? 0;
@@ -425,8 +495,8 @@ function StatusPill({ result }: { result: SourceResult }) {
 
     if (flagged) {
         return (
-            <Badge className="gap-1 border-transparent bg-red-500/12 text-red-600 dark:text-red-400">
-                <TriangleAlert className="size-3" />
+            <Badge className={cn(PILL, "bg-red-500/12 text-red-600 dark:text-red-400")}>
+                <TriangleAlert />
                 Flagged
             </Badge>
         );
@@ -436,8 +506,8 @@ function StatusPill({ result }: { result: SourceResult }) {
     // its own amber state instead of reading as a clean green pass.
     if (status === "ok" && score > 0) {
         return (
-            <Badge className="gap-1 border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400">
-                <ShieldAlert className="size-3" />
+            <Badge className={cn(PILL, "bg-amber-500/15 text-amber-700 dark:text-amber-400")}>
+                <ShieldAlert />
                 Low risk
             </Badge>
         );
@@ -446,31 +516,34 @@ function StatusPill({ result }: { result: SourceResult }) {
     switch (status) {
         case "ok":
             return (
-                <Badge className="gap-1 border-transparent bg-emerald-500/12 text-emerald-600 dark:text-emerald-400">
-                    <ShieldCheck className="size-3" />
+                <Badge className={cn(PILL, "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400")}>
+                    <ShieldCheck />
                     Clean
                 </Badge>
             );
         case "error":
         case "timeout":
             return (
-                <Badge variant="destructive" className="gap-1">
-                    <CircleX className="size-3" />
+                <Badge className={cn(PILL, "bg-destructive/12 text-destructive")}>
+                    <CircleX />
                     {status === "timeout" ? "Timeout" : "Error"}
                 </Badge>
             );
         case "rate_limited":
             return (
-                <Badge className="gap-1 border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400">
-                    <Gauge className="size-3" />
-                    Rate limited
+                <Badge className={cn(PILL, "bg-amber-500/15 text-amber-700 dark:text-amber-400")}>
+                    <Gauge />
+                    Rate limit
                 </Badge>
             );
         default:
             // Skipped: distinguish "needs a key" (never ran) from "not applicable
             // for this indicator" (ran, but the source doesn't cover this type).
             return (
-                <Badge variant="outline">
+                <Badge
+                    variant="outline"
+                    className={cn(PILL, "border-foreground/20 text-muted-foreground")}
+                >
                     {result.enabled ? "N/A" : "No key"}
                 </Badge>
             );

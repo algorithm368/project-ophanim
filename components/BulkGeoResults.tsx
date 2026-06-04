@@ -90,7 +90,7 @@ function CopyableList({ rows }: { rows: GeoRow[] }) {
           )}
         </Button>
       </div>
-      <pre className="max-h-32 overflow-auto rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-foreground/20 bg-background/60 px-3 py-2 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
+      <pre className="max-h-32 overflow-auto rounded-md border-2 border-foreground/20 bg-background/60 px-3 py-2 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
         {line}
       </pre>
     </div>
@@ -137,7 +137,7 @@ function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
           )}
         </Button>
       </div>
-      <div className="rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 select-all">
+      <div className="rounded-md border-2 border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 select-all">
         <p className="font-sans text-sm leading-relaxed text-foreground/90">
           {joinIps(same.ips)} {verb} the same country,{" "}
           <span className="font-semibold">
@@ -160,7 +160,7 @@ function placeOf(row: GeoRow): string {
 export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
   if (!rows.length) return null;
   return (
-    <Card className="sketch-shadow mt-8 overflow-hidden rounded-[22px_34px_18px_30px/30px_18px_34px_22px] border-2 border-foreground/20 bg-card/50">
+    <Card className="sketch-shadow mt-8 overflow-hidden rounded-2xl border border-foreground/12 bg-card/50">
       <CardContent className="space-y-4">
         <h2 className="font-hand flex items-center gap-2 text-2xl font-bold">
           <Globe className="size-5 text-primary" />

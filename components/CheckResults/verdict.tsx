@@ -30,7 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { classifyType, classifyDomain, classifyHash } from "./classify";
-import { CopyableSummary, ScoreRing } from "./primitives";
+import { CopyableSummary } from "./primitives";
 import type { IconType } from "./types";
 
 export type VerdictStyle = {
@@ -48,7 +48,7 @@ export type VerdictStyle = {
 export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
     malicious: {
         label: "Malicious",
-        headline: "Danger!",
+        headline: "Malicious",
         icon: ShieldAlert,
         text: "text-red-600 dark:text-red-400",
         bar: "bg-red-500",
@@ -59,7 +59,7 @@ export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
     },
     suspicious: {
         label: "Suspicious",
-        headline: "Be cautious",
+        headline: "Suspicious",
         icon: ShieldAlert,
         text: "text-orange-600 dark:text-orange-400",
         bar: "bg-orange-500",
@@ -70,7 +70,7 @@ export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
     },
     low: {
         label: "Low risk",
-        headline: "Mostly fine",
+        headline: "Low risk",
         icon: ShieldQuestion,
         text: "text-amber-600 dark:text-amber-400",
         bar: "bg-amber-500",
@@ -81,7 +81,7 @@ export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
     },
     clean: {
         label: "Clean",
-        headline: "All clear!",
+        headline: "Clean",
         icon: ShieldCheck,
         text: "text-emerald-600 dark:text-emerald-400",
         bar: "bg-emerald-500",
@@ -92,7 +92,7 @@ export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
     },
     unknown: {
         label: "Unknown",
-        headline: "Inconclusive",
+        headline: "Unknown",
         icon: ShieldQuestion,
         text: "text-muted-foreground",
         bar: "bg-muted-foreground",
@@ -119,53 +119,16 @@ function VerdictShell({
     narrative: string;
 }) {
     const style = VERDICT_STYLE[result.verdict];
-    const Icon = style.icon;
 
     return (
-        <Card
-            className={cn(
-                "sketch-shadow relative overflow-hidden rounded-[22px_34px_18px_30px/30px_18px_34px_22px] border-2 border-foreground/25 bg-gradient-to-br to-transparent",
-                style.wash,
-            )}
-        >
-            {/* giant faint verdict watermark */}
-            <Icon
-                aria-hidden
-                className={cn(
-                    "pointer-events-none absolute -top-8 -right-6 size-48 rotate-12 opacity-[0.07]",
-                    style.text,
-                )}
-            />
+        <Card className="sketch-shadow relative overflow-hidden rounded-2xl border border-foreground/12 bg-card">
             <CardContent className="relative z-10 space-y-4">
-                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                    <div className="relative size-28 shrink-0 self-center sm:self-auto">
-                        <ScoreRing
-                            value={result.riskScore}
-                            stroke={style.ring}
-                        />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                            <span
-                                className={cn(
-                                    "font-hand text-5xl font-bold tabular-nums leading-none",
-                                    style.text,
-                                )}
-                            >
-                                {result.riskScore}
-                            </span>
-                            <span className="font-hand mt-0.5 text-base font-semibold text-muted-foreground">
-                                risk / 100
-                            </span>
-                        </div>
-                    </div>
-
+                <div className="flex flex-row items-start justify-between gap-4">
                     <div className="min-w-0 flex-1 space-y-3">
                         <div className="flex items-center gap-2.5">
-                            <Icon
-                                className={cn("size-8 shrink-0", style.text)}
-                            />
                             <span
                                 className={cn(
-                                    "font-hand text-4xl font-bold leading-none sm:text-5xl",
+                                    "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
                                     style.text,
                                 )}
                             >
@@ -174,16 +137,8 @@ function VerdictShell({
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <Badge
-                                className={cn(
-                                    "font-hand gap-1.5 text-base",
-                                    style.chip,
-                                )}
-                            >
-                                {style.label}
-                            </Badge>
-                            <Badge
                                 variant="secondary"
-                                className="font-hand gap-1.5 text-base"
+                                className="gap-1.5 rounded-md text-sm font-medium"
                             >
                                 <TypeIcon className="size-4" />
                                 {typeLabel}
@@ -191,7 +146,7 @@ function VerdictShell({
                             {categoryLabel && (
                                 <Badge
                                     variant="secondary"
-                                    className="font-hand gap-1.5 text-base"
+                                    className="gap-1.5 rounded-md text-sm font-medium"
                                 >
                                     <Tag className="size-4" />
                                     {categoryLabel}
@@ -199,42 +154,32 @@ function VerdictShell({
                             )}
                         </div>
                         <CopyableSummary text={narrative} />
-                        <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 font-mono">
                                 <Clock className="size-3" />
-                                <span className="font-hand text-sm">
-                                    checked
-                                </span>
-                                <span className="font-mono">
-                                    {new Date(
-                                        result.checkedAt,
-                                    ).toLocaleString()}
-                                </span>
+                                checked {new Date(result.checkedAt).toLocaleString()}
                             </span>
                             {result.cached && (
-                                <Badge
-                                    variant="secondary"
-                                    className="font-hand gap-1 text-sm"
-                                >
+                                <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 font-mono">
                                     <Database className="size-3" />
-                                    Cached
-                                </Badge>
+                                    cached
+                                </span>
                             )}
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="xs"
-                                className="font-hand rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-dashed text-sm"
+                                className="h-7 gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 font-mono text-xs"
                                 onClick={onRefresh}
                             >
                                 <RefreshCw className="size-3" />
-                                {result.cached ? "Fetch fresh" : "Re-check"}
+                                {result.cached ? "fetch fresh" : "re-check"}
                             </Button>
                         </div>
                     </div>
-                </div>
 
-                <ConsensusBar result={result} style={style} />
+                    <ConsensusMini result={result} style={style} />
+                </div>
             </CardContent>
         </Card>
     );
@@ -297,7 +242,7 @@ export function VerdictHero({
     );
 }
 
-function ConsensusBar({
+function ConsensusMini({
     result,
     style,
 }: {
@@ -311,74 +256,29 @@ function ConsensusBar({
     const c = consensusBuckets(result);
     const total = c.total || 1;
 
-    // One source of truth for colors/labels. The bar drops empty buckets;
-    // the legend always lists the core ones (rate-limited only when nonzero).
     const buckets = [
-        {
-            key: "flagged",
-            count: c.flagged,
-            color: "bg-red-500",
-            label: "Flagged",
-            inLegend: true,
-        },
-        {
-            key: "clean",
-            count: c.clean,
-            color: "bg-emerald-500",
-            label: "Clean",
-            inLegend: true,
-        },
-        {
-            key: "errored",
-            count: c.errored,
-            color: "bg-orange-400",
-            label: "Error",
-            inLegend: true,
-        },
-        {
-            key: "rate",
-            count: c.rateLimited,
-            color: "bg-amber-400",
-            label: "Rate limited",
-            inLegend: false,
-        },
-        {
-            key: "skipped",
-            count: c.skipped,
-            color: "bg-muted-foreground/30",
-            label: "No key",
-            inLegend: true,
-        },
+        { key: "flagged", count: c.flagged, color: "bg-red-500", label: "flagged" },
+        { key: "clean", count: c.clean, color: "bg-emerald-500", label: "clean" },
+        { key: "errored", count: c.errored, color: "bg-orange-400", label: "error" },
+        { key: "rate", count: c.rateLimited, color: "bg-amber-400", label: "rate limited" },
+        { key: "skipped", count: c.skipped, color: "bg-muted-foreground/30", label: "no key" },
     ];
     const segments = buckets.filter((b) => b.count > 0);
-    const legend = buckets.filter((b) => b.inLegend || b.count > 0);
+    // Full breakdown lives on hover so the corner stays minimal.
+    const title = segments.map((s) => `${s.count} ${s.label}`).join(" · ");
 
     return (
         <div
-            className={cn(
-                "space-y-2.5 rounded-[16px_22px_14px_20px/20px_14px_22px_16px] border-2 bg-gradient-to-br to-transparent p-3.5",
-                style.border,
-                style.wash,
-            )}
+            className="flex shrink-0 flex-col items-end gap-1.5"
+            title={`Detector consensus — ${title}`}
         >
-            <div className="flex items-center justify-between">
-                <span
-                    className={cn(
-                        "font-hand flex items-center gap-1.5 text-lg font-bold",
-                        style.text,
-                    )}
-                >
-                    <span className={cn("size-2.5 rounded-full", style.bar)} />
-                    Detector consensus
-                </span>
-                <span className="text-xs text-muted-foreground">
-                    <span className="font-mono">{c.responded}</span> of{" "}
-                    <span className="font-mono">{c.total}</span> responded
-                </span>
-            </div>
+            <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                <span className="text-foreground">{c.responded}</span>/{c.total}{" "}
+                detectors
+            </span>
             <div
                 className={cn(
-                    "flex h-3 w-full overflow-hidden rounded-full border bg-muted",
+                    "flex h-2 w-24 overflow-hidden rounded-sm border bg-muted",
                     style.border,
                 )}
             >
@@ -388,19 +288,6 @@ function ConsensusBar({
                         className={cn("h-full transition-all", s.color)}
                         style={{ width: `${(s.count / total) * 100}%` }}
                     />
-                ))}
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
-                {legend.map((s) => (
-                    <span key={s.label} className="flex items-center gap-1.5">
-                        <span className={cn("size-2 rounded-full", s.color)} />
-                        <span className="font-mono font-semibold tabular-nums text-foreground">
-                            {s.count}
-                        </span>
-                        <span className="font-hand text-base text-muted-foreground">
-                            {s.label}
-                        </span>
-                    </span>
                 ))}
             </div>
         </div>

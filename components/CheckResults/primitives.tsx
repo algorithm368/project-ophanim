@@ -29,7 +29,7 @@ export function Pivot({ value, label }: { value: string; label?: string }) {
             type="button"
             onClick={() => pivot(value)}
             title={`Check ${value}`}
-            className="group inline-flex max-w-full items-center gap-1 rounded-[8px_11px_7px_10px/10px_7px_11px_8px] border border-dashed border-foreground/30 bg-background/60 px-1.5 py-0.5 align-middle font-mono text-[12px] text-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+            className="group inline-flex max-w-full items-center gap-1 rounded-sm border border-dashed border-foreground/30 bg-background/60 px-1.5 py-0.5 align-middle font-mono text-[12px] text-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
         >
             <span className="truncate">{text}</span>
             <Search className="size-3 shrink-0 opacity-40 transition-opacity group-hover:opacity-100" />
@@ -62,43 +62,23 @@ export function ScoreRing({ value, stroke }: { value: number; stroke: string }) 
     const offset = circumference - (clamped / 100) * circumference;
     return (
         <svg viewBox="0 0 120 120" className="size-full">
-            <defs>
-                {/* roughen strokes so the gauge looks hand-drawn */}
-                <filter id="sketch-ring">
-                    <feTurbulence
-                        type="turbulence"
-                        baseFrequency="0.02"
-                        numOctaves="1"
-                        seed="7"
-                        result="noise"
-                    />
-                    <feDisplacementMap
-                        in="SourceGraphic"
-                        in2="noise"
-                        scale="1.2"
-                    />
-                </filter>
-            </defs>
-            {/* dashed hand-drawn track */}
+            {/* smooth track */}
             <circle
                 cx="60"
                 cy="60"
                 r={radius}
                 fill="none"
-                strokeWidth="6"
-                strokeLinecap="round"
-                strokeDasharray="1 7"
-                filter="url(#sketch-ring)"
-                className="stroke-foreground/25"
+                strokeWidth="10"
+                className="stroke-foreground/12"
             />
-            {/* scribbled progress arc */}
-            <g transform="rotate(-90 60 60)" filter="url(#sketch-ring)">
+            {/* progress arc */}
+            <g transform="rotate(-90 60 60)">
                 <circle
                     cx="60"
                     cy="60"
                     r={radius}
                     fill="none"
-                    strokeWidth="12"
+                    strokeWidth="10"
                     strokeLinecap="round"
                     strokeDasharray={circumference}
                     strokeDashoffset={offset}
@@ -185,19 +165,26 @@ export function CopyableSummary({ text }: { text: string }) {
 export function SectionHeading({
     icon: Icon,
     children,
+    action,
 }: {
     icon: IconType;
     children: ReactNode;
+    /** Optional right-aligned content (e.g. the indicator chip) shown on the
+     *  same row as the title, above the shared divider. */
+    action?: ReactNode;
 }) {
     return (
-        <h2 className="flex items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-foreground/20 bg-background text-primary">
-                <Icon className="size-4" />
-            </span>
-            <span className="font-hand text-2xl font-bold leading-none">
-                {children}
-            </span>
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-foreground/10 pb-3">
+            <h2 className="flex items-center gap-2.5">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-foreground/65">
+                    <Icon className="size-4" />
+                </span>
+                <span className="font-mono text-[13px] font-semibold tracking-[0.12em] text-foreground uppercase">
+                    {children}
+                </span>
+            </h2>
+            {action}
+        </div>
     );
 }
 
@@ -206,16 +193,32 @@ export function Field({
     label,
     children,
     wrap = false,
+    tone,
 }: {
     icon: IconType;
     label: string;
     children: ReactNode;
     /** Allow multi-line / wrapping content (e.g. pivot chips) instead of truncating. */
     wrap?: boolean;
+    /** Color class (e.g. "text-red-600 …") to highlight a risk-relevant field —
+     *  tints the icon + value and gives the tile a faint colored frame. */
+    tone?: string;
 }) {
     return (
-        <div className="flex items-start gap-2.5 rounded-[12px_16px_10px_14px/14px_10px_16px_12px] border border-foreground/10 bg-muted/40 p-2.5">
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[8px_11px_7px_10px/10px_7px_11px_8px] bg-background text-muted-foreground ring-1 ring-foreground/10">
+        <div
+            className={cn(
+                "flex items-start gap-2.5 rounded-md border p-2.5",
+                tone
+                    ? cn("border-current/25 bg-current/[0.06]", tone)
+                    : "border-foreground/10 bg-muted/40",
+            )}
+        >
+            <span
+                className={cn(
+                    "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-sm bg-background ring-1 ring-foreground/10",
+                    tone ?? "text-muted-foreground",
+                )}
+            >
                 <Icon className="size-3.5" />
             </span>
             <div className="min-w-0">
@@ -224,13 +227,35 @@ export function Field({
                 </dt>
                 <dd
                     className={cn(
-                        "text-sm font-medium text-foreground",
+                        "text-sm font-medium",
+                        tone ?? "text-foreground",
                         !wrap && "truncate",
                     )}
                 >
                     {children}
                 </dd>
             </div>
+        </div>
+    );
+}
+
+/** A labeled sub-section of related fields, for scannable grouped details.
+ *  Renders its own 2-column grid; pass <Field> children. */
+export function FieldGroup({
+    label,
+    children,
+}: {
+    label: string;
+    children: ReactNode;
+}) {
+    return (
+        <div className="space-y-2">
+            <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                {label}
+            </div>
+            <dl className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                {children}
+            </dl>
         </div>
     );
 }

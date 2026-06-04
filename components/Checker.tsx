@@ -137,6 +137,13 @@ const HASH_EXAMPLES = [
 // One example per IOC type, since detection picks the checker automatically.
 const EXAMPLES = [IP_EXAMPLES[0], DOMAIN_EXAMPLES[0], HASH_EXAMPLES[0]];
 
+// Quick-start chips shown under the search box: one clickable example per type.
+const EXAMPLE_CHIPS: { value: string; label: string; icon: IconType }[] = [
+  { value: IP_EXAMPLES[0], label: IP_EXAMPLES[0], icon: Network },
+  { value: DOMAIN_EXAMPLES[0], label: DOMAIN_EXAMPLES[0], icon: Globe },
+  { value: HASH_EXAMPLES[0], label: "eicar test hash", icon: FileDigit },
+];
+
 /** Validate input before hitting the network, returning a friendly error or null. */
 function validateInput(value: string, mode: Mode): string | null {
   if (mode === "ip") {
@@ -476,8 +483,8 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
     runCheck(indicator, { refresh: true });
   }
 
-  // Follow a related indicator from a result or the investigation graph: jump
-  // to the top and run a fresh check, which folds it into the graph too.
+  // Follow a related indicator from a result: jump to the top and run a fresh
+  // check.
   function pivot(value: string) {
     setQuery(value);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -486,11 +493,14 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
-      <div className="sketch-box sketch-shadow relative border-2 border-dashed border-foreground/30 bg-card/50 p-3.5 sm:p-4">
-        <div className="font-hand mb-3 flex items-center gap-2 text-xl font-bold text-foreground/75 sm:text-2xl">
-          <PenLine className="size-5 -rotate-12 text-primary" />
-          Got an IOC? Let&apos;s check it.
+      <div className="sketch-shadow relative rounded-xl border border-foreground/15 bg-card p-4 sm:p-5">
+        <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-medium tracking-[0.18em] text-amber-500 uppercase">
+          <PenLine className="size-3.5" />
+          {"// indicator lookup"}
         </div>
+        <h1 className="mb-4 font-mono text-2xl font-bold tracking-tight sm:text-[1.7rem]">
+          Check an IP, domain, or file&nbsp;hash
+        </h1>
 
         <form
           onSubmit={(e) => {
@@ -499,7 +509,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
           }}
           className="flex flex-col gap-3 sm:flex-row"
         >
-          <div className="sketch-box relative flex-1 overflow-hidden border-2 border-foreground/30 bg-background transition-colors focus-within:border-primary">
+          <div className="relative flex-1 overflow-hidden rounded-lg border border-foreground/20 bg-background transition-[border-color,box-shadow] focus-within:border-amber-500/70 focus-within:ring-2 focus-within:ring-amber-500/20">
             <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={inputRef}
@@ -513,7 +523,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
               aria-label="IOC to check"
               placeholder="IP, domain, or file hash"
               className={cn(
-                "h-12 rounded-none border-0 bg-transparent pl-10 font-mono text-lg shadow-none placeholder:text-base focus-visible:ring-0 sm:placeholder:text-lg",
+                "h-12 rounded-none border-0 bg-transparent pl-10 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
                 query ? "pr-11" : "pr-3",
               )}
             />
@@ -526,7 +536,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
                   inputRef.current?.focus();
                 }}
                 aria-label="Clear input"
-                className="absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <X className="size-4" />
               </button>
@@ -536,7 +546,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
             type="submit"
             size="lg"
             disabled={loading || !query.trim() || (!detected && !bulkPreview)}
-            className="font-hand sketch-shadow-primary h-12 rotate-1 rounded-[16px_26px_14px_24px/24px_14px_26px_16px] border-2 border-primary/50 px-7 text-lg font-bold transition-transform hover:rotate-0 hover:bg-primary/90"
+            className="h-12 rounded-lg px-7 text-base font-semibold"
           >
             {loading ? (
               <>
@@ -546,16 +556,16 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
             ) : (
               <>
                 <Search className="size-5" />
-                Check it!
+                Check
               </>
             )}
           </Button>
         </form>
 
-        <div className="mt-3 min-h-7 font-hand text-base">
+        <div className="mt-3 min-h-7 text-sm">
           {!trimmed ? (
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Sparkles className="size-4 text-primary" />
+              <Sparkles className="size-4 text-amber-500" />
               Type or paste an indicator and we&apos;ll detect the type for you.
             </span>
           ) : bulkPreview ? (
@@ -583,6 +593,26 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
               Not a recognized IOC yet. Paste an IP, domain, or file hash.
             </span>
           )}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-3">
+          <span className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+            Try
+          </span>
+          {EXAMPLE_CHIPS.map(({ value, label, icon: ChipIcon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setQuery(value);
+                runCheck(value);
+              }}
+              className="group inline-flex items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-amber-500/60 hover:text-foreground"
+            >
+              <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-amber-500" />
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -620,10 +650,10 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
 
 function BulkProgress({ count }: { count: number }) {
   return (
-    <Card className="sketch-shadow mt-8 overflow-hidden rounded-[22px_34px_18px_30px/30px_18px_34px_22px] border-2 border-foreground/20 bg-gradient-to-br from-primary/8 to-transparent">
+    <Card className="sketch-shadow mt-8 overflow-hidden rounded-2xl border border-foreground/12 bg-gradient-to-br from-primary/8 to-transparent">
       <CardContent className="flex items-center gap-3 py-8">
-        <Loader2 className="size-6 animate-spin text-primary" />
-        <div className="font-hand text-2xl font-bold">
+        <Loader2 className="size-6 animate-spin text-amber-500" />
+        <div className="text-xl font-bold tracking-tight">
           Looking up {count} {count === 1 ? "address" : "addresses"}…
         </div>
       </CardContent>
@@ -643,20 +673,38 @@ function EmptyState({ detected }: { detected: Mode | null }) {
         ? "Enter a domain above and we'll tell you when it was registered, where it resolves, and whether any threat-intel source has flagged it, summarized into one risk score."
         : "Paste a file hash (MD5, SHA-1, or SHA-256) above and we'll tell you what the file is, its name and type, any malware family it belongs to, and whether threat-intel sources have flagged it.";
 
+  const readout: [string, string][] = [
+    ["IP", "geolocation · ASN owner · hosting type · feed reputation"],
+    ["Domain", "registration age · DNS & mail · category · resolver checks"],
+    ["Hash", "malware family · file metadata · per-engine detections"],
+  ];
+
   return (
-    <Card className="mt-10 border-dashed bg-card/50">
-      <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-        <span className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-          <ShieldQuestion className="size-6" />
-        </span>
-        <div className="space-y-1">
-          <p className="font-heading text-base font-medium">
-            Ready when you are
-          </p>
-          <p className="mx-auto max-w-md text-sm text-muted-foreground">
-            {copy}
-          </p>
+    <Card className="sketch-shadow mt-8 overflow-hidden border border-foreground/15 bg-card/60">
+      {/* console-style header strip */}
+      <div className="flex items-center gap-2 border-b border-foreground/10 bg-muted/40 px-4 py-2 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
+        <span className="size-1.5 rounded-full bg-amber-500" />
+        idle
+      </div>
+      <CardContent className="space-y-4 py-6">
+        <div className="flex items-center gap-2 font-mono text-sm">
+          <span className="text-muted-foreground/50">&gt;</span>
+          <span className="text-foreground/80">awaiting indicator</span>
+          <span className="inline-block h-[1.05em] w-[7px] animate-pulse bg-amber-500 align-middle" />
         </div>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          {copy}
+        </p>
+        <dl className="space-y-1.5 border-t border-foreground/10 pt-4 font-mono text-xs">
+          {readout.map(([k, v]) => (
+            <div key={k} className="flex gap-3 sm:gap-4">
+              <dt className="w-16 shrink-0 tracking-wider text-amber-600 uppercase dark:text-amber-500">
+                {k}
+              </dt>
+              <dd className="text-muted-foreground">{v}</dd>
+            </div>
+          ))}
+        </dl>
       </CardContent>
     </Card>
   );
@@ -683,7 +731,7 @@ function ErrorState({
         badge:
           "border-amber-500/40 bg-amber-500/12 text-amber-600 dark:text-amber-400",
         text: "text-amber-600 dark:text-amber-400",
-        headline: "Hmm, that doesn't look right",
+        headline: "That doesn't look like a valid indicator",
       }
     : {
         border: "border-red-500/40",
@@ -696,66 +744,65 @@ function ErrorState({
   return (
     <Card
       className={cn(
-        "sketch-shadow mt-8 overflow-hidden rounded-[22px_34px_18px_30px/30px_18px_34px_22px] border-2 bg-gradient-to-br to-transparent",
+        "sketch-shadow mt-8 overflow-hidden rounded-2xl border bg-gradient-to-br to-transparent",
         accent.border,
         accent.wash,
       )}
     >
-      <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+      <CardContent className="flex items-start gap-4 py-8">
         <span
           className={cn(
-            "flex size-14 -rotate-3 items-center justify-center rounded-[16px_22px_14px_20px/20px_14px_22px_16px] border-2",
+            "flex size-12 shrink-0 items-center justify-center rounded-lg border",
             accent.badge,
           )}
         >
-          <Icon className="size-7" />
+          <Icon className="size-6" />
         </span>
 
-        <div className="space-y-1.5">
-          <p
-            className={cn(
-              "font-hand text-3xl font-bold leading-none",
-              accent.text,
-            )}
-          >
-            {accent.headline}
-          </p>
-          <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
-            {error.message}
-          </p>
-        </div>
-
-        {isInput ? (
-          <div className="flex flex-wrap items-center justify-center gap-2.5">
-            <span className="font-hand text-lg text-muted-foreground">
-              try one →
-            </span>
-            {examples.map((s, i) => (
-              <Button
-                key={s}
-                type="button"
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "rounded-[14px_20px_12px_22px/20px_12px_22px_14px] border-2 border-dashed font-mono transition-transform hover:rotate-0",
-                  i % 2 === 0 ? "-rotate-2" : "rotate-2",
-                )}
-                onClick={() => onExample(s)}
-              >
-                {s}
-              </Button>
-            ))}
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="space-y-1">
+            <p
+              className={cn(
+                "text-xl font-bold leading-tight tracking-tight",
+                accent.text,
+              )}
+            >
+              {accent.headline}
+            </p>
+            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              {error.message}
+            </p>
           </div>
-        ) : (
-          <Button
-            type="button"
-            onClick={onRetry}
-            className="font-hand sketch-shadow-primary rotate-1 rounded-[16px_26px_14px_24px/24px_14px_26px_16px] border-2 border-primary/50 px-6 text-lg font-bold transition-transform hover:rotate-0 hover:bg-primary/90"
-          >
-            <RefreshCw className="size-4" />
-            Try again
-          </Button>
-        )}
+
+          {isInput ? (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-sm text-muted-foreground">
+                Try one of these:
+              </span>
+              {examples.map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-md border font-mono"
+                  onClick={() => onExample(s)}
+                >
+                  {s}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <Button
+              type="button"
+              onClick={onRetry}
+              className="rounded-lg px-6 font-semibold"
+            >
+              <RefreshCw className="size-4" />
+              Try again
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -784,7 +831,7 @@ function SearchProgress({
     : undefined;
 
   return (
-    <Card className="sketch-shadow mt-8 overflow-hidden rounded-[22px_34px_18px_30px/30px_18px_34px_22px] border-2 border-foreground/20 bg-gradient-to-br from-primary/8 to-transparent duration-300 animate-in fade-in slide-in-from-bottom-2">
+    <Card className="sketch-shadow mt-8 overflow-hidden rounded-2xl border-2 border-foreground/20 bg-gradient-to-br from-primary/8 to-transparent duration-300 animate-in fade-in slide-in-from-bottom-2">
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div className="space-y-0.5">
@@ -818,11 +865,11 @@ function SearchProgress({
           aria-valuetext={
             total > 0 ? `${done} of ${total} sources checked` : undefined
           }
-          className="h-3.5 w-full overflow-hidden rounded-full border-2 border-foreground/15 bg-muted"
+          className="h-3.5 w-full overflow-hidden rounded-sm border-2 border-foreground/15 bg-muted"
         >
           <div
             className={cn(
-              "h-full rounded-full bg-primary transition-[width] duration-500 ease-out",
+              "h-full rounded-sm bg-primary transition-[width] duration-500 ease-out",
               total === 0 && "w-1/3 animate-pulse",
             )}
             style={total > 0 ? { width: `${Math.max(pct, 3)}%` } : undefined}
@@ -856,7 +903,7 @@ function SearchProgress({
                 <div
                   key={meta.id}
                   className={cn(
-                    "flex items-center justify-between gap-2 rounded-[12px_16px_10px_14px/14px_10px_16px_12px] border border-foreground/10 bg-muted/40 px-3 py-2 transition-colors",
+                    "flex items-center justify-between gap-2 rounded-md border border-foreground/10 bg-muted/40 px-3 py-2 transition-colors",
                     settled && "bg-background",
                   )}
                 >

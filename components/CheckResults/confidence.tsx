@@ -22,7 +22,7 @@ export function ConfidenceChip({ confidence }: { confidence: Confidence }) {
     <span
       title={LABEL[confidence]}
       className={cn(
-        "ml-2 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide",
+        "ml-2 inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide",
         TONE[confidence],
       )}
     >

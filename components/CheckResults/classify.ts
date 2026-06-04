@@ -146,88 +146,23 @@ export function flagUrl(cc?: string): string | undefined {
     return `https://flagcdn.com/${cc.toLowerCase()}.svg`;
 }
 
-/** A playful one-liner about where this IP supposedly lives. */
-export function locationQuip(geo?: GeoContext): string {
-    if (!geo) return "Pulled a vanishing act. No location, no paper trail.";
-    if (geo.isProxy)
-        return "Sneaky. It threw on a disguise to hide where it really lives.";
-    if (geo.isHosting) return "Lives in a server rack, not on anyone's couch.";
-    if (geo.isMobile) return "Probably doomscrolling on the bus right now.";
-    return "Looks like an ordinary home address. Allegedly.";
-}
-
-/** Avatar emoji + passport stamp + wisecrack, keyed to domain maturity. */
-export function domainVibe(label: string): {
-    avatar: string;
-    stamp: string;
-    tone: string;
-    quip: string;
-} {
+/** Accent tone (text color classes) for a domain maturity classification. */
+export function domainTone(label: string): string {
     switch (label) {
         case "Newly registered":
-            return {
-                avatar: "🌱",
-                stamp: "Fresh!",
-                tone: "text-orange-600 dark:text-orange-400 border-orange-500/50",
-                quip: "Practically still in the shrink-wrap. Brand-new domains love to misbehave.",
-            };
+            return "text-orange-600 dark:text-orange-400";
         case "Established":
-            return {
-                avatar: "🌳",
-                stamp: "Veteran",
-                tone: "text-emerald-600 dark:text-emerald-400 border-emerald-500/50",
-                quip: "Been around the block. Old enough to know better.",
-            };
+            return "text-emerald-600 dark:text-emerald-400";
         case "Inactive / parked":
-            return {
-                avatar: "🚧",
-                stamp: "Parked",
-                tone: "text-foreground/70 border-foreground/40",
-                quip: "Nobody's home. It doesn't even resolve.",
-            };
+            return "text-foreground/70";
         default:
-            return {
-                avatar: "🌐",
-                stamp: "Domain",
-                tone: "text-sky-600 dark:text-sky-400 border-sky-500/50",
-                quip: "A domain doing ordinary domain things.",
-            };
+            return "text-foreground/80";
     }
 }
 
-/** Avatar emoji + passport stamp + wisecrack, keyed to what the file is. */
-export function hashVibe(
-    ctx: HashContext | undefined,
-    hasData: boolean,
-): { avatar: string; stamp: string; tone: string; quip: string } {
-    if (ctx?.malwareFamily || ctx?.threatLabel) {
-        return {
-            avatar: "🦠",
-            stamp: "Malware",
-            tone: "text-red-600 dark:text-red-400 border-red-500/50",
-            quip: "Caught red-handed. This one's a known troublemaker.",
-        };
-    }
-    if (ctx) {
-        return {
-            avatar: "📄",
-            stamp: "Known",
-            tone: "text-sky-600 dark:text-sky-400 border-sky-500/50",
-            quip: "Seen this one before. Nothing scandalous on the record.",
-        };
-    }
-    if (hasData) {
-        return {
-            avatar: "📄",
-            stamp: "On file",
-            tone: "text-foreground/70 border-foreground/40",
-            quip: "On the books, but travelling light. Barely any details.",
-        };
-    }
-    return {
-        avatar: "👻",
-        stamp: "Unseen",
-        tone: "text-foreground/70 border-foreground/40",
-        quip: "A total stranger. Never spotted in the wild, which isn't a clean bill of health.",
-    };
+/** Accent tone (text color classes) for a file/hash classification. */
+export function hashTone(ctx: HashContext | undefined): string {
+    if (ctx?.malwareFamily || ctx?.threatLabel)
+        return "text-red-600 dark:text-red-400";
+    return "text-foreground/80";
 }

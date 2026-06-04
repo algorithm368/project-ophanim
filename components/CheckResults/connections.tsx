@@ -82,7 +82,7 @@ export function ConnectionsCard({
     ];
 
     return (
-        <Card className="sketch-shadow rounded-[20px_28px_16px_24px/24px_16px_28px_20px] border-2 border-foreground/15">
+        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={Link2}>What it connects to</SectionHeading>
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
@@ -115,7 +115,7 @@ function DistributionUrlRow({ url }: { url: string }) {
     const [copied, copy] = useCopied();
     const host = hostFromUrl(url);
     return (
-        <li className="flex items-center gap-2 rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border border-foreground/10 bg-muted/40 p-2 text-xs">
+        <li className="flex items-center gap-2 rounded-md border border-foreground/10 bg-muted/40 p-2 text-xs">
             <code
                 className="min-w-0 flex-1 truncate font-mono text-[12px]"
                 title={url}
@@ -157,7 +157,7 @@ export function DistributionUrlsCard({ result }: { result: HashCheckResult }) {
     const shown = urls.slice(0, 8);
     const extra = urls.length - shown.length;
     return (
-        <Card className="sketch-shadow rounded-[20px_28px_16px_24px/24px_16px_28px_20px] border-2 border-foreground/15">
+        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-3">
                 <SectionHeading icon={Link2}>
                     Where it&apos;s been served
@@ -255,7 +255,7 @@ export function ExposedServicesCard({ result }: { result: CheckResult }) {
     const shownVulns = vulns.slice(0, 12);
 
     return (
-        <Card className="sketch-shadow rounded-[20px_28px_16px_24px/24px_16px_28px_20px] border-2 border-foreground/15">
+        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={Server}>
                     What&apos;s exposed
@@ -272,7 +272,7 @@ export function ExposedServicesCard({ result }: { result: CheckResult }) {
                                 return (
                                     <span
                                         key={p}
-                                        className="inline-flex items-center gap-1.5 rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-foreground/20 bg-background px-2.5 py-0.5 font-mono text-xs"
+                                        className="inline-flex items-center gap-1.5 rounded-md border-2 border-foreground/20 bg-background px-2.5 py-0.5 font-mono text-xs"
                                     >
                                         <span className="font-semibold tabular-nums">
                                             {p}
@@ -301,7 +301,7 @@ export function ExposedServicesCard({ result }: { result: CheckResult }) {
                                     href={`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve)}`}
                                     target="_blank"
                                     rel="noreferrer noopener"
-                                    className="inline-flex items-center gap-1 rounded-[10px_14px_8px_12px/12px_8px_14px_10px] border-2 border-red-500/40 bg-red-500/10 px-2.5 py-0.5 font-mono text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
+                                    className="inline-flex items-center gap-1 rounded-md border-2 border-red-500/40 bg-red-500/10 px-2.5 py-0.5 font-mono text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
                                 >
                                     {cve}
                                     <ExternalLink className="size-3 opacity-60" />
