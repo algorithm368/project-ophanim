@@ -32,3 +32,6 @@ yarn-error.log*
 
 # git worktrees (isolated workspaces)
 .claude/worktrees/
+
+# superpowers plugin scratch data
+.superpowers/
