@@ -188,74 +188,119 @@ export function SectionHeading({
     );
 }
 
+/** One labeled datum, rendered as an aligned readout row: a fixed label column
+ *  on the left, the value flowing in the column beside it. Stacks label-over-value
+ *  on narrow screens. Grouped under a <FieldGroup> for a scannable, report-style
+ *  layout — no per-field boxes or icons. */
 export function Field({
-    icon: Icon,
     label,
     children,
     wrap = false,
     tone,
+    hint,
 }: {
-    icon: IconType;
     label: string;
     children: ReactNode;
-    /** Allow multi-line / wrapping content (e.g. pivot chips) instead of truncating. */
+    /** Allow multi-line / wrapping content (e.g. pivot chips, long DNS records)
+     *  instead of truncating the value to a single line. */
     wrap?: boolean;
-    /** Color class (e.g. "text-red-600 …") to highlight a risk-relevant field —
-     *  tints the icon + value and gives the tile a faint colored frame. */
+    /** Color class (e.g. "text-red-600 …") to tint a risk-relevant value. */
     tone?: string;
+    /** Plain-language tooltip for a jargon label (ASN, CAA, SPF, ssdeep, …).
+     *  Marks the label with a dotted underline to signal it's explainable. */
+    hint?: string;
 }) {
-    return (
-        <div
+    const labelEl = (
+        <dt
+            title={hint}
             className={cn(
-                "flex items-start gap-2.5 rounded-md border p-2.5",
-                tone
-                    ? cn("border-current/25 bg-current/[0.06]", tone)
-                    : "border-foreground/10 bg-muted/40",
+                "text-[13px] leading-snug text-muted-foreground",
+                !wrap && "shrink-0 sm:w-32",
+                hint &&
+                    "w-fit cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
             )}
         >
-            <span
-                className={cn(
-                    "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-sm bg-background ring-1 ring-foreground/10",
-                    tone ?? "text-muted-foreground",
-                )}
-            >
-                <Icon className="size-3.5" />
-            </span>
-            <div className="min-w-0">
-                <dt className="font-hand text-sm leading-tight text-muted-foreground">
-                    {label}
-                </dt>
+            {label}
+        </dt>
+    );
+
+    // Long / chip values (`wrap`) stack under the label and take the full cell
+    // width, so they never truncate inside a narrow bento cell. Short scalar
+    // values keep the aligned label→value columns.
+    if (wrap) {
+        return (
+            <div className="py-1.5">
+                {labelEl}
                 <dd
                     className={cn(
-                        "text-sm font-medium",
+                        "mt-1 min-w-0 text-sm font-medium",
                         tone ?? "text-foreground",
-                        !wrap && "truncate",
                     )}
                 >
                     {children}
                 </dd>
             </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-x-3 gap-y-0.5 py-1.5 sm:flex-row sm:items-baseline">
+            {labelEl}
+            <dd
+                className={cn(
+                    "min-w-0 flex-1 truncate text-sm font-medium",
+                    tone ?? "text-foreground",
+                )}
+            >
+                {children}
+            </dd>
         </div>
     );
 }
 
-/** A labeled sub-section of related fields, for scannable grouped details.
- *  Renders its own 2-column grid; pass <Field> children. */
-export function FieldGroup({
+/** A bordered "bento" cell with an uppercase section label — the building block
+ *  of the report's left-to-right grid. Pass `span` to make a cell occupy the
+ *  full grid width (for groups with long values that shouldn't be cramped). */
+export function BentoCell({
     label,
     children,
+    span = false,
 }: {
     label: string;
     children: ReactNode;
+    span?: boolean;
 }) {
     return (
-        <div className="space-y-2">
-            <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        <div
+            className={cn(
+                "rounded-xl border border-foreground/10 bg-muted/30 p-3.5",
+                span && "sm:col-span-2",
+            )}
+        >
+            <div className="mb-2 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
                 {label}
             </div>
-            <dl className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {children}
+        </div>
+    );
+}
+
+/** A labeled sub-section of related fields, rendered as a bento cell of aligned
+ *  <Field> rows separated by hairlines. Pass `span` for full-width groups. */
+export function FieldGroup({
+    label,
+    children,
+    span = false,
+}: {
+    label: string;
+    children: ReactNode;
+    span?: boolean;
+}) {
+    return (
+        <BentoCell label={label} span={span}>
+            <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
                 {children}
             </dl>
-        </div>
+        </BentoCell>
     );
 }

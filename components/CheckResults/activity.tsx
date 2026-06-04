@@ -59,7 +59,7 @@ export function ActivityCard({ result, noun }: { result: ResultLike; noun: strin
         <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={TriangleAlert}>
-                    What it does
+                    Observed activity
                 </SectionHeading>
 
                 {flaggedCount > 0 ? (
@@ -196,7 +196,7 @@ export function HistoryCard({ result }: { result: ResultLike }) {
                         </span>
                     }
                 >
-                    Reputation over time
+                    Reputation history
                 </SectionHeading>
 
                 <div className="relative h-28 w-full">

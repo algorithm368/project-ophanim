@@ -242,7 +242,7 @@ export function ScoreChart({
         <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={BarChart3}>
-                    How each source rates {subject}
+                    Source scores · {subject}
                 </SectionHeading>
                 {explanation.length > 0 && (
                     <div className="space-y-1.5 rounded-lg border-2 border-dashed border-foreground/20 bg-muted/40 p-3">

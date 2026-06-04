@@ -1,31 +1,11 @@
 "use client";
 
 import {
-    Binary,
-    Bug,
-    Building2,
-    CalendarClock,
     Check,
     Copy,
     FileDigit,
-    FileText,
-    Fingerprint,
     Globe,
-    HardDrive,
-    History,
-    Link2,
-    Mail,
     MapPin,
-    Navigation,
-    Network,
-    Server,
-    ShieldAlert,
-    ShieldCheck,
-    ShieldQuestion,
-    SignalHigh,
-    Smartphone,
-    Tag,
-    Wifi,
 } from "lucide-react";
 import {
     type CheckResult,
@@ -47,6 +27,7 @@ import {
     hashTone,
 } from "./classify";
 import {
+    BentoCell,
     Field,
     FieldGroup,
     Pivot,
@@ -57,6 +38,50 @@ import {
 import { Disagreement } from "./confidence";
 import { LocationMap } from "./location-map";
 import type { IconType } from "./types";
+
+/** Compact classification header for the domain / hash profile cards: a small
+ *  tinted icon, the type label, and a one-line plain-language description. */
+function IdentityHeader({
+    icon: Icon,
+    label,
+    desc,
+    tone,
+}: {
+    icon?: IconType;
+    label: string;
+    desc?: string;
+    tone?: string;
+}) {
+    return (
+        <div className="flex items-start gap-3">
+            {Icon && (
+                <span
+                    className={cn(
+                        "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background",
+                        tone,
+                    )}
+                >
+                    <Icon className="size-5" />
+                </span>
+            )}
+            <div className="min-w-0">
+                <div
+                    className={cn(
+                        "text-lg font-bold leading-tight tracking-tight",
+                        tone,
+                    )}
+                >
+                    {label}
+                </div>
+                {desc && (
+                    <div className="mt-0.5 text-sm text-muted-foreground">
+                        {desc}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export function ProfileCard({ result }: { result: CheckResult }) {
     const geo = result.geo;
@@ -79,37 +104,6 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                 ? "text-foreground/70"
                 : "text-emerald-600 dark:text-emerald-400";
 
-    const traits = geo
-        ? ([
-                geo.isProxy && {
-                    icon: ShieldAlert,
-                    label: "Proxy / VPN / Tor",
-                    tone: "text-orange-600 dark:text-orange-400",
-                },
-                geo.isHosting && {
-                    icon: Server,
-                    label: "Hosting / Datacenter",
-                    tone: "text-foreground/80",
-                },
-                geo.isMobile && {
-                    icon: Smartphone,
-                    label: "Mobile network",
-                    tone: "text-sky-600 dark:text-sky-400",
-                },
-                !geo.isProxy &&
-                    !geo.isHosting &&
-                    !geo.isMobile && {
-                        icon: Network,
-                        label: "Residential / Other",
-                        tone: "text-emerald-600 dark:text-emerald-400",
-                    },
-            ].filter(Boolean) as {
-                icon: IconType;
-                label: string;
-                tone: string;
-            }[])
-        : [];
-
     const hasDetails = !!(
         geo &&
         (geo.asn || geo.asnOrg || geo.isp || geo.org || geo.reverse || coords)
@@ -127,102 +121,84 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                         </code>
                     }
                 >
-                    Where it&apos;s from
+                    Geolocation &amp; network
                 </SectionHeading>
 
-                {/* Map floats in column 1; detail flows in column 2 beside it and
-                    spills into a full-width row below once it outgrows the map. */}
-                <div className="flow-root">
-                    {hasMap && (
-                        <div className="mb-4 lg:float-left lg:mr-4 lg:mb-0 lg:w-80">
-                            <LocationMap
-                                lat={geo!.lat!}
-                                lon={geo!.lon!}
-                                caption={
-                                    joinPlace([
-                                        geo!.city,
-                                        geo!.region,
-                                        geo!.country,
-                                    ]) || coords
-                                }
-                            />
-                        </div>
+                {/* Identity strip: flag, country, city, and one classification chip. */}
+                <div className="flex items-center gap-3">
+                    {flag ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
+                        <img
+                            src={flag}
+                            alt={`Flag of ${geo?.country ?? geo?.countryCode}`}
+                            width={64}
+                            height={48}
+                            loading="lazy"
+                            className="h-9 w-auto shrink-0 rounded-sm border border-foreground/20 object-cover shadow-sm"
+                        />
+                    ) : (
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-muted-foreground">
+                            <MapPin className="size-5" />
+                        </span>
                     )}
-
-                    <div className="[&>*+*]:mt-4">
-                        {/* Location identity header: flag, country, classification. */}
-                        <div className="flex flex-col gap-4 rounded-xl border border-foreground/12 bg-muted/40 p-4 sm:flex-row sm:items-center">
-                            {flag ? (
-                                // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
-                                <img
-                                    src={flag}
-                                    alt={`Flag of ${geo?.country ?? geo?.countryCode}`}
-                                    width={64}
-                                    height={48}
-                                    loading="lazy"
-                                    className="h-11 w-auto shrink-0 rounded-sm border border-foreground/20 object-cover shadow-sm"
-                                />
-                            ) : (
-                                <span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-muted-foreground">
-                                    <MapPin className="size-5" />
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="text-lg font-bold leading-tight tracking-tight">
+                                {geo?.country ?? "Unknown location"}
+                            </span>
+                            {geo?.countryCode && (
+                                <span className="font-mono text-sm text-muted-foreground">
+                                    {geo.countryCode}
                                 </span>
                             )}
-                            <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                                    <span className="text-2xl font-bold leading-tight tracking-tight">
-                                        {geo?.country ?? "Unknown location"}
-                                    </span>
-                                    {geo?.countryCode && (
-                                        <span className="font-mono text-sm text-muted-foreground">
-                                            {geo.countryCode}
-                                        </span>
-                                    )}
-                                    {res?.country && <Disagreement field={res.country} />}
-                                </div>
-                                {cityRegion && (
-                                    <div className="mt-0.5 truncate text-sm text-muted-foreground">
-                                        {cityRegion}
-                                    </div>
-                                )}
-                            </div>
-                            <span
-                                className={cn(
-                                    "inline-flex shrink-0 items-center gap-1.5 self-start rounded-md border border-foreground/15 bg-background px-2.5 py-1 text-sm font-medium sm:self-auto",
-                                    accent,
-                                )}
-                            >
-                                <TypeIcon className="size-4" />
-                                {type.label}
-                            </span>
+                            {res?.country && <Disagreement field={res.country} />}
                         </div>
+                        {cityRegion && (
+                            <div className="truncate text-sm text-muted-foreground">
+                                {cityRegion}
+                            </div>
+                        )}
+                    </div>
+                    <span
+                        className={cn(
+                            "inline-flex shrink-0 items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 text-sm font-medium",
+                            accent,
+                        )}
+                    >
+                        <TypeIcon className="size-4" />
+                        {type.label}
+                    </span>
+                </div>
 
-                        {traits.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                                {traits.map((t) => {
-                                    const TIcon = t.icon;
-                                    return (
-                                        <span
-                                            key={t.label}
-                                            className={cn(
-                                                "inline-flex items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 text-sm font-medium",
-                                                t.tone,
-                                            )}
-                                        >
-                                            <TIcon className="size-4" />
-                                            {t.label}
-                                        </span>
-                                    );
-                                })}
+                {/* Bento: map tile on the left, detail cells stacked on the right. */}
+                {(hasMap || hasDetails) && (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                        {hasMap && (
+                            <div className="w-full shrink-0 sm:w-72">
+                                <LocationMap
+                                    lat={geo!.lat!}
+                                    lon={geo!.lon!}
+                                    caption={
+                                        joinPlace([
+                                            geo!.city,
+                                            geo!.region,
+                                            geo!.country,
+                                        ]) || coords
+                                    }
+                                />
                             </div>
                         )}
 
-                        {/* Grouped details: network infrastructure, then host/location. */}
                         {hasDetails && (
-                            <div className="space-y-4">
+                            <div className="flex-1 space-y-3">
                                 {(geo!.asn || geo!.asnOrg || geo!.isp || geo!.org) && (
                                     <FieldGroup label="Network">
                                         {geo!.asn && (
-                                            <Field icon={Network} label="Network (ASN)" wrap>
+                                            <Field
+                                                label="ASN"
+                                                wrap
+                                                hint="Autonomous System Number — the network block this IP routes through"
+                                            >
                                                 <span className="font-mono text-[13px]">
                                                     {geo!.asn}
                                                 </span>
@@ -230,17 +206,15 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                             </Field>
                                         )}
                                         {geo!.asnOrg && (
-                                            <Field icon={Building2} label="ASN operator">
+                                            <Field label="ASN operator">
                                                 {geo!.asnOrg}
                                             </Field>
                                         )}
                                         {geo!.isp && (
-                                            <Field icon={Wifi} label="ISP">
-                                                {geo!.isp}
-                                            </Field>
+                                            <Field label="ISP">{geo!.isp}</Field>
                                         )}
                                         {geo!.org && (
-                                            <Field icon={Server} label="Organization">
+                                            <Field label="Organization">
                                                 {geo!.org}
                                             </Field>
                                         )}
@@ -251,9 +225,9 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                     <FieldGroup label="Host & location">
                                         {geo!.reverse && (
                                             <Field
-                                                icon={SignalHigh}
                                                 label="Reverse DNS"
                                                 wrap
+                                                hint="The PTR hostname this IP maps back to"
                                                 tone={
                                                     geo!.fcrdns && !geo!.fcrdns.verified
                                                         ? "text-red-600 dark:text-red-400"
@@ -283,7 +257,7 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                             </Field>
                                         )}
                                         {coords && (
-                                            <Field icon={Navigation} label="Coordinates">
+                                            <Field label="Coordinates">
                                                 <span className="font-mono text-[13px]">{coords}</span>
                                             </Field>
                                         )}
@@ -292,7 +266,7 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                             </div>
                         )}
                     </div>
-                </div>
+                )}
 
                 {res && res.providerCount > 0 && (
                     <p className="text-sm text-muted-foreground">
@@ -310,7 +284,6 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
     const resolves =
         (ctx?.resolvedIps?.length ?? 0) > 0 || (ctx?.ipv6?.length ?? 0) > 0;
     const type = classifyDomain(ctx, resolves);
-    const TypeIcon = type.icon;
     const tone = domainTone(type.label);
 
     const created = formatDate(ctx?.createdAt);
@@ -339,102 +312,22 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                     Registration &amp; DNS
                 </SectionHeading>
 
-                {/* Classification identity header: icon, label, description. */}
-                <div className="flex items-center gap-4 rounded-xl border border-foreground/12 bg-muted/40 p-4">
-                    <span
-                        className={cn(
-                            "flex size-12 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background",
-                            tone,
-                        )}
-                    >
-                        <TypeIcon className="size-6" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                        <div
-                            className={cn(
-                                "text-2xl font-bold leading-tight tracking-tight",
-                                tone,
-                            )}
-                        >
-                            {type.label}
-                        </div>
-                        <div className="mt-0.5 text-sm text-muted-foreground">
-                            {type.desc}
-                        </div>
-                    </div>
-                </div>
-
-                {ctx && (
-                    <div className="flex flex-wrap gap-2">
-                        <span
-                            className={cn(
-                                "inline-flex items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 text-sm font-medium",
-                                resolves
-                                    ? "text-emerald-600 dark:text-emerald-400"
-                                    : "text-orange-600 dark:text-orange-400",
-                            )}
-                        >
-                            {resolves ? (
-                                <ShieldCheck className="size-4" />
-                            ) : (
-                                <ShieldQuestion className="size-4" />
-                            )}
-                            {resolves ? "resolves" : "no DNS"}
-                        </span>
-                        {(ctx.statuses ?? []).slice(0, 6).map((s) => (
-                            <span
-                                key={s}
-                                className="inline-flex items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 text-sm font-medium text-foreground/80"
-                            >
-                                {s}
-                            </span>
-                        ))}
-                        {ctx.dnssec && ctx.dnssec !== "unknown" && (
-                            <span
-                                className={cn(
-                                    "inline-flex items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 text-sm font-medium",
-                                    ctx.dnssec === "signed"
-                                        ? "text-emerald-600 dark:text-emerald-400"
-                                        : "text-foreground/70",
-                                )}
-                                title={
-                                    ctx.dnssec === "signed"
-                                        ? "Zone is DNSSEC-signed (resolver set the AD flag)"
-                                        : "Zone is not DNSSEC-signed"
-                                }
-                            >
-                                <ShieldCheck className="size-4" />
-                                DNSSEC {ctx.dnssec}
-                            </span>
-                        )}
-                        {ctx.resolverAgreement === false && (
-                            <span
-                                className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 bg-background px-2.5 py-1 text-sm font-medium text-red-600 dark:text-red-400"
-                                title="DoH resolvers returned different A records (GeoDNS, split-horizon, or possible poisoning)"
-                            >
-                                <ShieldAlert className="size-4" />
-                                resolvers disagree
-                            </span>
-                        )}
-                    </div>
-                )}
+                {/* Classification identity header (no icon, per design). */}
+                <IdentityHeader label={type.label} desc={type.desc} tone={tone} />
 
                 {/* Grouped details: registration, DNS records, email security. */}
                 {ctx ? (
-                    <div className="space-y-4">
+                    <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
                         {(ctx.registrar ||
                             created ||
                             expires ||
                             (ctx.categories?.length ?? 0) > 0) && (
                             <FieldGroup label="Registration">
                                 {ctx.registrar && (
-                                    <Field icon={Building2} label="Registrar">
-                                        {ctx.registrar}
-                                    </Field>
+                                    <Field label="Registrar">{ctx.registrar}</Field>
                                 )}
                                 {created && (
                                     <Field
-                                        icon={CalendarClock}
                                         label="Registered"
                                         tone={
                                             ctx.ageDays !== undefined && ctx.ageDays < 30
@@ -447,12 +340,10 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                     </Field>
                                 )}
                                 {expires && (
-                                    <Field icon={History} label="Expires">
-                                        {expires}
-                                    </Field>
+                                    <Field label="Expires">{expires}</Field>
                                 )}
                                 {ctx.categories && ctx.categories.length > 0 && (
-                                    <Field icon={Tag} label="Category">
+                                    <Field label="Category">
                                         {ctx.categories.slice(0, 3).join(", ")}
                                     </Field>
                                 )}
@@ -462,49 +353,88 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                         {(ips.length > 0 ||
                             ns.length > 0 ||
                             (ctx.reverse?.length ?? 0) > 0 ||
-                            (ctx.caa?.length ?? 0) > 0) && (
+                            (ctx.caa?.length ?? 0) > 0 ||
+                            (ctx.dnssec !== undefined && ctx.dnssec !== "unknown") ||
+                            ctx.resolverAgreement === false) && (
                             <FieldGroup label="DNS records">
                                 {ips.length > 0 && (
-                                    <Field icon={Link2} label="Resolves to" wrap>
+                                    <Field label="Resolves to" wrap>
                                         <PivotList values={ips} />
                                     </Field>
                                 )}
                                 {ns.length > 0 && (
-                                    <Field icon={Server} label="Nameservers" wrap>
+                                    <Field label="Nameservers" wrap>
                                         <PivotList values={ns} />
                                     </Field>
                                 )}
                                 {(ctx.reverse?.length ?? 0) > 0 && (
-                                    <Field icon={SignalHigh} label="Reverse DNS (PTR)" wrap>
+                                    <Field label="Reverse DNS (PTR)" wrap>
                                         <PivotList values={ctx.reverse!} />
                                     </Field>
                                 )}
                                 {(ctx.caa?.length ?? 0) > 0 && (
-                                    <Field icon={ShieldCheck} label="CAA" wrap>
+                                    <Field
+                                        label="CAA"
+                                        wrap
+                                        hint="Certificate Authority Authorization — which CAs may issue TLS certs for this domain"
+                                    >
                                         <span className="font-mono text-[12px] break-all">
                                             {ctx.caa!.join(", ")}
                                         </span>
+                                    </Field>
+                                )}
+                                {ctx.dnssec !== undefined &&
+                                    ctx.dnssec !== "unknown" && (
+                                        <Field
+                                            label="DNSSEC"
+                                            hint="Whether the zone is DNSSEC-signed (resolver set the AD flag)"
+                                            tone={
+                                                ctx.dnssec === "signed"
+                                                    ? "text-emerald-600 dark:text-emerald-400"
+                                                    : undefined
+                                            }
+                                        >
+                                            {ctx.dnssec === "signed"
+                                                ? "Signed"
+                                                : "Unsigned"}
+                                        </Field>
+                                    )}
+                                {ctx.resolverAgreement === false && (
+                                    <Field
+                                        label="Resolvers"
+                                        hint="DoH resolvers returned different A records — GeoDNS, split-horizon, or possible poisoning"
+                                        tone="text-red-600 dark:text-red-400"
+                                    >
+                                        Disagree
                                     </Field>
                                 )}
                             </FieldGroup>
                         )}
 
                         {(mx.length > 0 || ctx.spf || ctx.dmarc) && (
-                            <FieldGroup label="Email security">
+                            <FieldGroup label="Email security" span>
                                 {mx.length > 0 && (
-                                    <Field icon={Mail} label="Mail (MX)" wrap>
+                                    <Field label="Mail (MX)" wrap>
                                         <PivotList values={mx} />
                                     </Field>
                                 )}
                                 {ctx.spf && (
-                                    <Field icon={Mail} label="SPF" wrap>
+                                    <Field
+                                        label="SPF"
+                                        wrap
+                                        hint="Sender Policy Framework — which servers may send mail for this domain"
+                                    >
                                         <span className="font-mono text-[12px] break-all">
                                             {ctx.spf}
                                         </span>
                                     </Field>
                                 )}
                                 {ctx.dmarc && (
-                                    <Field icon={Mail} label="DMARC" wrap>
+                                    <Field
+                                        label="DMARC"
+                                        wrap
+                                        hint="Policy for handling mail that fails SPF/DKIM authentication"
+                                    >
                                         <span className="font-mono text-[12px] break-all">
                                             {ctx.dmarc}
                                         </span>
@@ -581,37 +511,20 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                         </code>
                     }
                 >
-                    What this file is
+                    File identity
                 </SectionHeading>
 
-                {/* Classification identity header: icon, label, description. */}
-                <div className="flex items-center gap-4 rounded-xl border border-foreground/12 bg-muted/40 p-4">
-                    <span
-                        className={cn(
-                            "flex size-12 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background",
-                            tone,
-                        )}
-                    >
-                        <TypeIcon className="size-6" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                        <div
-                            className={cn(
-                                "text-2xl font-bold leading-tight tracking-tight",
-                                tone,
-                            )}
-                        >
-                            {type.label}
-                        </div>
-                        <div className="mt-0.5 text-sm text-muted-foreground">
-                            {type.desc}
-                        </div>
-                    </div>
-                </div>
+                {/* Classification identity header. */}
+                <IdentityHeader
+                    icon={TypeIcon}
+                    label={type.label}
+                    desc={type.desc}
+                    tone={tone}
+                />
 
                 {/* Grouped details: classification, timeline, fingerprints. */}
                 {ctx ? (
-                    <div className="space-y-4">
+                    <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
                         {(ctx.malwareFamily ||
                             ctx.threatLabel ||
                             ctx.fileName ||
@@ -620,7 +533,6 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                             <FieldGroup label="Classification">
                                 {ctx.malwareFamily && (
                                     <Field
-                                        icon={Bug}
                                         label="Malware family"
                                         tone="text-red-600 dark:text-red-400"
                                     >
@@ -629,7 +541,6 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                 )}
                                 {ctx.threatLabel && (
                                     <Field
-                                        icon={Tag}
                                         label="Threat label"
                                         tone="text-red-600 dark:text-red-400"
                                     >
@@ -637,55 +548,63 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                     </Field>
                                 )}
                                 {ctx.fileName && (
-                                    <Field icon={FileText} label="File name">
+                                    <Field label="File name">
                                         <span className="font-mono text-[13px]">
                                             {ctx.fileName}
                                         </span>
                                     </Field>
                                 )}
                                 {ctx.fileType && (
-                                    <Field icon={FileText} label="File type">
-                                        {ctx.fileType}
-                                    </Field>
+                                    <Field label="File type">{ctx.fileType}</Field>
                                 )}
-                                {size && (
-                                    <Field icon={HardDrive} label="Size">
-                                        {size}
-                                    </Field>
-                                )}
+                                {size && <Field label="Size">{size}</Field>}
                             </FieldGroup>
                         )}
 
                         {(firstSeen || lastSeen) && (
                             <FieldGroup label="Timeline">
                                 {firstSeen && (
-                                    <Field icon={CalendarClock} label="First seen">
-                                        {firstSeen}
-                                    </Field>
+                                    <Field label="First seen">{firstSeen}</Field>
                                 )}
                                 {lastSeen && (
-                                    <Field icon={History} label="Last seen">
-                                        {lastSeen}
-                                    </Field>
+                                    <Field label="Last seen">{lastSeen}</Field>
                                 )}
                             </FieldGroup>
                         )}
 
                         {(ctx.magic || ctx.imphash || ctx.ssdeep) && (
-                            <FieldGroup label="Fingerprints">
+                            <FieldGroup label="Fingerprints" span>
                                 {ctx.magic && (
-                                    <Field icon={Binary} label="Magic">
-                                        <span className="font-mono text-[13px]">{ctx.magic}</span>
+                                    <Field
+                                        label="Magic"
+                                        wrap
+                                        hint="libmagic file-type signature derived from the file's leading bytes"
+                                    >
+                                        <span className="font-mono text-[13px] break-all">
+                                            {ctx.magic}
+                                        </span>
                                     </Field>
                                 )}
                                 {ctx.imphash && (
-                                    <Field icon={Fingerprint} label="Imphash">
-                                        <span className="font-mono text-[13px]">{ctx.imphash}</span>
+                                    <Field
+                                        label="Imphash"
+                                        wrap
+                                        hint="Hash of the PE import table — clusters samples built from the same code"
+                                    >
+                                        <span className="font-mono text-[13px] break-all">
+                                            {ctx.imphash}
+                                        </span>
                                     </Field>
                                 )}
                                 {ctx.ssdeep && (
-                                    <Field icon={Fingerprint} label="ssdeep">
-                                        <span className="font-mono text-[13px]">{ctx.ssdeep}</span>
+                                    <Field
+                                        label="ssdeep"
+                                        wrap
+                                        hint="Fuzzy hash — matches files that are similar but not identical"
+                                    >
+                                        <span className="font-mono text-[13px] break-all">
+                                            {ctx.ssdeep}
+                                        </span>
                                     </Field>
                                 )}
                             </FieldGroup>
@@ -699,10 +618,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                     </p>
                 )}
 
-                <div className="space-y-2">
-                    <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Digests
-                    </div>
+                <BentoCell label="Digests">
                     <dl className="space-y-1.5">
                         {digests.map((d) => (
                             <div key={d.label} className="flex items-center gap-2 text-xs">
@@ -719,7 +635,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                             </div>
                         ))}
                     </dl>
-                </div>
+                </BentoCell>
 
                 {altNames.length > 0 && (
                     <div className="space-y-1.5">

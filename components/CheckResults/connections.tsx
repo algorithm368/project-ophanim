@@ -4,14 +4,8 @@ import {
     Check,
     Copy,
     ExternalLink,
-    FileDigit,
-    Fingerprint,
-    Globe,
     Link2,
-    Mail,
-    Network,
     Server,
-    SignalHigh,
 } from "lucide-react";
 import {
     type CheckResult,
@@ -24,22 +18,21 @@ import { hostFromUrl } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, Pivot, PivotList, SectionHeading, useCopied } from "./primitives";
-import type { IconType } from "./types";
 
 /** Display + ordering for relation labels surfaced in the Connections card. */
-const RELATION_META: Record<string, { label: string; icon: IconType }> = {
-    contacts: { label: "Contacts (C2 / network)", icon: Network },
-    drops: { label: "Drops", icon: FileDigit },
-    parent: { label: "Parent samples", icon: FileDigit },
-    similar: { label: "Similar samples", icon: Fingerprint },
-    distribution: { label: "Distribution hosts", icon: Globe },
-    hosted: { label: "Hosted domains", icon: Globe },
-    A: { label: "Resolves to (A)", icon: Link2 },
-    resolved: { label: "Resolves to (passive DNS)", icon: Link2 },
-    NS: { label: "Nameservers", icon: Server },
-    MX: { label: "Mail (MX)", icon: Mail },
-    rDNS: { label: "Reverse DNS", icon: SignalHigh },
-    host: { label: "Observed hostnames", icon: Globe },
+const RELATION_META: Record<string, { label: string }> = {
+    contacts: { label: "Contacts (C2 / network)" },
+    drops: { label: "Drops" },
+    parent: { label: "Parent samples" },
+    similar: { label: "Similar samples" },
+    distribution: { label: "Distribution hosts" },
+    hosted: { label: "Hosted domains" },
+    A: { label: "Resolves to (A)" },
+    resolved: { label: "Resolves to (passive DNS)" },
+    NS: { label: "Nameservers" },
+    MX: { label: "Mail (MX)" },
+    rDNS: { label: "Reverse DNS" },
+    host: { label: "Observed hostnames" },
 };
 const RELATION_ORDER = [
     "contacts",
@@ -84,20 +77,12 @@ export function ConnectionsCard({
     return (
         <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading icon={Link2}>What it connects to</SectionHeading>
-                <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                <SectionHeading icon={Link2}>Related indicators</SectionHeading>
+                <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
                     {keys.map((key) => {
-                        const meta = RELATION_META[key] ?? {
-                            label: key,
-                            icon: Link2,
-                        };
+                        const meta = RELATION_META[key] ?? { label: key };
                         return (
-                            <Field
-                                key={key}
-                                icon={meta.icon}
-                                label={meta.label}
-                                wrap
-                            >
+                            <Field key={key} label={meta.label} wrap>
                                 <PivotList
                                     values={groups.get(key) ?? []}
                                     max={6}
@@ -160,7 +145,7 @@ export function DistributionUrlsCard({ result }: { result: HashCheckResult }) {
         <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-3">
                 <SectionHeading icon={Link2}>
-                    Where it&apos;s been served
+                    Distribution URLs
                 </SectionHeading>
                 <p className="text-xs text-muted-foreground">
                     URLs that distributed this file. Use the pivot to check the
@@ -258,7 +243,7 @@ export function ExposedServicesCard({ result }: { result: CheckResult }) {
         <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={Server}>
-                    What&apos;s exposed
+                    Exposed services
                 </SectionHeading>
 
                 {sortedPorts.length > 0 && (
