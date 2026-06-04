@@ -226,7 +226,6 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                         {geo!.reverse && (
                                             <Field
                                                 label="Reverse DNS"
-                                                wrap
                                                 hint="The PTR hostname this IP maps back to"
                                                 tone={
                                                     geo!.fcrdns && !geo!.fcrdns.verified
