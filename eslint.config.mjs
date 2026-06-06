@@ -9,6 +9,8 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    // Nested build output (e.g. scratch git worktrees under .claude/worktrees/).
+    "**/.next/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
