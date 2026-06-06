@@ -118,21 +118,45 @@ export function relationsFor(
   return { value, type, related: merged };
 }
 
-/** Display label + ordering for each relation kind, shared by the connections
- *  list and the constellation graph. */
-export const RELATION_META: Record<string, { label: string }> = {
-  contacts: { label: "Contacts (C2 / network)" },
-  drops: { label: "Drops" },
-  parent: { label: "Parent samples" },
-  similar: { label: "Similar samples" },
-  distribution: { label: "Distribution hosts" },
-  hosted: { label: "Hosted domains" },
-  A: { label: "Resolves to (A)" },
-  resolved: { label: "Resolves to (passive DNS)" },
-  NS: { label: "Nameservers" },
-  MX: { label: "Mail (MX)" },
-  rDNS: { label: "Reverse DNS" },
-  host: { label: "Observed hostnames" },
+/** Display label + plain-language description + ordering for each relation kind,
+ *  shared by the connections detail view. */
+export const RELATION_META: Record<string, { label: string; description: string }> = {
+  contacts: {
+    label: "Contacts (C2 / network)",
+    description: "C2 / network endpoints this sample contacted",
+  },
+  drops: { label: "Drops", description: "Files this sample dropped or downloaded" },
+  parent: {
+    label: "Parent samples",
+    description: "Samples that bundle or drop this file",
+  },
+  similar: {
+    label: "Similar samples",
+    description: "Files structurally similar to this one",
+  },
+  distribution: {
+    label: "Distribution hosts",
+    description: "Hosts that distributed this file",
+  },
+  hosted: { label: "Hosted domains", description: "Domains hosted on this address" },
+  A: {
+    label: "Resolves to (A)",
+    description: "IP addresses this domain resolves to",
+  },
+  resolved: {
+    label: "Resolves to (passive DNS)",
+    description: "IPs seen for this domain in passive DNS",
+  },
+  NS: {
+    label: "Nameservers",
+    description: "Authoritative nameservers for this domain",
+  },
+  MX: { label: "Mail (MX)", description: "Mail exchangers for this domain" },
+  rDNS: { label: "Reverse DNS", description: "Reverse-DNS name for this address" },
+  host: {
+    label: "Observed hostnames",
+    description: "Hostnames observed on this address",
+  },
 };
 
 export const RELATION_ORDER = [
@@ -152,3 +176,40 @@ export const RELATION_ORDER = [
 
 /** A file's other digests are shown in the profile card, not as "connections". */
 export const DIGEST_RELATIONS = new Set(["MD5", "SHA-1", "SHA-256"]);
+
+export interface RelationGroup {
+  relation: string;
+  label: string;
+  description: string;
+  items: { value: string; type: IndicatorType }[];
+}
+
+/** Shape relations for the connections detail view: drop a file's other digests,
+ *  group by relation (preserving each item's type), order by RELATION_ORDER then
+ *  unknown relations alphabetically, and attach the shared label/description. */
+export function groupRelations(related: RelatedIndicator[]): RelationGroup[] {
+  const byRelation = new Map<string, { value: string; type: IndicatorType }[]>();
+  for (const r of related) {
+    if (DIGEST_RELATIONS.has(r.relation)) continue;
+    const items = byRelation.get(r.relation) ?? [];
+    if (!items.some((i) => i.value === r.value)) {
+      items.push({ value: r.value, type: r.type });
+    }
+    byRelation.set(r.relation, items);
+  }
+
+  const keys = [
+    ...RELATION_ORDER.filter((k) => byRelation.has(k)),
+    ...[...byRelation.keys()].filter((k) => !RELATION_ORDER.includes(k)).sort(),
+  ];
+
+  return keys.map((relation) => {
+    const meta = RELATION_META[relation] ?? { label: relation, description: "" };
+    return {
+      relation,
+      label: meta.label,
+      description: meta.description,
+      items: byRelation.get(relation) ?? [],
+    };
+  });
+}

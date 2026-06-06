@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   domainRelations,
+  groupRelations,
   hashRelations,
   ipRelations,
   relationsFor,
@@ -9,6 +10,7 @@ import type {
   CheckResult,
   DomainCheckResult,
   HashCheckResult,
+  RelatedIndicator,
   SourceResult,
 } from "@/lib/ti/types";
 
@@ -280,5 +282,58 @@ describe("relationsFor", () => {
     expect(
       related.filter((r) => r.value === "evil.example.com"),
     ).toHaveLength(1);
+  });
+});
+
+describe("groupRelations", () => {
+  it("excludes a file's other digests (MD5/SHA-1/SHA-256)", () => {
+    const related: RelatedIndicator[] = [
+      { value: "44d88612fea8a8f36de82e1278abb02f", type: "hash", relation: "MD5" },
+      { value: "1.2.3.4", type: "ip", relation: "A" },
+    ];
+    expect(groupRelations(related).map((g) => g.relation)).toEqual(["A"]);
+  });
+
+  it("orders groups by RELATION_ORDER, then unknown relations alphabetically", () => {
+    const related: RelatedIndicator[] = [
+      { value: "mx.example", type: "domain", relation: "MX" },
+      { value: "zeta", type: "domain", relation: "zeta" }, // unknown
+      { value: "1.2.3.4", type: "ip", relation: "A" },
+      { value: "ns.example", type: "domain", relation: "NS" },
+      { value: "alpha", type: "domain", relation: "alpha" }, // unknown
+    ];
+    expect(groupRelations(related).map((g) => g.relation)).toEqual([
+      "A",
+      "NS",
+      "MX",
+      "alpha",
+      "zeta",
+    ]);
+  });
+
+  it("groups items, preserves type, and dedupes duplicate values within a group", () => {
+    const related: RelatedIndicator[] = [
+      { value: "1.1.1.1", type: "ip", relation: "A" },
+      { value: "1.1.1.1", type: "ip", relation: "A" }, // dup value
+      { value: "8.8.8.8", type: "ip", relation: "A" },
+    ];
+    const groups = groupRelations(related);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].items).toEqual([
+      { value: "1.1.1.1", type: "ip" },
+      { value: "8.8.8.8", type: "ip" },
+    ]);
+  });
+
+  it("attaches label and description from RELATION_META", () => {
+    const [g] = groupRelations([{ value: "1.2.3.4", type: "ip", relation: "A" }]);
+    expect(g.label).toBe("Resolves to (A)");
+    expect(g.description).toBe("IP addresses this domain resolves to");
+  });
+
+  it("falls back to the raw relation as label for unknown relations", () => {
+    const [g] = groupRelations([{ value: "x", type: "domain", relation: "weird" }]);
+    expect(g.label).toBe("weird");
+    expect(g.description).toBe("");
   });
 });
