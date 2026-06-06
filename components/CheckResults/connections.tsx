@@ -13,43 +13,11 @@ import {
     type HashCheckResult,
 } from "@/lib/ti/types";
 import { type ResultLike } from "@/lib/ti/narrative";
-import { relationsFor } from "@/lib/relations";
+import { relationsFor, RELATION_META, RELATION_ORDER, DIGEST_RELATIONS } from "@/lib/relations";
 import { hostFromUrl } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, Pivot, PivotList, SectionHeading, useCopied } from "./primitives";
-
-/** Display + ordering for relation labels surfaced in the Connections card. */
-const RELATION_META: Record<string, { label: string }> = {
-    contacts: { label: "Contacts (C2 / network)" },
-    drops: { label: "Drops" },
-    parent: { label: "Parent samples" },
-    similar: { label: "Similar samples" },
-    distribution: { label: "Distribution hosts" },
-    hosted: { label: "Hosted domains" },
-    A: { label: "Resolves to (A)" },
-    resolved: { label: "Resolves to (passive DNS)" },
-    NS: { label: "Nameservers" },
-    MX: { label: "Mail (MX)" },
-    rDNS: { label: "Reverse DNS" },
-    host: { label: "Observed hostnames" },
-};
-const RELATION_ORDER = [
-    "contacts",
-    "drops",
-    "parent",
-    "similar",
-    "distribution",
-    "hosted",
-    "A",
-    "resolved",
-    "NS",
-    "MX",
-    "rDNS",
-    "host",
-];
-/** A file's other digests are shown in the profile card, not as "connections". */
-const DIGEST_RELATIONS = new Set(["MD5", "SHA-1", "SHA-256"]);
 
 export function ConnectionsCard({
     result,

@@ -117,3 +117,38 @@ export function relationsFor(
   );
   return { value, type, related: merged };
 }
+
+/** Display label + ordering for each relation kind, shared by the connections
+ *  list and the constellation graph. */
+export const RELATION_META: Record<string, { label: string }> = {
+  contacts: { label: "Contacts (C2 / network)" },
+  drops: { label: "Drops" },
+  parent: { label: "Parent samples" },
+  similar: { label: "Similar samples" },
+  distribution: { label: "Distribution hosts" },
+  hosted: { label: "Hosted domains" },
+  A: { label: "Resolves to (A)" },
+  resolved: { label: "Resolves to (passive DNS)" },
+  NS: { label: "Nameservers" },
+  MX: { label: "Mail (MX)" },
+  rDNS: { label: "Reverse DNS" },
+  host: { label: "Observed hostnames" },
+};
+
+export const RELATION_ORDER = [
+  "contacts",
+  "drops",
+  "parent",
+  "similar",
+  "distribution",
+  "hosted",
+  "A",
+  "resolved",
+  "NS",
+  "MX",
+  "rDNS",
+  "host",
+];
+
+/** A file's other digests are shown in the profile card, not as "connections". */
+export const DIGEST_RELATIONS = new Set(["MD5", "SHA-1", "SHA-256"]);
