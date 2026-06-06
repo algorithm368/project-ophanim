@@ -27,7 +27,7 @@ const API = "https://tria.ge/api/v0";
  * to a bare host. Triage `c2`/`domains`/`hosts` strings are not normalized
  * upstream and routinely mix hostnames and IPs.
  */
-function bareHost(raw: string): string {
+export function bareHost(raw: string): string {
   const noScheme = raw.replace(/^\w+:\/\//, "").split("/")[0].trim();
   // IPv6 in brackets, optionally with a port: "[2001:db8::1]:443" -> "2001:db8::1".
   const v6 = noScheme.match(/^\[([^\]]+)\]/);

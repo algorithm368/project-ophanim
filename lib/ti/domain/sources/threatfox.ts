@@ -22,7 +22,7 @@ interface ThreatFoxResponse {
  * IOCs for malicious *.google.com URLs. Pin matches to the exact host queried
  * so a legit apex isn't flagged for abuse hosted on a subdomain.
  */
-function iocHost(ioc: string | undefined, type: string | undefined): string {
+export function iocHost(ioc: string | undefined, type: string | undefined): string {
   if (!ioc) return "";
   if (type === "url") {
     try {
@@ -32,6 +32,11 @@ function iocHost(ioc: string | undefined, type: string | undefined): string {
     }
   }
   return ioc.split("/")[0].split(":")[0].toLowerCase().replace(/\.$/, "");
+}
+
+/** ThreatFox confidence (0-100) → score, floored at 60 for any IOC hit. */
+export function threatFoxScore(confidence: number): number {
+  return Math.min(100, Math.max(60, confidence));
 }
 
 /** ThreatFox (abuse.ch) - malware IOC database, domain lookup (free Auth-Key). */
@@ -74,7 +79,7 @@ export const threatFoxDomainSource: TiSource = {
         return { status: "ok", score: 0, summary: "No malware IOCs reference this domain" };
       }
       const confidence = Math.max(0, ...entries.map((e) => e.confidence_level ?? 0));
-      const score = Math.min(100, Math.max(60, confidence));
+      const score = threatFoxScore(confidence);
       const malwares = Array.from(
         new Set(entries.map((e) => e.malware_printable || e.malware).filter(Boolean)),
       ) as string[];

@@ -14,7 +14,7 @@ interface FilescanReputation {
   detail?: unknown;
 }
 
-const VERDICT_FLOOR: Record<string, number> = {
+export const VERDICT_FLOOR: Record<string, number> = {
   malicious: 75,
   suspicious: 45,
   likely_malicious: 60,
@@ -22,6 +22,16 @@ const VERDICT_FLOOR: Record<string, number> = {
   benign: 0,
   informational: 0,
 };
+
+/** Higher of the multi-AV detection ratio and the verdict floor (0-100). */
+export function metadefenderScore(
+  detected: number,
+  total: number,
+  verdict: string,
+): number {
+  const mdScore = total > 0 ? Math.round((detected / total) * 100) : 0;
+  return Math.max(mdScore, VERDICT_FLOOR[verdict] ?? 0);
+}
 
 /**
  * OPSWAT MetaDefender Cloud, via the public (key-free) Filescan.io reputation
@@ -66,10 +76,7 @@ export const metadefenderHashSource: TiSource = {
         return { status: "ok", summary: "Not seen by MetaDefender / Filescan" };
       }
 
-      const mdScore =
-        total > 0 ? Math.round((detected / total) * 100) : undefined;
-      const verdictFloor = VERDICT_FLOOR[verdict];
-      const score = Math.max(mdScore ?? 0, verdictFloor ?? 0);
+      const score = metadefenderScore(detected, total, verdict);
 
       const parts: string[] = [];
       if (md) parts.push(`MetaDefender ${detected}/${total} engines`);

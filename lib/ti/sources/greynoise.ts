@@ -12,6 +12,15 @@ interface GreyNoiseResponse {
   message?: string;
 }
 
+/** GreyNoise classification → 0-100 contribution (malicious 80, benign 0, else 30). */
+export function greyNoiseScore(classification: string | undefined): number {
+  return classification === "malicious"
+    ? 80
+    : classification === "benign"
+      ? 0
+      : 30;
+}
+
 /** GreyNoise Community API: internet scanner classification (free API key required). */
 export const greyNoiseSource: TiSource = {
   meta: {
@@ -55,8 +64,7 @@ export const greyNoiseSource: TiSource = {
       }
 
       const classification = data.classification ?? "unknown";
-      const score =
-        classification === "malicious" ? 80 : classification === "benign" ? 0 : 30;
+      const score = greyNoiseScore(classification);
 
       const categories: string[] = [];
       if (data.noise) categories.push("internet-scanner");

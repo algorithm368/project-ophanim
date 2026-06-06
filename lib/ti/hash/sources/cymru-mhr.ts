@@ -1,6 +1,30 @@
 import { Resolver } from "node:dns/promises";
 import type { SourceFinding, TiSource } from "../../types";
 
+/** Parse an MHR TXT record: "<last_seen_unix_ts> <detection_percentage>". */
+export function parseCymruTxt(txt: string): {
+  lastSeen: string | undefined;
+  detection: number;
+} {
+  const [tsRaw, detectRaw] = txt.split(/\s+/);
+  const lastSeenTs = Number(tsRaw);
+  return {
+    lastSeen: Number.isFinite(lastSeenTs)
+      ? new Date(lastSeenTs * 1000).toISOString()
+      : undefined,
+    detection: Number(detectRaw),
+  };
+}
+
+/**
+ * MHR detection rate → score. Presence in MHR means it's known malware; the
+ * rate refines confidence, but a fresh sample can read low, so floor at 50
+ * (cap 95). A missing/unparseable rate falls back to 60.
+ */
+export function cymruScore(detection: number): number {
+  return Number.isFinite(detection) ? Math.min(95, Math.max(50, detection)) : 60;
+}
+
 /**
  * Team Cymru Malware Hash Registry - a free, key-free reputation feed queried
  * over DNS. A TXT record at "<hash>.malware.hash.cymru.com" returns the last
@@ -27,19 +51,8 @@ export const cymruMhrSource: TiSource = {
     try {
       const records = await resolver.resolveTxt(`${hash}.malware.hash.cymru.com`);
       const txt = records.map((chunks) => chunks.join("")).join(" ").trim();
-      // Format: "<last_seen_unix_ts> <detection_percentage>".
-      const [tsRaw, detectRaw] = txt.split(/\s+/);
-      const lastSeenTs = Number(tsRaw);
-      const detection = Number(detectRaw);
-      const lastSeen = Number.isFinite(lastSeenTs)
-        ? new Date(lastSeenTs * 1000).toISOString()
-        : undefined;
-
-      // Presence in MHR means it's known malware; the detection rate refines
-      // confidence but a fresh sample can legitimately read low, so floor it.
-      const score = Number.isFinite(detection)
-        ? Math.min(95, Math.max(50, detection))
-        : 60;
+      const { lastSeen, detection } = parseCymruTxt(txt);
+      const score = cymruScore(detection);
 
       return {
         status: "ok",

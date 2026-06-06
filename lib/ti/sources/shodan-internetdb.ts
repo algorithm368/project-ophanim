@@ -19,6 +19,19 @@ const MALICIOUS_TAGS = new Set([
   "honeypot",
 ]);
 
+/** Shodan tags that mark the host itself as malicious (case-insensitive). */
+export function maliciousTags(tags: string[]): string[] {
+  return tags.filter((t) => MALICIOUS_TAGS.has(t.toLowerCase()));
+}
+
+/** Exposure score from CVE count + malicious-tag presence, capped 0-100. */
+export function exposureScore(vulnCount: number, hasBadTags: boolean): number {
+  let score = 0;
+  if (vulnCount) score += Math.min(50, 10 + vulnCount * 5);
+  if (hasBadTags) score += 50;
+  return Math.min(100, score);
+}
+
 /** Shodan InternetDB: free host exposure data (no key): open ports, CVEs, tags. */
 export const shodanInternetDbSource: TiSource = {
   meta: {
@@ -52,12 +65,8 @@ export const shodanInternetDbSource: TiSource = {
       const ports = data.ports ?? [];
       const vulns = data.vulns ?? [];
       const tags = data.tags ?? [];
-      const badTags = tags.filter((t) => MALICIOUS_TAGS.has(t.toLowerCase()));
-
-      let score = 0;
-      if (vulns.length) score += Math.min(50, 10 + vulns.length * 5);
-      if (badTags.length) score += 50;
-      score = Math.min(100, score);
+      const badTags = maliciousTags(tags);
+      const score = exposureScore(vulns.length, badTags.length > 0);
 
       const parts: string[] = [];
       if (ports.length) parts.push(`${ports.length} open port(s)`);

@@ -17,9 +17,11 @@ Works out of the box, **no API key required**:
 | ipwho.is           | Second geolocation/ASN opinion (reconciled)     |
 | RDAP (RIR)         | Authoritative allocation country + network name |
 | Reverse DNS (FCrDNS)| PTR + forward-confirmed reverse DNS             |
+| RIPEstat           | Announced BGP prefix + origin ASN (RIPE NCC)    |
 | Shodan InternetDB  | Open ports, known CVEs, host tags               |
 | DNS Blocklists     | Spamhaus, SpamCop, Barracuda, DroneBL, …        |
 | blocklist.de       | Recent attack/abuse report counts               |
+| IPsum              | Aggregated reputation across 30+ blocklists     |
 | Feodo Tracker      | Known botnet C2 IPs (abuse.ch)                  |
 | ET Open            | Known compromised hosts (Emerging Threats)      |
 | Tor Project        | Tor relay / exit node membership                |
@@ -40,7 +42,6 @@ Enabled only when an API key is set (free signup):
 | GreyNoise      | `GREYNOISE_API_KEY`                  |
 | ThreatFox      | `THREATFOX_API_KEY`                  |
 | Criminal IP    | `CRIMINALIP_API_KEY`                 |
-| Censys         | `CENSYS_API_SECRET` (Platform token) |
 
 Sources without a key are shown in the UI as "No key" and skipped - add a key in
 `.env.local` and they light up automatically.

@@ -3,6 +3,15 @@ const DEFAULT_HEADERS = {
   Accept: "application/json",
 };
 
+// A few providers (e.g. ipwho.is on the free tier) reject the `Sec-Fetch-Mode:
+// cors` header Node's fetch (undici) stamps on every request, and need
+// `mode: "no-cors"` to flip it. That is OPT-IN per call (see getJson's `mode`
+// argument), never global: under `no-cors` undici hangs on cross-origin
+// redirects (e.g. rdap.org -> the authoritative RIR), so any redirect-following
+// source must use the default mode. Default mode is correct for almost every
+// source; only quirky CORS-rejecting providers pass "no-cors".
+export type FetchMode = "cors" | "no-cors" | "same-origin";
+
 export interface HttpResponse<T> {
   ok: boolean;
   status: number;
@@ -27,10 +36,14 @@ export async function getJson<T>(
   url: string,
   signal: AbortSignal,
   headers: Record<string, string> = {},
+  mode?: FetchMode,
 ): Promise<HttpResponse<T>> {
   const res = await fetch(url, {
     signal,
     cache: "no-store",
+    // Default (cors) follows redirects; "no-cors" is opt-in for CORS-rejecting
+    // providers and must not be used by redirect-following sources.
+    ...(mode ? { mode } : {}),
     headers: { ...DEFAULT_HEADERS, ...headers },
   });
   return asJsonResponse<T>(res);

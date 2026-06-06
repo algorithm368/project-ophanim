@@ -28,8 +28,14 @@ interface ZoneResult {
 
 // 127.255.255.x is used by several DNSBLs to signal "query blocked / rate limited",
 // not an actual listing of the target IP.
-function isBlockedCode(addr: string): boolean {
+export function isBlockedCode(addr: string): boolean {
   return addr.startsWith("127.255.255.");
+}
+
+// Each independent zone listing adds risk, but a single noisy listing shouldn't
+// dominate — confidence comes from consensus across zones.
+export function dnsblScore(listedCount: number): number {
+  return listedCount > 0 ? Math.min(90, 20 + (listedCount - 1) * 18) : 0;
 }
 
 async function queryZone(
@@ -87,12 +93,7 @@ export const dnsblSource: TiSource = {
     const errored = results.filter((r) => r.state === "error");
     const checked = ZONES.length - blocked.length - errored.length;
 
-    // Each listing adds risk, but a single noisy listing shouldn't dominate -
-    // confidence comes from consensus across independent zones.
-    const score =
-      listed.length > 0
-        ? Math.min(90, 20 + (listed.length - 1) * 18)
-        : 0;
+    const score = dnsblScore(listed.length);
 
     let summary: string;
     if (listed.length > 0) {

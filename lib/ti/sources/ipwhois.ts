@@ -40,7 +40,15 @@ export const ipWhoIsSource: TiSource = {
   isEnabled: () => true,
   async check(ip, signal): Promise<SourceFinding> {
     try {
-      const { data } = await getJson<IpWhoIsResponse>(`https://ipwho.is/${ip}`, signal);
+      // ipwho.is free tier rejects the default `Sec-Fetch-Mode: cors`, so opt
+      // into no-cors. Safe here because ipwho.is doesn't redirect (no-cors hangs
+      // undici on cross-origin redirects — see lib/ti/http.ts).
+      const { data } = await getJson<IpWhoIsResponse>(
+        `https://ipwho.is/${ip}`,
+        signal,
+        {},
+        "no-cors",
+      );
       if (!data || !data.success) {
         return { status: "error", error: data?.message ?? "Lookup failed" };
       }

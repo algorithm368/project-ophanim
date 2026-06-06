@@ -124,9 +124,14 @@ interface VtFileResponse {
   error?: { message?: string; code?: string };
 }
 
-function isoFromEpoch(seconds?: number): string | undefined {
+export function isoFromEpoch(seconds?: number): string | undefined {
   if (!seconds) return undefined;
   return new Date(seconds * 1000).toISOString();
+}
+
+/** VT vendor stats → 0-100 (file weighting: 8× malicious + 3× suspicious). */
+export function vtFileScore(malicious: number, suspicious: number): number {
+  return Math.min(100, malicious * 8 + suspicious * 3);
 }
 
 /** VirusTotal v3 - multi-engine file detection by hash (free API key required). */
@@ -179,7 +184,7 @@ export const virusTotalHashSource: TiSource = {
         (stats.undetected ?? 0) +
         (stats.timeout ?? 0);
 
-      const score = Math.min(100, malicious * 8 + suspicious * 3);
+      const score = vtFileScore(malicious, suspicious);
       const threatLabel =
         attr.popular_threat_classification?.suggested_threat_label;
       const family =

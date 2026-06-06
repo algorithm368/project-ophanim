@@ -7,7 +7,6 @@ import {
     ShieldAlert,
     ShieldCheck,
     ShieldQuestion,
-    Tag,
 } from "lucide-react";
 import {
     isDomainResult,
@@ -24,12 +23,9 @@ import {
     consensusBuckets,
     type ResultLike,
 } from "@/lib/ti/narrative";
-import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { classifyType, classifyDomain, classifyHash } from "./classify";
 import { CopyableSummary } from "./primitives";
 import type { IconType } from "./types";
 
@@ -106,16 +102,10 @@ export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
 function VerdictShell({
     result,
     onRefresh,
-    typeLabel,
-    TypeIcon,
-    categoryLabel,
     narrative,
 }: {
     result: ResultLike;
     onRefresh: () => void;
-    typeLabel: string;
-    TypeIcon: IconType;
-    categoryLabel?: string;
     narrative: string;
 }) {
     const style = VERDICT_STYLE[result.verdict];
@@ -134,24 +124,6 @@ function VerdictShell({
                             >
                                 {style.headline}
                             </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Badge
-                                variant="secondary"
-                                className="gap-1.5 rounded-md text-sm font-medium"
-                            >
-                                <TypeIcon className="size-4" />
-                                {typeLabel}
-                            </Badge>
-                            {categoryLabel && (
-                                <Badge
-                                    variant="secondary"
-                                    className="gap-1.5 rounded-md text-sm font-medium"
-                                >
-                                    <Tag className="size-4" />
-                                    {categoryLabel}
-                                </Badge>
-                            )}
                         </div>
                         <CopyableSummary text={narrative} />
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -192,52 +164,16 @@ export function VerdictHero({
     result: CheckResult | DomainCheckResult | HashCheckResult;
     onRefresh: () => void;
 }) {
-    if (isHashResult(result)) {
-        const ctx = result.context;
-        const hasData = result.sources.some(
-            (s) => s.status === "ok" && s.score !== undefined,
-        );
-        const type = classifyHash(ctx, hasData);
-        return (
-            <VerdictShell
-                result={result}
-                onRefresh={onRefresh}
-                typeLabel={type.label}
-                TypeIcon={type.icon}
-                categoryLabel={HASH_ALGO_LABEL[result.algorithm]}
-                narrative={buildHashNarrative(result).join(" ")}
-            />
-        );
-    }
-    if (isDomainResult(result)) {
-        const ctx = result.context;
-        const resolves =
-            (ctx?.resolvedIps?.length ?? 0) > 0 || (ctx?.ipv6?.length ?? 0) > 0;
-        const type = classifyDomain(ctx, resolves);
-        const categories = ctx?.categories ?? [];
-        return (
-            <VerdictShell
-                result={result}
-                onRefresh={onRefresh}
-                typeLabel={type.label}
-                TypeIcon={type.icon}
-                categoryLabel={
-                    categories.length
-                        ? categories.slice(0, 2).join(" · ")
-                        : undefined
-                }
-                narrative={buildDomainNarrative(result).join(" ")}
-            />
-        );
-    }
-    const type = classifyType(result.geo);
+    const narrative = isHashResult(result)
+        ? buildHashNarrative(result).join(" ")
+        : isDomainResult(result)
+          ? buildDomainNarrative(result).join(" ")
+          : buildNarrative(result).join(" ");
     return (
         <VerdictShell
             result={result}
             onRefresh={onRefresh}
-            typeLabel={type.label}
-            TypeIcon={type.icon}
-            narrative={buildNarrative(result).join(" ")}
+            narrative={narrative}
         />
     );
 }

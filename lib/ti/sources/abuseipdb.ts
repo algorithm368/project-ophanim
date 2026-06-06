@@ -17,6 +17,28 @@ interface AbuseResponse {
   errors?: { detail?: string }[];
 }
 
+export type AbuseData = NonNullable<AbuseResponse["data"]>;
+
+/** Map an AbuseIPDB confidence record to score/verdict/categories/summary. */
+export function summarizeAbuse(d: AbuseData): {
+  score: number;
+  malicious: boolean;
+  categories: string[];
+  summary: string;
+} {
+  const score = d.abuseConfidenceScore ?? 0;
+  const categories: string[] = [];
+  if (d.isTor) categories.push("tor");
+  if (d.usageType) categories.push(d.usageType);
+  return {
+    score,
+    // AbuseIPDB's own confidence ≥50% is the community "this is abusive" line.
+    malicious: score >= 50,
+    categories,
+    summary: `${score}% abuse confidence from ${d.totalReports ?? 0} report(s)`,
+  };
+}
+
 /** AbuseIPDB: community abuse reports, confidence score (free API key required). */
 export const abuseIpdbSource: TiSource = {
   meta: {
@@ -46,17 +68,14 @@ export const abuseIpdbSource: TiSource = {
       }
 
       const d = data.data;
-      const score = d.abuseConfidenceScore ?? 0;
-      const categories: string[] = [];
-      if (d.isTor) categories.push("tor");
-      if (d.usageType) categories.push(d.usageType);
+      const { score, malicious, categories, summary } = summarizeAbuse(d);
 
       return {
         status: "ok",
-        malicious: score >= 50,
+        malicious,
         score,
         lastSeen: d.lastReportedAt,
-        summary: `${score}% abuse confidence from ${d.totalReports ?? 0} report(s)`,
+        summary,
         categories,
         details: {
           totalReports: d.totalReports,

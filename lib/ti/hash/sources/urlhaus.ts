@@ -21,7 +21,7 @@ interface UrlhausPayloadResponse {
   urls?: UrlhausUrlEntry[];
 }
 
-function toNumber(value: number | string | undefined): number | undefined {
+export function toNumber(value: number | string | undefined): number | undefined {
   if (value === undefined || value === null) return undefined;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : undefined;

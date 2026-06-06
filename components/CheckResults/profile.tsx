@@ -170,14 +170,16 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                     </span>
                 </div>
 
-                {/* Bento: map tile on the left, detail cells stacked on the right. */}
+                {/* Bento: map tile on the left, detail cells stacked on the right.
+                    items-stretch + a filling map keep both columns the same height. */}
                 {(hasMap || hasDetails) && (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
                         {hasMap && (
                             <div className="w-full shrink-0 sm:w-72">
                                 <LocationMap
                                     lat={geo!.lat!}
                                     lon={geo!.lon!}
+                                    fill={hasDetails}
                                     caption={
                                         joinPlace([
                                             geo!.city,

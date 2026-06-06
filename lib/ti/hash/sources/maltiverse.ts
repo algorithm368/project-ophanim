@@ -16,7 +16,7 @@ interface MaltiverseSample {
 }
 
 /** classification → score; undefined when neutral/unknown (absence ≠ clean). */
-function classificationScore(c: string | undefined): {
+export function classificationScore(c: string | undefined): {
   score: number | undefined;
   malicious: boolean;
 } {

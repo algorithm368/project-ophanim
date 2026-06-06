@@ -25,6 +25,12 @@ export const rdapIpSource: TiSource = {
     category: "context",
     requiresKey: false,
     weight: 0,
+    // rdap.org 302-redirects to the authoritative RIR (two hops), and some RIRs
+    // (ARIN, AFRINIC) are genuinely slow. Default mode (not no-cors) is required
+    // so undici follows that cross-origin redirect at all; 12s of headroom — the
+    // same ceiling RIPEstat already uses — absorbs slow RIRs without lengthening
+    // the worst-case wait.
+    timeoutMs: 12000,
   },
   isEnabled: () => true,
   async check(ip, signal): Promise<SourceFinding> {

@@ -13,6 +13,16 @@ interface Cache {
 let cache: Cache | null = null;
 let inflight: Promise<Cache> | null = null;
 
+/** Parse the ET Open compromised-IPs feed into a Set (skips blanks + # comments). */
+export function parseCompromisedFeed(text: string): Set<string> {
+  const ips = new Set<string>();
+  for (const line of text.split("\n")) {
+    const v = line.trim();
+    if (v && !v.startsWith("#")) ips.add(v);
+  }
+  return ips;
+}
+
 async function loadFeed(signal: AbortSignal): Promise<Cache> {
   if (cache && Date.now() - cache.fetchedAt < TTL_MS) return cache;
   if (inflight) return inflight;
@@ -20,11 +30,7 @@ async function loadFeed(signal: AbortSignal): Promise<Cache> {
   inflight = (async () => {
     const { ok, status, text } = await getText(FEED_URL, signal);
     if (!ok) throw new Error(`feed unavailable (HTTP ${status})`);
-    const ips = new Set<string>();
-    for (const line of text.split("\n")) {
-      const v = line.trim();
-      if (v && !v.startsWith("#")) ips.add(v);
-    }
+    const ips = parseCompromisedFeed(text);
     cache = { ips, fetchedAt: Date.now() };
     return cache;
   })();

@@ -18,6 +18,11 @@ interface ThreatFoxResponse {
   data?: ThreatFoxEntry[] | string;
 }
 
+/** ThreatFox confidence (0-100) → score, floored at 60 for any IOC hit. */
+export function threatFoxScore(confidence: number): number {
+  return Math.min(100, Math.max(60, confidence));
+}
+
 /** ThreatFox (abuse.ch): malware IOC database (free abuse.ch Auth-Key). */
 export const threatFoxSource: TiSource = {
   meta: {
@@ -59,7 +64,7 @@ export const threatFoxSource: TiSource = {
         0,
         ...entries.map((e) => e.confidence_level ?? 0),
       );
-      const score = Math.min(100, Math.max(60, confidence));
+      const score = threatFoxScore(confidence);
       const malwares = Array.from(
         new Set(
           entries.map((e) => e.malware_printable || e.malware).filter(Boolean),

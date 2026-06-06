@@ -23,6 +23,21 @@ interface HaOverview {
  * (www. cross-redirects strip the api-key header) and carry the Falcon Sandbox
  * user agent.
  */
+/**
+ * Sandbox verdict → score. Whitelisted wins (0); malicious/suspicious set a
+ * floor under the raw threat score; otherwise the threat score stands.
+ */
+export function hybridAnalysisScore(
+  verdict: string,
+  threatScore: number | undefined,
+  whitelisted: boolean | null | undefined,
+): number {
+  if (whitelisted || verdict === "whitelisted") return 0;
+  if (verdict === "malicious") return Math.max(threatScore ?? 0, 75);
+  if (verdict === "suspicious") return Math.max(threatScore ?? 0, 45);
+  return threatScore ?? 0;
+}
+
 export const hybridAnalysisSource: TiSource = {
   meta: {
     id: "hybrid-analysis",
@@ -71,11 +86,7 @@ export const hybridAnalysisSource: TiSource = {
         data.type?.trim() ||
         (data.type_short?.length ? data.type_short.join(", ") : undefined);
 
-      let score: number;
-      if (data.whitelisted || verdict === "whitelisted") score = 0;
-      else if (verdict === "malicious") score = Math.max(threatScore ?? 0, 75);
-      else if (verdict === "suspicious") score = Math.max(threatScore ?? 0, 45);
-      else score = threatScore ?? 0;
+      const score = hybridAnalysisScore(verdict, threatScore, data.whitelisted);
 
       return {
         status: "ok",

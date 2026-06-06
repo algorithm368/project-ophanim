@@ -1,6 +1,22 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getText, isTimeout } from "../http";
 
+/** Parse blocklist.de's "attacks: N<br />reports: M" plain-text body. */
+export function parseBlocklistDe(text: string): {
+  attacks: number;
+  reports: number;
+} {
+  return {
+    attacks: Number(/attacks:\s*(\d+)/i.exec(text)?.[1] ?? "0"),
+    reports: Number(/reports:\s*(\d+)/i.exec(text)?.[1] ?? "0"),
+  };
+}
+
+/** Attack count → 0-100 score (30 base + 5 per attack once any are seen). */
+export function blocklistDeScore(attacks: number): number {
+  return attacks > 0 ? Math.min(100, 30 + attacks * 5) : 0;
+}
+
 /** blocklist.de: aggregated abuse/attack reports from fail2ban reporters (no key). */
 export const blocklistDeSource: TiSource = {
   meta: {
@@ -21,10 +37,8 @@ export const blocklistDeSource: TiSource = {
       if (!ok) return { status: "error", error: `HTTP ${status}` };
 
       // Response looks like: "attacks: 5<br />reports: 3"
-      const attacks = Number(/attacks:\s*(\d+)/i.exec(text)?.[1] ?? "0");
-      const reports = Number(/reports:\s*(\d+)/i.exec(text)?.[1] ?? "0");
-
-      const score = attacks > 0 ? Math.min(100, 30 + attacks * 5) : 0;
+      const { attacks, reports } = parseBlocklistDe(text);
+      const score = blocklistDeScore(attacks);
 
       return {
         status: "ok",

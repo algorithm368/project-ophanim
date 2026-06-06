@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import {
   CircleX,
+  Clock,
   FileDigit,
   Gauge,
   Globe,
@@ -182,6 +183,14 @@ function canonicalFor(value: string, detected: Mode | null): string {
   if (detected === "hash") return parseHash(value)?.hash ?? value;
   return value;
 }
+
+/** No NDJSON line for this long means the stream stalled (server bounds each
+ *  source at ~12s), so the inactivity watchdog aborts and we show what we have. */
+const STREAM_INACTIVITY_MS = 20000;
+
+/** A still-pending source past this many seconds is flagged "slow…" so the wait
+ *  reads as a known laggard about to time out, not a frozen UI. */
+const SLOW_THRESHOLD_S = 5;
 
 const loadCheckResults = () => import("./CheckResults");
 const CheckResults = dynamic(loadCheckResults, { ssr: false });
@@ -377,7 +386,18 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
           ? { domain: value, refresh: refreshFlag }
           : { hash: value, refresh: refreshFlag };
 
+    // Inactivity watchdog: the server streams a source every few seconds and
+    // bounds each at ~12s, so a long gap means the stream genuinely stalled.
+    // The whole result is shown at once when complete — no partial reveal.
+    const controller = new AbortController();
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const bump = () => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => controller.abort(), STREAM_INACTIVITY_MS);
+    };
+
     try {
+      bump();
       const res = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -385,6 +405,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
           Accept: "application/x-ndjson",
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
 
       // Validation/transport errors come back as a plain JSON body.
@@ -412,6 +433,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
       while (true) {
         const { done, value: chunk } = await reader.read();
         if (done) break;
+        bump();
         buffer += decoder.decode(chunk, { stream: true });
 
         const lines = buffer.split("\n");
@@ -462,12 +484,15 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
         });
       }
     } catch {
+      // Network drop or the watchdog firing because the stream stalled.
       setError({
         kind: "request",
-        message:
-          "Couldn't reach the server. Check your connection and try again.",
+        message: controller.signal.aborted
+          ? "This check is taking longer than expected. Please try again."
+          : "Couldn't reach the server. Check your connection and try again.",
       });
     } finally {
+      if (watchdog) clearTimeout(watchdog);
       setLoading(false);
       setProgress(null);
     }
@@ -643,7 +668,6 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
       {!loading && result && (
         <CheckResults result={result} onRefresh={refresh} onPivot={pivot} />
       )}
-
     </div>
   );
 }
@@ -808,6 +832,13 @@ function ErrorState({
   );
 }
 
+/** Whole-second stopwatch label: "8s", or "1:07" once past a minute. */
+function fmtElapsed(seconds: number): string {
+  return seconds < 60
+    ? `${seconds}s`
+    : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function SearchProgress({
   progress,
   indicator,
@@ -821,7 +852,6 @@ function SearchProgress({
     mode === "ip" ? "address" : mode === "domain" ? "domain" : "file";
   const total = progress?.total ?? 0;
   const done = progress ? Object.keys(progress.settled).length : 0;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const metas = progress?.metas ?? [];
   // The most recently settled source, for the "currently doing" caption.
   const lastSettled = progress
@@ -829,6 +859,49 @@ function SearchProgress({
         (a, b) => b.durationMs - a.durationMs,
       )[0]
     : undefined;
+  const allSettled = total > 0 && done >= total;
+
+  // Worst-case remaining wait = the longest timeout among the sources still
+  // out (they run in parallel, so the slowest pending one bounds the finish).
+  // As slow sources land this only shrinks, so the countdown never ticks up.
+  // Falls back to all-source / 10s before any source has settled.
+  const pendingMetas = metas.filter((m) => !progress?.settled[m.id]);
+  const etaMs = pendingMetas.length
+    ? Math.max(...pendingMetas.map((m) => m.timeoutMs ?? 8000))
+    : metas.length
+      ? Math.max(...metas.map((m) => m.timeoutMs ?? 8000))
+      : 10000;
+
+  // Tick at 100ms so the bar glides and the countdown ticks down by the second.
+  const [startTs] = useState(() => Date.now());
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  useEffect(() => {
+    if (allSettled) return;
+    const id = setInterval(() => setNowTs(Date.now()), 100);
+    return () => clearInterval(id);
+  }, [allSettled]);
+  const elapsedMs = Math.max(0, nowTs - startTs);
+  const elapsedS = Math.floor(elapsedMs / 1000);
+
+  // Smooth fill: elapsed time advances it continuously (held just shy of full so
+  // it never claims to be done early), while real source completion can push it
+  // further ahead — then it snaps to 100% once every source is in.
+  const timeFrac = Math.min(0.97, elapsedMs / etaMs);
+  const realFrac = total > 0 ? done / total : 0;
+  const pct = Math.round((allSettled ? 1 : Math.max(timeFrac, realFrac)) * 100);
+
+  // Countdown: how much of the estimate is left. Once it runs out we keep the
+  // bar near-full and switch the label to the honest "finishing up…".
+  const remainingS = Math.max(0, Math.ceil((etaMs - elapsedMs) / 1000));
+  const countdown = allSettled
+    ? "wrapping up…"
+    : remainingS > 0
+      ? `~${fmtElapsed(remainingS)} left`
+      : "finishing up…";
+
+  // Slow-tail awareness: name the still-pending sources and the worst-case wait.
+  const maxTimeoutS = Math.round(etaMs / 1000);
+  const showSlowNote = elapsedS >= SLOW_THRESHOLD_S && pendingMetas.length > 0;
 
   return (
     <Card className="sketch-shadow mt-8 overflow-hidden rounded-2xl border-2 border-foreground/20 bg-gradient-to-br from-primary/8 to-transparent duration-300 animate-in fade-in slide-in-from-bottom-2">
@@ -853,6 +926,10 @@ function SearchProgress({
               <span className="font-mono">{done}</span> of{" "}
               <span className="font-mono">{total || "…"}</span> sources
             </div>
+            <div className="mt-1 flex items-center justify-end gap-1 font-mono text-xs tabular-nums text-muted-foreground/70">
+              <Clock className="size-3" aria-hidden />
+              {countdown}
+            </div>
           </div>
         </div>
 
@@ -865,15 +942,23 @@ function SearchProgress({
           aria-valuetext={
             total > 0 ? `${done} of ${total} sources checked` : undefined
           }
-          className="h-3.5 w-full overflow-hidden rounded-sm border-2 border-foreground/15 bg-muted"
+          className="relative h-3.5 w-full overflow-hidden rounded-sm border-2 border-foreground/15 bg-muted"
         >
           <div
             className={cn(
-              "h-full rounded-sm bg-primary transition-[width] duration-500 ease-out",
+              "h-full rounded-sm bg-primary transition-[width] duration-200 ease-linear",
               total === 0 && "w-1/3 animate-pulse",
             )}
             style={total > 0 ? { width: `${Math.max(pct, 3)}%` } : undefined}
           />
+          {/* Shimmer over the not-yet-filled portion so the bar never looks
+              frozen while it waits on the slow tail. */}
+          {total > 0 && !allSettled && (
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0 animate-pulse bg-primary/25"
+              style={{ left: `${Math.max(pct, 3)}%` }}
+            />
+          )}
         </div>
 
         {/* Screen-reader-only narration: one concise, polite announcement per
@@ -893,40 +978,66 @@ function SearchProgress({
             : "Reaching out to threat-intel sources…"}
         </p>
 
+        {showSlowNote && (
+          <p className="flex items-start gap-1.5 font-mono text-xs text-amber-600 dark:text-amber-400">
+            <Clock className="mt-0.5 size-3 shrink-0" aria-hidden />
+            <span>
+              Waiting on {pendingMetas.length} slow{" "}
+              {pendingMetas.length === 1 ? "source" : "sources"}
+              {pendingMetas.length <= 4
+                ? ` — ${pendingMetas.map((m) => m.name).join(", ")}`
+                : ""}
+              . These time out at ~{maxTimeoutS}s.
+            </span>
+          </p>
+        )}
+
         {metas.length > 0 && (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {metas.map((meta) => {
               const settled = progress?.settled[meta.id];
+              // A still-pending source past the slow threshold is a laggard
+              // about to time out — flag it amber so it doesn't read as stuck.
+              const rowSlow = !settled && elapsedS >= SLOW_THRESHOLD_S;
               const s = progressStatus(settled);
-              const Icon = s.icon;
+              const Icon = rowSlow ? Clock : s.icon;
+              const slowCls = "text-amber-600 dark:text-amber-400";
               return (
                 <div
                   key={meta.id}
                   className={cn(
                     "flex items-center justify-between gap-2 rounded-md border border-foreground/10 bg-muted/40 px-3 py-2 transition-colors",
                     settled && "bg-background",
+                    rowSlow && "border-amber-500/30",
                   )}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <Icon
                       className={cn(
                         "size-4 shrink-0",
-                        s.cls,
-                        s.spin && "animate-spin",
+                        rowSlow ? slowCls : s.cls,
+                        !rowSlow && s.spin && "animate-spin",
                       )}
                     />
                     <span className="truncate text-sm font-medium">
                       {meta.name}
                     </span>
                   </span>
-                  <span
-                    className={cn(
-                      "shrink-0 text-xs tabular-nums",
-                      settled ? s.cls : "text-muted-foreground/60",
-                    )}
-                  >
-                    {s.label}
-                  </span>
+                  {settled ? (
+                    <span className={cn("shrink-0 text-xs tabular-nums", s.cls)}>
+                      {s.label}
+                    </span>
+                  ) : (
+                    <span
+                      className={cn(
+                        "flex shrink-0 items-center gap-1 text-xs",
+                        rowSlow ? slowCls : "text-muted-foreground/60",
+                      )}
+                    >
+                      {rowSlow && <Clock className="size-3" aria-hidden />}
+                      {rowSlow ? "slow…" : "checking…"}
+                    </span>
+                  )}
                 </div>
               );
             })}

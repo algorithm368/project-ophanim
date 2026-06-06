@@ -7,7 +7,53 @@ import type { SourceFinding, TiSource } from "../../types";
 const QUAD9_SERVERS = ["9.9.9.9", "149.112.112.112"];
 const CONTROL_SERVERS = ["1.1.1.1", "1.0.0.1"];
 
-type Outcome = "resolves" | "nxdomain" | "error";
+export type Outcome = "resolves" | "nxdomain" | "error";
+
+/**
+ * Turn the two resolver outcomes into a finding. Blocked = a real domain (the
+ * control answers) that Quad9 refuses to resolve. Everything else is clean or
+ * inconclusive. Pure: no network.
+ */
+export function quad9Verdict(quad9: Outcome, control: Outcome): SourceFinding {
+  if (quad9 === "error" && control === "error") {
+    return {
+      status: "error",
+      error: "Both resolvers failed to respond; no verdict obtained.",
+    };
+  }
+
+  const details = { quad9, control };
+
+  if (control === "resolves" && quad9 === "nxdomain") {
+    return {
+      status: "ok",
+      malicious: true,
+      score: 80,
+      categories: ["dns-blocked"],
+      summary:
+        "On Quad9 protective-DNS blocklist. Control resolver returns valid A-records but Quad9 withholds resolution. Assessment: known-malicious infrastructure; recommend blocking at resolver/egress.",
+      details,
+    };
+  }
+
+  if (control === "nxdomain") {
+    return {
+      status: "ok",
+      score: 0,
+      summary:
+        "Inconclusive: domain unresolvable on the control resolver, so no Quad9 verdict can be drawn.",
+      details,
+    };
+  }
+
+  return {
+    status: "ok",
+    score: 0,
+    summary:
+      "Not on Quad9's blocklist. Resolves cleanly on both protective and control resolvers; no threat-DNS signal.",
+    details,
+  };
+}
 
 async function resolveWith(
   servers: string[],
@@ -43,42 +89,6 @@ export const quad9Source: TiSource = {
       resolveWith(CONTROL_SERVERS, domain, 4000),
     ]);
 
-    if (quad9 === "error" && control === "error") {
-      return {
-        status: "error",
-        error: "Both resolvers failed to respond; no verdict obtained.",
-      };
-    }
-
-    // Blocked: a real domain (the control answers) that Quad9 refuses to resolve.
-    if (control === "resolves" && quad9 === "nxdomain") {
-      return {
-        status: "ok",
-        malicious: true,
-        score: 80,
-        categories: ["dns-blocked"],
-        summary:
-          "On Quad9 protective-DNS blocklist. Control resolver returns valid A-records but Quad9 withholds resolution. Assessment: known-malicious infrastructure; recommend blocking at resolver/egress.",
-        details: { quad9, control },
-      };
-    }
-
-    if (control === "nxdomain") {
-      return {
-        status: "ok",
-        score: 0,
-        summary:
-          "Inconclusive: domain unresolvable on the control resolver, so no Quad9 verdict can be drawn.",
-        details: { quad9, control },
-      };
-    }
-
-    return {
-      status: "ok",
-      score: 0,
-      summary:
-        "Not on Quad9's blocklist. Resolves cleanly on both protective and control resolvers; no threat-DNS signal.",
-      details: { quad9, control },
-    };
+    return quad9Verdict(quad9, control);
   },
 };

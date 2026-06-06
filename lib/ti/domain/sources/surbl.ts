@@ -11,7 +11,7 @@ const BITS: { bit: number; label: string; malicious: boolean }[] = [
   { bit: 128, label: "cracked", malicious: true },
 ];
 
-function decode(addr: string): { labels: string[]; malicious: boolean } | null {
+export function decode(addr: string): { labels: string[]; malicious: boolean } | null {
   // Listings are 127.0.0.<mask>; 127.0.0.255 means the query was refused.
   if (!addr.startsWith("127.0.0.") || addr === "127.0.0.255") return null;
   const mask = Number(addr.split(".")[3]);

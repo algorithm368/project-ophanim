@@ -14,7 +14,7 @@ interface Cache {
 let cache: Cache | null = null;
 let inflight: Promise<Cache> | null = null;
 
-function hostOf(url: string): string | null {
+export function hostOf(url: string): string | null {
   try {
     return new URL(url.trim()).hostname.toLowerCase().replace(/\.$/, "");
   } catch {

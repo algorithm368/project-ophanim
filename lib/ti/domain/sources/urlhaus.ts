@@ -17,6 +17,19 @@ interface UrlhausResponse {
   blacklists?: Record<string, string>;
 }
 
+/**
+ * URLhaus host verdict. Live (online) payloads are a hard signal; URLs already
+ * taken down are historical and weaker, so a single stale URL on a big host
+ * shouldn't max the verdict.
+ */
+export function urlhausVerdict(
+  online: number,
+  total: number,
+): { score: number; malicious: boolean } {
+  if (online > 0) return { score: Math.min(100, 60 + online * 5), malicious: true };
+  return { score: Math.min(70, 20 + total * 4), malicious: total >= 5 };
+}
+
 /** URLhaus (abuse.ch) - malicious URLs hosted on a domain (shared abuse.ch key). */
 export const urlhausSource: TiSource = {
   meta: {
@@ -61,17 +74,7 @@ export const urlhausSource: TiSource = {
       ).slice(0, 10);
       const total = Number(data.url_count ?? urls.length) || urls.length;
 
-      // Live payloads are a hard signal; URLs already taken down are historical
-      // and weaker - a single stale URL on a big host shouldn't max the verdict.
-      let score: number;
-      let malicious: boolean;
-      if (online > 0) {
-        score = Math.min(100, 60 + online * 5);
-        malicious = true;
-      } else {
-        score = Math.min(70, 20 + total * 4);
-        malicious = total >= 5;
-      }
+      const { score, malicious } = urlhausVerdict(online, total);
 
       return {
         status: "ok",

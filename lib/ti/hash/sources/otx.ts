@@ -9,6 +9,11 @@ interface OtxResponse {
   error?: string;
 }
 
+/** OTX pulse count → file score: 20 base + 4 per pulse, capped at 60. */
+export function otxHashScore(pulseCount: number): number {
+  return pulseCount > 0 ? Math.min(60, 20 + pulseCount * 4) : 0;
+}
+
 /** AlienVault OTX - community pulse intelligence for file hashes (free key). */
 export const otxHashSource: TiSource = {
   meta: {
@@ -49,7 +54,7 @@ export const otxHashSource: TiSource = {
         return { status: "ok", summary: "Not referenced in any threat pulse" };
       }
 
-      const score = Math.min(60, 20 + pulseCount * 4);
+      const score = otxHashScore(pulseCount);
 
       return {
         status: "ok",

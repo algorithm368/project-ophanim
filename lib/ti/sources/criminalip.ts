@@ -22,13 +22,24 @@ interface CriminalIpResponse {
   };
 }
 
-const LEVEL: Record<string, number> = {
+export const LEVEL: Record<string, number> = {
   safe: 0,
   low: 10,
   moderate: 40,
   dangerous: 70,
   critical: 90,
 };
+
+/** Criminal IP risk = the stronger of the inbound/outbound band scores (0-100). */
+export function criminalIpScore(
+  inbound: string | undefined,
+  outbound: string | undefined,
+): number {
+  return Math.max(
+    LEVEL[inbound?.toLowerCase() ?? ""] ?? 0,
+    LEVEL[outbound?.toLowerCase() ?? ""] ?? 0,
+  );
+}
 
 /** Criminal IP (AI Spera): IP risk scoring & attack surface (API key). */
 export const criminalIpSource: TiSource = {
@@ -64,9 +75,7 @@ export const criminalIpSource: TiSource = {
       }
 
       const scoring = data.ip_scoring;
-      const inbound = scoring.inbound?.toLowerCase() ?? "";
-      const outbound = scoring.outbound?.toLowerCase() ?? "";
-      const score = Math.max(LEVEL[inbound] ?? 0, LEVEL[outbound] ?? 0);
+      const score = criminalIpScore(scoring.inbound, scoring.outbound);
 
       const openPorts =
         (data.current_open_ports?.TCP?.length ?? 0) +

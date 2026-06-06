@@ -24,11 +24,14 @@ interface RdapResponse {
   title?: string;
 }
 
-function eventDate(events: RdapEvent[] | undefined, action: string): string | undefined {
+export function eventDate(
+  events: RdapEvent[] | undefined,
+  action: string,
+): string | undefined {
   return events?.find((e) => e.eventAction === action)?.eventDate;
 }
 
-function registrarName(entities: RdapEntity[] | undefined): string | undefined {
+export function registrarName(entities: RdapEntity[] | undefined): string | undefined {
   const reg = entities?.find((e) => e.roles?.includes("registrar"));
   const vcard = reg?.vcardArray?.[1];
   if (!Array.isArray(vcard)) return undefined;
@@ -48,7 +51,7 @@ function ageDays(createdAt: string | undefined): number | undefined {
 }
 
 // Newly-registered domains are disproportionately used for abuse.
-function scoreForAge(age: number | undefined): number {
+export function scoreForAge(age: number | undefined): number {
   if (age === undefined) return 0;
   if (age < 7) return 55;
   if (age < 30) return 40;

@@ -20,7 +20,9 @@ async function ptrAll(ips: string[], signal: AbortSignal): Promise<string[]> {
       return answers(await dohQuery(CF, ptr, "PTR", signal))[0];
     }),
   );
-  return names.filter((n): n is string => Boolean(n));
+  // Distinct hostnames only — multiple IPs commonly share one PTR (e.g. both
+  // of dns.google's IPs reverse to "dns.google").
+  return [...new Set(names.filter((n): n is string => Boolean(n)))];
 }
 
 /** DNS-over-HTTPS resolution with multi-resolver agreement, records, PTR, DNSSEC. */
@@ -36,23 +38,22 @@ export const dnsSource: TiSource = {
   isEnabled: () => true,
   async check(domain, signal): Promise<SourceFinding> {
     try {
-      // A across multiple resolvers (DNSSEC DO bit set) for an agreement check.
-      const [aCf, aGoogle] = await Promise.all([
-        dohQuery(CF, domain, "A", signal, true),
-        dohQuery(RESOLVERS.google, domain, "A", signal, true),
-      ]);
-
-      // Everything else from Cloudflare only, in parallel.
-      const [aaaa, mx, ns, txt, soa, cname, caa, dmarcTxt] = await Promise.all([
-        dohQuery(CF, domain, "AAAA", signal),
-        dohQuery(CF, domain, "MX", signal),
-        dohQuery(CF, domain, "NS", signal),
-        dohQuery(CF, domain, "TXT", signal),
-        dohQuery(CF, domain, "SOA", signal),
-        dohQuery(CF, domain, "CNAME", signal),
-        dohQuery(CF, domain, "CAA", signal),
-        dohQuery(CF, `_dmarc.${domain}`, "TXT", signal),
-      ]);
+      // Resolve every record set concurrently in a single batch (one round of
+      // parallel DoH queries, not two). A records are queried at two resolvers
+      // (DNSSEC DO bit set) for an agreement check; the rest go to Cloudflare.
+      const [aCf, aGoogle, aaaa, mx, ns, txt, soa, cname, caa, dmarcTxt] =
+        await Promise.all([
+          dohQuery(CF, domain, "A", signal, true),
+          dohQuery(RESOLVERS.google, domain, "A", signal, true),
+          dohQuery(CF, domain, "AAAA", signal),
+          dohQuery(CF, domain, "MX", signal),
+          dohQuery(CF, domain, "NS", signal),
+          dohQuery(CF, domain, "TXT", signal),
+          dohQuery(CF, domain, "SOA", signal),
+          dohQuery(CF, domain, "CNAME", signal),
+          dohQuery(CF, domain, "CAA", signal),
+          dohQuery(CF, `_dmarc.${domain}`, "TXT", signal),
+        ]);
 
       const resolvedIps = answers(aCf);
       const ipv6 = answers(aaaa);
@@ -60,6 +61,11 @@ export const dnsSource: TiSource = {
       const nsHosts = answers(ns);
       const txtRecords = answers(txt);
       const dmarcRecords = answers(dmarcTxt);
+      // Parse the TXT/CAA-derived fields once; they feed both `details` and
+      // `domainContext` below.
+      const spf = extractSpf(txtRecords);
+      const dmarc = extractDmarc(dmarcRecords);
+      const caaRecords = answers(caa).map(decodeCaa);
       const reverse = await ptrAll(resolvedIps, signal);
 
       const aSets = [answers(aCf), answers(aGoogle)];
@@ -100,9 +106,9 @@ export const dnsSource: TiSource = {
           mx: mxHosts,
           nameservers: nsHosts,
           reverse,
-          spf: extractSpf(txtRecords),
-          dmarc: extractDmarc(dmarcRecords),
-          caa: answers(caa).map(decodeCaa),
+          spf,
+          dmarc,
+          caa: caaRecords,
           dnssec,
           resolverAgreement,
           nxdomain,
@@ -114,9 +120,9 @@ export const dnsSource: TiSource = {
           nameservers: nsHosts,
           reverse,
           txt: txtRecords,
-          spf: extractSpf(txtRecords),
-          dmarc: extractDmarc(dmarcRecords),
-          caa: answers(caa).map(decodeCaa),
+          spf,
+          dmarc,
+          caa: caaRecords,
           soa: answers(soa)[0],
           cname: answers(cname),
           dnssec,

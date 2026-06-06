@@ -49,6 +49,29 @@ async function loadFeed(signal: AbortSignal): Promise<Cache> {
   }
 }
 
+/** Map a Feodo blocklist hit to its malicious finding (botnet C2). */
+export function feodoFinding(hit: FeodoEntry): SourceFinding {
+  return {
+    status: "ok",
+    malicious: true,
+    score: 95,
+    categories: ["botnet-c2", hit.malware ?? "malware"].filter(Boolean),
+    lastSeen: hit.last_online,
+    summary: `Known ${hit.malware ?? "malware"} C2 (status: ${hit.status ?? "unknown"})`,
+    details: {
+      malware: hit.malware,
+      port: hit.port,
+      status: hit.status,
+      firstSeen: hit.first_seen,
+      lastOnline: hit.last_online,
+      asNumber: hit.as_number,
+      asName: hit.as_name,
+      country: hit.country,
+    },
+    raw: hit,
+  };
+}
+
 /** Feodo Tracker (abuse.ch): known botnet C2 IPs (no key, downloadable feed). */
 export const feodoSource: TiSource = {
   meta: {
@@ -71,25 +94,7 @@ export const feodoSource: TiSource = {
           summary: "Not a known botnet C2",
         };
       }
-      return {
-        status: "ok",
-        malicious: true,
-        score: 95,
-        categories: ["botnet-c2", hit.malware ?? "malware"].filter(Boolean),
-        lastSeen: hit.last_online,
-        summary: `Known ${hit.malware ?? "malware"} C2 (status: ${hit.status ?? "unknown"})`,
-        details: {
-          malware: hit.malware,
-          port: hit.port,
-          status: hit.status,
-          firstSeen: hit.first_seen,
-          lastOnline: hit.last_online,
-          asNumber: hit.as_number,
-          asName: hit.as_name,
-          country: hit.country,
-        },
-        raw: hit,
-      };
+      return feodoFinding(hit);
     } catch (err) {
       return {
         status: isTimeout(err) ? "timeout" : "error",

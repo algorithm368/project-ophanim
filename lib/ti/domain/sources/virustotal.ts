@@ -122,7 +122,12 @@ function priorityOf(label: string): number {
   return CATEGORY_PRIORITY[label] ?? DEFAULT_PRIORITY;
 }
 
-function normalizeCategories(map: Record<string, string>): string[] {
+/** VT vendor stats → 0-100 (domain weighting: 10× malicious + 3× suspicious). */
+export function vtScore(malicious: number, suspicious: number): number {
+  return Math.min(100, malicious * 10 + suspicious * 3);
+}
+
+export function normalizeCategories(map: Record<string, string>): string[] {
   const counts = new Map<string, { label: string; n: number }>();
   for (const raw of Object.values(map)) {
     const cleaned = raw.replace(/\s*\(.*?\)\s*$/, "").trim().toLowerCase();
@@ -190,7 +195,7 @@ export const virusTotalDomainSource: TiSource = {
         (stats.undetected ?? 0) +
         (stats.timeout ?? 0);
 
-      const score = Math.min(100, malicious * 10 + suspicious * 3);
+      const score = vtScore(malicious, suspicious);
       // Content categories describe what the domain is - keep them out of the
       // threat-signal list and surface them as context instead.
       const contentCategories = normalizeCategories(attr.categories ?? {});

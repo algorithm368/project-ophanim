@@ -16,7 +16,7 @@ interface HashlookupResponse {
   message?: string;
 }
 
-function toNumber(value: string | number | undefined): number | undefined {
+export function toNumber(value: string | number | undefined): number | undefined {
   if (value === undefined) return undefined;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : undefined;

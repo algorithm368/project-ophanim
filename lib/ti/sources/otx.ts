@@ -12,6 +12,11 @@ interface OtxResponse {
   error?: string;
 }
 
+/** OTX pulse count → 0-100 (IP weighting: 25 base + 10 per pulse). */
+export function otxScore(pulseCount: number): number {
+  return pulseCount > 0 ? Math.min(100, 25 + pulseCount * 10) : 0;
+}
+
 /** AlienVault OTX: community pulse intelligence (free API key required). */
 export const otxSource: TiSource = {
   meta: {
@@ -49,7 +54,7 @@ export const otxSource: TiSource = {
         new Set(pulses.flatMap((p) => p.tags ?? [])),
       ).slice(0, 12);
 
-      const score = pulseCount > 0 ? Math.min(100, 25 + pulseCount * 10) : 0;
+      const score = otxScore(pulseCount);
 
       return {
         status: "ok",

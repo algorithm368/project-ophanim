@@ -53,6 +53,11 @@ async function fetchIpResolutions(
   }
 }
 
+/** VT vendor stats → 0-100 (IP weighting: 10× malicious + 3× suspicious). */
+export function vtScore(malicious: number, suspicious: number): number {
+  return Math.min(100, malicious * 10 + suspicious * 3);
+}
+
 /** VirusTotal v3: multi-engine IP reputation (free API key required). */
 export const virusTotalSource: TiSource = {
   meta: {
@@ -97,7 +102,7 @@ export const virusTotalSource: TiSource = {
         (stats.undetected ?? 0) +
         (stats.timeout ?? 0);
 
-      const score = Math.min(100, malicious * 10 + suspicious * 3);
+      const score = vtScore(malicious, suspicious);
 
       return {
         status: "ok",

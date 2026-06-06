@@ -37,19 +37,36 @@ export function Pivot({ value, label }: { value: string; label?: string }) {
     );
 }
 
-/** Wrapping list of pivotable indicators with a "+N more" overflow note. */
+/** Wrapping list of pivotable indicators with an expandable "+N more" overflow. */
 export function PivotList({ values, max = 4 }: { values: string[]; max?: number }) {
-    const shown = values.slice(0, max);
-    const extra = values.length - shown.length;
+    // Dedupe so repeated values (e.g. two IPs sharing a PTR) don't collide as
+    // React keys or show as duplicate chips.
+    const unique = [...new Set(values)];
+    const [expanded, setExpanded] = useState(false);
+    const shown = expanded ? unique : unique.slice(0, max);
+    const extra = unique.length - shown.length;
     return (
         <div className="flex flex-wrap gap-1.5">
             {shown.map((v) => (
                 <Pivot key={v} value={v} />
             ))}
             {extra > 0 && (
-                <span className="self-center text-[12px] text-muted-foreground">
+                <button
+                    type="button"
+                    onClick={() => setExpanded(true)}
+                    className="self-center text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
                     +{extra} more
-                </span>
+                </button>
+            )}
+            {expanded && unique.length > max && (
+                <button
+                    type="button"
+                    onClick={() => setExpanded(false)}
+                    className="self-center text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                    show less
+                </button>
             )}
         </div>
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import { MapPin } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 /**
  * A tiny, dependency-free location map. Renders a 2×2 mosaic of OpenStreetMap
@@ -21,10 +22,14 @@ export function LocationMap({
     lat,
     lon,
     caption,
+    fill,
 }: {
     lat: number;
     lon: number;
     caption?: string;
+    /** Stretch to the parent's height on sm+ (to line up flush in a bento row)
+     *  instead of staying a fixed square. */
+    fill?: boolean;
 }) {
     const z = 5; // country / region scale
     const n = 2 ** z;
@@ -45,7 +50,16 @@ export function LocationMap({
     }
 
     return (
-        <div className="relative mx-auto aspect-square w-full max-w-[22rem] overflow-hidden rounded-xl border border-foreground/12 bg-muted">
+        <div
+            className={cn(
+                "relative mx-auto w-full max-w-[22rem] overflow-hidden rounded-xl border border-foreground/12 bg-muted",
+                // Square by default; when filling a bento row, drop the square
+                // ratio on sm+ and take the row's height so the map's bottom
+                // edge lines up flush with the detail panel beside it.
+                fill ? "aspect-square sm:aspect-auto sm:h-full" : "aspect-square",
+            )}
+        >
+
             <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
                 {tiles.map((t) => (
                     // eslint-disable-next-line @next/next/no-img-element -- raster map tiles; next/image gains nothing for external OSM tiles

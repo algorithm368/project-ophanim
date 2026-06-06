@@ -16,7 +16,7 @@ interface OnionooResponse {
 }
 
 // Onionoo's `search` matches by prefix, so we must confirm an exact IP match.
-function hostMatches(list: string[] | undefined, ip: string): boolean {
+export function hostMatches(list: string[] | undefined, ip: string): boolean {
   if (!list) return false;
   return list.some((entry) => {
     if (entry.startsWith("[")) return false; // IPv6 "[addr]:port"

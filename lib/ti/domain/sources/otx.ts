@@ -9,6 +9,11 @@ interface OtxResponse {
   error?: string;
 }
 
+/** OTX pulse count → domain nudge score: capped low (35), 2 per pulse. */
+export function otxDomainScore(pulseCount: number): number {
+  return pulseCount > 0 ? Math.min(35, pulseCount * 2) : 0;
+}
+
 /** AlienVault OTX - community pulse intelligence for domains (free API key). */
 export const otxDomainSource: TiSource = {
   meta: {
@@ -47,7 +52,7 @@ export const otxDomainSource: TiSource = {
 
       // Pulses include benign reference domains, so keep this a sub-threshold
       // nudge: it shows in the breakdown but won't flag a domain on its own.
-      const score = pulseCount > 0 ? Math.min(35, pulseCount * 2) : 0;
+      const score = otxDomainScore(pulseCount);
 
       return {
         status: "ok",

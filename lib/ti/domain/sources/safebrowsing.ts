@@ -11,12 +11,23 @@ interface SbResponse {
   error?: { message?: string };
 }
 
-const THREAT_LABEL: Record<string, string> = {
+export const THREAT_LABEL: Record<string, string> = {
   MALWARE: "malware",
   SOCIAL_ENGINEERING: "phishing",
   UNWANTED_SOFTWARE: "unwanted software",
   POTENTIALLY_HARMFUL_APPLICATION: "harmful application",
 };
+
+/** De-dupe Safe Browsing matches into human threat labels. */
+export function labelThreats(matches: ThreatMatch[]): string[] {
+  return Array.from(
+    new Set(
+      matches.map(
+        (m) => THREAT_LABEL[m.threatType ?? ""] ?? m.threatType ?? "threat",
+      ),
+    ),
+  );
+}
 
 /** Google Safe Browsing v4 - authoritative malware/phishing list (free API key). */
 export const safeBrowsingSource: TiSource = {
@@ -60,11 +71,7 @@ export const safeBrowsingSource: TiSource = {
         return { status: "ok", score: 0, summary: "Not on any Safe Browsing list" };
       }
 
-      const threats = Array.from(
-        new Set(
-          matches.map((m) => THREAT_LABEL[m.threatType ?? ""] ?? m.threatType ?? "threat"),
-        ),
-      );
+      const threats = labelThreats(matches);
 
       return {
         status: "ok",
