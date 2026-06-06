@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import {
     Check,
     Copy,
     ExternalLink,
+    LayoutList,
     Link2,
     Server,
+    Share2,
 } from "lucide-react";
 import {
     type CheckResult,
@@ -18,49 +21,117 @@ import { hostFromUrl } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, Pivot, PivotList, SectionHeading, useCopied } from "./primitives";
+import { RelationGraph } from "./relation-graph";
 
 export function ConnectionsCard({
     result,
 }: {
     result: CheckResult | DomainCheckResult | HashCheckResult;
 }) {
-    const { related } = relationsFor(result);
+    const { value, type, related } = relationsFor(result);
+    // A file's other digests live in the profile card, not here.
+    const filtered = related.filter((r) => !DIGEST_RELATIONS.has(r.relation));
+
     const groups = new Map<string, string[]>();
-    for (const r of related) {
-        if (DIGEST_RELATIONS.has(r.relation)) continue;
+    for (const r of filtered) {
         const list = groups.get(r.relation) ?? [];
         list.push(r.value);
         groups.set(r.relation, list);
     }
-    if (groups.size === 0) return null;
-
-    // Known relations in priority order, then any unknown ones alphabetically.
     const keys = [
         ...RELATION_ORDER.filter((k) => groups.has(k)),
-        ...[...groups.keys()]
-            .filter((k) => !RELATION_ORDER.includes(k))
-            .sort(),
+        ...[...groups.keys()].filter((k) => !RELATION_ORDER.includes(k)).sort(),
     ];
+
+    // Graph default once there are enough nodes to be worth drawing.
+    const [view, setView] = useState<"graph" | "list">(
+        filtered.length >= 3 ? "graph" : "list",
+    );
+
+    if (groups.size === 0) return null;
 
     return (
         <Card className="sketch-shadow rounded-2xl border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading icon={Link2}>Related indicators</SectionHeading>
-                <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
-                    {keys.map((key) => {
-                        const meta = RELATION_META[key] ?? { label: key };
-                        return (
-                            <Field key={key} label={meta.label} wrap>
-                                <PivotList
-                                    values={groups.get(key) ?? []}
-                                    max={6}
-                                />
-                            </Field>
-                        );
-                    })}
-                </dl>
+                <SectionHeading
+                    icon={Link2}
+                    action={<ViewToggle view={view} onChange={setView} />}
+                >
+                    Related indicators
+                </SectionHeading>
+                {view === "graph" ? (
+                    <RelationGraph
+                        focus={{ value, type }}
+                        related={filtered}
+                        verdict={result.verdict}
+                    />
+                ) : (
+                    <ConnectionsList groups={groups} keys={keys} />
+                )}
             </CardContent>
         </Card>
+    );
+}
+
+function ConnectionsList({
+    groups,
+    keys,
+}: {
+    groups: Map<string, string[]>;
+    keys: string[];
+}) {
+    return (
+        <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+            {keys.map((key) => {
+                const meta = RELATION_META[key] ?? { label: key };
+                return (
+                    <Field key={key} label={meta.label} wrap>
+                        <PivotList values={groups.get(key) ?? []} max={6} />
+                    </Field>
+                );
+            })}
+        </dl>
+    );
+}
+
+function ViewToggle({
+    view,
+    onChange,
+}: {
+    view: "graph" | "list";
+    onChange: (v: "graph" | "list") => void;
+}) {
+    const base =
+        "flex size-7 items-center justify-center rounded-md border transition-colors";
+    return (
+        <div className="flex items-center gap-1" role="group" aria-label="View">
+            <button
+                type="button"
+                aria-pressed={view === "graph"}
+                aria-label="Graph view"
+                onClick={() => onChange("graph")}
+                className={
+                    view === "graph"
+                        ? `${base} border-primary/50 bg-primary/10 text-primary`
+                        : `${base} border-foreground/15 text-muted-foreground hover:text-foreground`
+                }
+            >
+                <Share2 className="size-3.5" />
+            </button>
+            <button
+                type="button"
+                aria-pressed={view === "list"}
+                aria-label="List view"
+                onClick={() => onChange("list")}
+                className={
+                    view === "list"
+                        ? `${base} border-primary/50 bg-primary/10 text-primary`
+                        : `${base} border-foreground/15 text-muted-foreground hover:text-foreground`
+                }
+            >
+                <LayoutList className="size-3.5" />
+            </button>
+        </div>
     );
 }
 
