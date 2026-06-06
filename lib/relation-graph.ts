@@ -76,3 +76,30 @@ export function buildGraphModel(
   }));
   return { nodes: [focusNode, ...neighbours], edges };
 }
+
+/** Focus at center; neighbours on a ring at a fixed radius, evenly spaced by
+ *  index (deterministic — no Math.random). First neighbour sits at the top. */
+export function radialLayout(
+  model: GraphModel,
+  size: { width: number; height: number },
+): PositionedNode[] {
+  const cx = size.width / 2;
+  const cy = size.height / 2;
+  const radius = Math.min(size.width, size.height) * 0.38;
+
+  const focus = model.nodes.find((n) => n.isFocus);
+  const neighbours = model.nodes.filter((n) => !n.isFocus);
+  const out: PositionedNode[] = [];
+  if (focus) out.push({ ...focus, x: cx, y: cy });
+
+  const n = Math.max(1, neighbours.length);
+  neighbours.forEach((node, i) => {
+    const angle = -Math.PI / 2 + (2 * Math.PI * i) / n;
+    out.push({
+      ...node,
+      x: cx + radius * Math.cos(angle),
+      y: cy + radius * Math.sin(angle),
+    });
+  });
+  return out;
+}
