@@ -1,137 +1,125 @@
 "use client";
 
-import { useState } from "react";
+import { useContext } from "react";
 import {
     Check,
     Copy,
     ExternalLink,
-    LayoutList,
+    FileDigit,
+    Globe,
     Link2,
+    Network,
+    Search,
     Server,
-    Share2,
 } from "lucide-react";
 import {
     type CheckResult,
     type DomainCheckResult,
     type HashCheckResult,
+    type IndicatorType,
 } from "@/lib/ti/types";
 import { type ResultLike } from "@/lib/ti/narrative";
-import { relationsFor, RELATION_META, RELATION_ORDER, DIGEST_RELATIONS } from "@/lib/relations";
+import { relationsFor, groupRelations, type RelationGroup } from "@/lib/relations";
 import { hostFromUrl } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Field, Pivot, PivotList, SectionHeading, useCopied } from "./primitives";
-import { RelationGraph } from "./relation-graph";
+import { Pivot, PivotContext, SectionHeading, useCopied } from "./primitives";
+import type { IconType } from "./types";
+
+const TYPE_ICON: Record<IndicatorType, IconType> = {
+    ip: Network,
+    domain: Globe,
+    hash: FileDigit,
+};
 
 export function ConnectionsCard({
     result,
 }: {
     result: CheckResult | DomainCheckResult | HashCheckResult;
 }) {
-    const { value, type, related } = relationsFor(result);
-    // A file's other digests live in the profile card, not here.
-    const filtered = related.filter((r) => !DIGEST_RELATIONS.has(r.relation));
-
-    const groups = new Map<string, string[]>();
-    for (const r of filtered) {
-        const list = groups.get(r.relation) ?? [];
-        list.push(r.value);
-        groups.set(r.relation, list);
-    }
-    const keys = [
-        ...RELATION_ORDER.filter((k) => groups.has(k)),
-        ...[...groups.keys()].filter((k) => !RELATION_ORDER.includes(k)).sort(),
-    ];
-
-    // Graph default once there are enough nodes to be worth drawing.
-    const [view, setView] = useState<"graph" | "list">(
-        filtered.length >= 3 ? "graph" : "list",
-    );
-
-    if (groups.size === 0) return null;
+    const { related } = relationsFor(result);
+    const groups = groupRelations(related);
+    if (groups.length === 0) return null;
 
     return (
         <Card className="sketch-shadow rounded-2xl border border-foreground/12">
-            <CardContent className="space-y-4">
-                <SectionHeading
-                    icon={Link2}
-                    action={<ViewToggle view={view} onChange={setView} />}
-                >
-                    Related indicators
-                </SectionHeading>
-                {view === "graph" ? (
-                    <RelationGraph
-                        focus={{ value, type }}
-                        related={filtered}
-                        verdict={result.verdict}
-                    />
-                ) : (
-                    <ConnectionsList groups={groups} keys={keys} />
-                )}
+            <CardContent className="space-y-5">
+                <SectionHeading icon={Link2}>Related indicators</SectionHeading>
+                {groups.map((group) => (
+                    <RelationGroupSection key={group.relation} group={group} />
+                ))}
             </CardContent>
         </Card>
     );
 }
 
-function ConnectionsList({
-    groups,
-    keys,
-}: {
-    groups: Map<string, string[]>;
-    keys: string[];
-}) {
+function RelationGroupSection({ group }: { group: RelationGroup }) {
     return (
-        <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
-            {keys.map((key) => {
-                const meta = RELATION_META[key] ?? { label: key };
-                return (
-                    <Field key={key} label={meta.label} wrap>
-                        <PivotList values={groups.get(key) ?? []} max={6} />
-                    </Field>
-                );
-            })}
-        </dl>
+        <div className="space-y-2">
+            <div>
+                <div className="font-mono text-[12px] font-semibold tracking-wider text-foreground uppercase">
+                    {group.label}
+                </div>
+                {group.description && (
+                    <p className="text-xs text-muted-foreground">
+                        {group.description}
+                    </p>
+                )}
+            </div>
+            <ul className="space-y-1.5">
+                {group.items.map((item) => (
+                    <RelationRow
+                        key={item.value}
+                        value={item.value}
+                        type={item.type}
+                    />
+                ))}
+            </ul>
+        </div>
     );
 }
 
-function ViewToggle({
-    view,
-    onChange,
-}: {
-    view: "graph" | "list";
-    onChange: (v: "graph" | "list") => void;
-}) {
-    const base =
-        "flex size-7 items-center justify-center rounded-md border transition-colors";
+function RelationRow({ value, type }: { value: string; type: IndicatorType }) {
+    const pivot = useContext(PivotContext);
+    const [copied, copy] = useCopied();
+    const Icon = TYPE_ICON[type] ?? Link2;
     return (
-        <div className="flex items-center gap-1" role="group" aria-label="View">
-            <button
-                type="button"
-                aria-pressed={view === "graph"}
-                aria-label="Graph view"
-                onClick={() => onChange("graph")}
-                className={
-                    view === "graph"
-                        ? `${base} border-primary/50 bg-primary/10 text-primary`
-                        : `${base} border-foreground/15 text-muted-foreground hover:text-foreground`
-                }
+        <li className="flex items-center gap-2 rounded-md border border-foreground/10 bg-muted/40 p-2 text-xs">
+            <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+            <code
+                className="min-w-0 flex-1 truncate font-mono text-[12px]"
+                title={value}
             >
-                <Share2 className="size-3.5" />
-            </button>
-            <button
+                {value}
+            </code>
+            {pivot && (
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    aria-label={`Check ${value}`}
+                    className="shrink-0 gap-1 font-mono text-[11px] text-muted-foreground hover:text-primary"
+                    onClick={() => pivot(value)}
+                >
+                    <Search className="size-3.5" />
+                    check
+                </Button>
+            )}
+            <Button
                 type="button"
-                aria-pressed={view === "list"}
-                aria-label="List view"
-                onClick={() => onChange("list")}
-                className={
-                    view === "list"
-                        ? `${base} border-primary/50 bg-primary/10 text-primary`
-                        : `${base} border-foreground/15 text-muted-foreground hover:text-foreground`
-                }
+                variant="ghost"
+                size="xs"
+                aria-label={`Copy ${value}`}
+                className="size-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                onClick={() => copy(value)}
             >
-                <LayoutList className="size-3.5" />
-            </button>
-        </div>
+                {copied ? (
+                    <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                    <Copy className="size-3.5" />
+                )}
+            </Button>
+        </li>
     );
 }
 
