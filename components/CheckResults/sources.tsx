@@ -239,15 +239,15 @@ export function ScoreChart({
     ].filter(Boolean);
 
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={BarChart3}>
                     Source scores · {subject}
                 </SectionHeading>
                 {explanation.length > 0 && (
-                    <div className="space-y-1.5 rounded-lg border-2 border-dashed border-foreground/20 bg-muted/40 p-3">
-                        <div className="font-hand text-base font-bold text-muted-foreground">
-                            why this score
+                    <div className="space-y-1.5 rounded-lg border border-border bg-muted/40 p-3">
+                        <div className="font-mono text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+                            Why this score
                         </div>
                         {explanation.map((line, i) => (
                             <p

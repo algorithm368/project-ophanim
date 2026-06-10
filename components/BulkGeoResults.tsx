@@ -160,10 +160,10 @@ function placeOf(row: GeoRow): string {
 export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
   if (!rows.length) return null;
   return (
-    <Card className="sketch-shadow mt-8 overflow-hidden rounded-2xl border border-foreground/12 bg-card/50">
+    <Card className="sketch-shadow mt-8 overflow-hidden rounded-lg border border-border bg-card">
       <CardContent className="space-y-4">
-        <h2 className="font-hand flex items-center gap-2 text-2xl font-bold">
-          <Globe className="size-5 text-primary" />
+        <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+          <Globe className="size-5 text-muted-foreground" />
           Geolocation — {rows.length} {rows.length === 1 ? "address" : "addresses"}
         </h2>
 
@@ -173,7 +173,7 @@ export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="font-hand border-b-2 border-dashed border-foreground/20 text-left text-muted-foreground">
+              <tr className="border-b border-border text-left font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
                 <th scope="col" className="px-2 py-1.5 font-semibold">IP</th>
                 <th scope="col" className="px-2 py-1.5 font-semibold">Ver</th>
                 <th scope="col" className="px-2 py-1.5 font-semibold">Country</th>

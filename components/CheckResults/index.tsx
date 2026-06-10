@@ -30,7 +30,7 @@ function Results({
     onRefresh: () => void;
 }) {
     return (
-        <div className="mt-5 space-y-6 duration-500 animate-in fade-in slide-in-from-bottom-2">
+        <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
             <VerdictHero result={result} onRefresh={onRefresh} />
             <div className="grid grid-cols-1 gap-6">
@@ -58,7 +58,7 @@ function DomainResults({
     onRefresh: () => void;
 }) {
     return (
-        <div className="mt-5 space-y-6 duration-500 animate-in fade-in slide-in-from-bottom-2">
+        <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
             <VerdictHero result={result} onRefresh={onRefresh} />
             <div className="grid grid-cols-1 gap-6">
@@ -85,7 +85,7 @@ function HashResults({
     onRefresh: () => void;
 }) {
     return (
-        <div className="mt-5 space-y-6 duration-500 animate-in fade-in slide-in-from-bottom-2">
+        <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
             <VerdictHero result={result} onRefresh={onRefresh} />
             <div className="grid grid-cols-1 gap-6">

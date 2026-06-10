@@ -42,7 +42,7 @@ export function ConnectionsCard({
     if (groups.length === 0) return null;
 
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-5">
                 <SectionHeading icon={Link2}>Related indicators</SectionHeading>
                 {groups.map((group) => (
@@ -169,7 +169,7 @@ export function DistributionUrlsCard({ result }: { result: HashCheckResult }) {
     const shown = urls.slice(0, 8);
     const extra = urls.length - shown.length;
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-3">
                 <SectionHeading icon={Link2}>
                     Distribution URLs
@@ -267,7 +267,7 @@ export function ExposedServicesCard({ result }: { result: CheckResult }) {
     const shownVulns = vulns.slice(0, 12);
 
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={Server}>
                     Exposed services

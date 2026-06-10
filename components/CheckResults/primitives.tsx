@@ -29,7 +29,7 @@ export function Pivot({ value, label }: { value: string; label?: string }) {
             type="button"
             onClick={() => pivot(value)}
             title={`Check ${value}`}
-            className="group inline-flex max-w-full items-center gap-1 rounded-sm border border-dashed border-foreground/30 bg-background/60 px-1.5 py-0.5 align-middle font-mono text-[12px] text-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+            className="group inline-flex max-w-full items-center gap-1 rounded-sm border border-border bg-muted/50 px-1.5 py-0.5 align-middle font-mono text-[12px] text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
         >
             <span className="truncate">{text}</span>
             <Search className="size-3 shrink-0 opacity-40 transition-opacity group-hover:opacity-100" />
@@ -159,7 +159,7 @@ export function CopyableSummary({ text }: { text: string }) {
                     variant="ghost"
                     size="xs"
                     aria-label="Copy summary"
-                    className="font-hand gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                    className="gap-1.5 text-sm text-muted-foreground hover:text-foreground"
                     onClick={() => copy(text)}
                 >
                     {copied ? (

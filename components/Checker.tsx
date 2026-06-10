@@ -10,7 +10,6 @@ import {
   Globe,
   Loader2,
   Network,
-  PenLine,
   RefreshCw,
   Search,
   SearchX,
@@ -18,7 +17,6 @@ import {
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
-  Sparkles,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -209,7 +207,15 @@ function bulkTargets(value: string): ParsedIP[] | null {
   return null;
 }
 
-export default function Checker({ initialQuery }: { initialQuery?: string }) {
+export default function Checker({
+  initialQuery,
+  initialResult,
+}: {
+  initialQuery?: string;
+  /** A server-fetched cached result for a permalink (/check/<ioc>). When present
+   *  it is shown immediately on first paint, skipping the client lookup. */
+  initialResult?: CheckResult | DomainCheckResult | HashCheckResult | null;
+}) {
   const [mode, setMode] = useState<Mode>(
     () => detectIOC(initialQuery ?? "") ?? "ip",
   );
@@ -220,7 +226,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
   const [error, setError] = useState<CheckError | null>(null);
   const [result, setResult] = useState<
     CheckResult | DomainCheckResult | HashCheckResult | null
-  >(null);
+  >(initialResult ?? null);
   const [bulkRows, setBulkRows] = useState<GeoRow[] | null>(null);
   const [bulkPending, setBulkPending] = useState(0);
   const [isBulk, setIsBulk] = useState(false);
@@ -230,17 +236,22 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
   const runCheckRef = useRef(runCheck);
   const didInit = useRef(false);
 
-  // On first mount: auto-run the check for a permalinked IOC (/check/<ioc>), or
+  // On first mount: show a server-provided cached result as-is (no client
+  // round-trip), auto-run the check for a permalinked IOC (/check/<ioc>), or
   // focus the empty input for a fresh search.
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
-    if (initialQuery && detectIOC(initialQuery)) {
+    if (initialResult) {
+      // Cached permalink: the result is already on screen. Warm the lazy chunk
+      // so it paints instantly; the user can still re-check via refresh.
+      void loadCheckResults();
+    } else if (initialQuery && detectIOC(initialQuery)) {
       runCheckRef.current(initialQuery);
     } else {
       inputRef.current?.focus();
     }
-  }, [initialQuery]);
+  }, [initialQuery, initialResult]);
 
   // "/" focuses the search from anywhere, Esc clears it: quick keyboard access
   // for the analysts who live in this tool.
@@ -518,12 +529,11 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
-      <div className="sketch-shadow relative rounded-xl border border-foreground/15 bg-card p-4 sm:p-5">
-        <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-medium tracking-[0.18em] text-amber-500 uppercase">
-          <PenLine className="size-3.5" />
-          {"// indicator lookup"}
+      <div className="sketch-shadow relative rounded-lg border border-border bg-card p-4 sm:p-5">
+        <div className="mb-2 font-mono text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          Indicator lookup
         </div>
-        <h1 className="mb-4 font-mono text-2xl font-bold tracking-tight sm:text-[1.7rem]">
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight sm:text-[1.7rem]">
           Check an IP, domain, or file&nbsp;hash
         </h1>
 
@@ -534,7 +544,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
           }}
           className="flex flex-col gap-3 sm:flex-row"
         >
-          <div className="relative flex-1 overflow-hidden rounded-lg border border-foreground/20 bg-background transition-[border-color,box-shadow] focus-within:border-amber-500/70 focus-within:ring-2 focus-within:ring-amber-500/20">
+          <div className="relative flex-1 overflow-hidden rounded-lg border border-input bg-background transition-[border-color,box-shadow] focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/25">
             <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={inputRef}
@@ -590,7 +600,7 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
         <div className="mt-3 min-h-7 text-sm">
           {!trimmed ? (
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Sparkles className="size-4 text-amber-500" />
+              <Search className="size-4" />
               Type or paste an indicator and we&apos;ll detect the type for you.
             </span>
           ) : bulkPreview ? (
@@ -632,9 +642,9 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
                 setQuery(value);
                 runCheck(value);
               }}
-              className="group inline-flex items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-amber-500/60 hover:text-foreground"
+              className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
             >
-              <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-amber-500" />
+              <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
               {label}
             </button>
           ))}
@@ -674,10 +684,10 @@ export default function Checker({ initialQuery }: { initialQuery?: string }) {
 
 function BulkProgress({ count }: { count: number }) {
   return (
-    <Card className="sketch-shadow mt-8 overflow-hidden rounded-2xl border border-foreground/12 bg-gradient-to-br from-primary/8 to-transparent">
+    <Card className="sketch-shadow mt-8 overflow-hidden rounded-lg border border-border bg-card">
       <CardContent className="flex items-center gap-3 py-8">
-        <Loader2 className="size-6 animate-spin text-amber-500" />
-        <div className="text-xl font-bold tracking-tight">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        <div className="text-xl font-semibold tracking-tight">
           Looking up {count} {count === 1 ? "address" : "addresses"}…
         </div>
       </CardContent>
@@ -704,25 +714,25 @@ function EmptyState({ detected }: { detected: Mode | null }) {
   ];
 
   return (
-    <Card className="sketch-shadow mt-8 overflow-hidden border border-foreground/15 bg-card/60">
+    <Card className="sketch-shadow mt-8 overflow-hidden border border-border bg-card">
       {/* console-style header strip */}
-      <div className="flex items-center gap-2 border-b border-foreground/10 bg-muted/40 px-4 py-2 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
-        <span className="size-1.5 rounded-full bg-amber-500" />
+      <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
+        <span className="size-1.5 rounded-full bg-muted-foreground/60" />
         idle
       </div>
       <CardContent className="space-y-4 py-6">
         <div className="flex items-center gap-2 font-mono text-sm">
           <span className="text-muted-foreground/50">&gt;</span>
           <span className="text-foreground/80">awaiting indicator</span>
-          <span className="inline-block h-[1.05em] w-[7px] animate-pulse bg-amber-500 align-middle" />
+          <span className="inline-block h-[1.05em] w-[7px] animate-pulse bg-foreground/40 align-middle" />
         </div>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           {copy}
         </p>
-        <dl className="space-y-1.5 border-t border-foreground/10 pt-4 font-mono text-xs">
+        <dl className="space-y-1.5 border-t border-border pt-4 font-mono text-xs">
           {readout.map(([k, v]) => (
             <div key={k} className="flex gap-3 sm:gap-4">
-              <dt className="w-16 shrink-0 tracking-wider text-amber-600 uppercase dark:text-amber-500">
+              <dt className="w-16 shrink-0 font-semibold tracking-wider text-foreground/70 uppercase">
                 {k}
               </dt>
               <dd className="text-muted-foreground">{v}</dd>
@@ -748,29 +758,27 @@ function ErrorState({
   const isInput = error.kind === "input";
   const Icon = isInput ? SearchX : ServerCrash;
 
+  // A wrong indicator is a calm correction (neutral); a failed lookup is a real
+  // system alert (destructive red). Color stays reserved for genuine signal.
   const accent = isInput
     ? {
-        border: "border-amber-500/40",
-        wash: "from-amber-500/12",
-        badge:
-          "border-amber-500/40 bg-amber-500/12 text-amber-600 dark:text-amber-400",
-        text: "text-amber-600 dark:text-amber-400",
+        border: "border-border",
+        badge: "border-border bg-muted text-foreground",
+        text: "text-foreground",
         headline: "That doesn't look like a valid indicator",
       }
     : {
-        border: "border-red-500/40",
-        wash: "from-red-500/12",
-        badge: "border-red-500/40 bg-red-500/12 text-red-600 dark:text-red-400",
-        text: "text-red-600 dark:text-red-400",
+        border: "border-destructive/40",
+        badge: "border-destructive/40 bg-destructive/10 text-destructive",
+        text: "text-destructive",
         headline: "Couldn't run the check",
       };
 
   return (
     <Card
       className={cn(
-        "sketch-shadow mt-8 overflow-hidden rounded-2xl border bg-gradient-to-br to-transparent",
+        "sketch-shadow mt-8 overflow-hidden rounded-lg border bg-card",
         accent.border,
-        accent.wash,
       )}
     >
       <CardContent className="flex items-start gap-4 py-8">
@@ -904,12 +912,12 @@ function SearchProgress({
   const showSlowNote = elapsedS >= SLOW_THRESHOLD_S && pendingMetas.length > 0;
 
   return (
-    <Card className="sketch-shadow mt-8 overflow-hidden rounded-2xl border-2 border-foreground/20 bg-gradient-to-br from-primary/8 to-transparent duration-300 animate-in fade-in slide-in-from-bottom-2">
+    <Card className="sketch-shadow mt-8 overflow-hidden rounded-lg border border-border bg-card">
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div className="space-y-0.5">
-            <div className="font-hand flex items-center gap-2 text-2xl font-bold leading-none">
-              <Loader2 className="size-5 animate-spin text-primary" />
+            <div className="flex items-center gap-2 text-xl font-semibold leading-none">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
               Checking this {noun}…
             </div>
             {indicator && (
@@ -918,8 +926,8 @@ function SearchProgress({
               </p>
             )}
           </div>
-          <div className="font-hand text-right leading-none">
-            <span className="text-3xl font-bold tabular-nums text-primary">
+          <div className="text-right leading-none">
+            <span className="text-3xl font-semibold tabular-nums text-foreground">
               {pct}%
             </span>
             <div className="text-sm text-muted-foreground">
@@ -942,7 +950,7 @@ function SearchProgress({
           aria-valuetext={
             total > 0 ? `${done} of ${total} sources checked` : undefined
           }
-          className="relative h-3.5 w-full overflow-hidden rounded-sm border-2 border-foreground/15 bg-muted"
+          className="relative h-3.5 w-full overflow-hidden rounded-sm border border-border bg-muted"
         >
           <div
             className={cn(
@@ -972,7 +980,7 @@ function SearchProgress({
             : "Reaching out to threat-intel sources…"}
         </p>
 
-        <p className="font-hand text-base text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {lastSettled
             ? `Last in: ${lastSettled.source.name}. Querying the rest…`
             : "Reaching out to threat-intel sources…"}

@@ -4,7 +4,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 /** Full-width brand banner shown at the top of every page. */
 export function Banner() {
   return (
-    <header className="relative border-b-2 border-dashed border-foreground/25 bg-gradient-to-b from-primary/8 to-transparent">
+    <header className="relative border-b border-border bg-background">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:py-4">
         <Link
           href="/"

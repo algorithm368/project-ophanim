@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -7,13 +6,17 @@
 @theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);
-    --font-sans: var(--font-ubuntu);
-    --font-mono: var(--font-jetbrains-mono);
-    /* Professional theme: display + "hand" labels now resolve to Ubuntu.
-       The handwriting face (Caveat) has been retired; aliases kept so the
-       many `font-hand` / `font-heading` usages need no per-component edits. */
-    --font-heading: var(--font-ubuntu);
-    --font-hand: var(--font-ubuntu);
+    /* Zero-download type: native system stacks (no webfont request, no font
+       layout shift). --font-sans drives all prose + headings; --font-mono
+       carries the data tokens (IPs, hashes, scores, timings). The --heading /
+       --hand aliases resolve to the same sans so the many existing
+       `font-heading` / `font-hand` usages need no per-component edits. */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code",
+        Menlo, Consolas, monospace;
+    --font-heading: var(--font-sans);
+    --font-hand: var(--font-sans);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -53,83 +56,81 @@
     --radius-4xl: 18px;
 }
 
-/* Light: #FFFDF6 / #FAF6E9 / #ECE8D9 / #494949 palette */
+/* Light: neutral grayscale — off-white surface, near-black ink, hairline rules.
+   Chroma is held at 0 throughout; color is reserved exclusively for the
+   threat verdict (verdict hero, consensus bar, source rails/pills, score bars). */
 :root {
-    --background: oklch(0.99 0.005 89);
-    --foreground: oklch(0.353 0 0);
-    --card: oklch(0.97 0.013 88);
-    --card-foreground: oklch(0.353 0 0);
-    --popover: oklch(0.97 0.013 88);
-    --popover-foreground: oklch(0.353 0 0);
-    --primary: oklch(0.353 0 0);
-    --primary-foreground: oklch(0.99 0.005 89);
-    --secondary: oklch(0.921 0.018 83);
-    --secondary-foreground: oklch(0.353 0 0);
-    --muted: oklch(0.921 0.018 83);
-    --muted-foreground: oklch(0.52 0 0);
-    --accent: oklch(0.921 0.018 83);
-    --accent-foreground: oklch(0.353 0 0);
-    --destructive: oklch(0.58 0.18 28);
-    --border: oklch(0.921 0.018 83);
-    --input: oklch(0.921 0.018 83);
-    /* Amber accent (the eye's iris) — used for focus rings so every focus
-       interaction carries the brand color instead of flat grey. */
-    --ring: oklch(0.72 0.155 65);
-    --chart-1: oklch(0.353 0 0);
-    --chart-2: oklch(0.52 0 0);
-    --chart-3: oklch(0.6 0.1 145);
-    --chart-4: oklch(0.62 0.13 25);
-    --chart-5: oklch(0.55 0.09 230);
+    --background: oklch(0.985 0 0);
+    --foreground: oklch(0.205 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.205 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.205 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.95 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.96 0 0);
+    --muted-foreground: oklch(0.44 0 0);
+    --accent: oklch(0.95 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.55 0.2 27);
+    --border: oklch(0.9 0 0);
+    --input: oklch(0.9 0 0);
+    /* Neutral focus ring — no brand hue; the only color belongs to the verdict. */
+    --ring: oklch(0.55 0 0);
+    --chart-1: oklch(0.205 0 0);
+    --chart-2: oklch(0.44 0 0);
+    --chart-3: oklch(0.62 0 0);
+    --chart-4: oklch(0.74 0 0);
+    --chart-5: oklch(0.84 0 0);
     --radius: 0.5rem;
-    --sidebar: oklch(0.97 0.013 88);
-    --sidebar-foreground: oklch(0.353 0 0);
-    --sidebar-primary: oklch(0.353 0 0);
-    --sidebar-primary-foreground: oklch(0.99 0.005 89);
-    --sidebar-accent: oklch(0.921 0.018 83);
-    --sidebar-accent-foreground: oklch(0.353 0 0);
-    --sidebar-border: oklch(0.921 0.018 83);
-    --sidebar-ring: oklch(0.353 0 0);
-    --elev-shadow:
-        0 1px 2px color-mix(in oklch, var(--foreground) 7%, transparent),
-        0 4px 12px color-mix(in oklch, var(--foreground) 8%, transparent);
+    --sidebar: oklch(1 0 0);
+    --sidebar-foreground: oklch(0.205 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.95 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.9 0 0);
+    --sidebar-ring: oklch(0.55 0 0);
+    /* Flat report: a single whisper-soft shadow; separation comes from borders. */
+    --elev-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-/* Dark: charcoal base derived from #494949 */
+/* Dark: neutral charcoal — deep gray surface, off-white ink, hairline rules. */
 .dark {
-    --background: oklch(0.22 0 0);
-    --foreground: oklch(0.99 0.005 89);
-    --card: oklch(0.26 0 0);
-    --card-foreground: oklch(0.99 0.005 89);
-    --popover: oklch(0.26 0 0);
-    --popover-foreground: oklch(0.99 0.005 89);
-    --primary: oklch(0.97 0.013 88);
-    --primary-foreground: oklch(0.26 0 0);
-    --secondary: oklch(0.31 0 0);
-    --secondary-foreground: oklch(0.99 0.005 89);
-    --muted: oklch(0.31 0 0);
-    --muted-foreground: oklch(0.65 0 0);
-    --accent: oklch(0.35 0 0);
-    --accent-foreground: oklch(0.99 0.005 89);
-    --destructive: oklch(0.64 0.16 26);
-    --border: oklch(0.38 0 0);
-    --input: oklch(0.4 0 0);
-    --ring: oklch(0.78 0.155 70);
-    --chart-1: oklch(0.97 0.013 88);
-    --chart-2: oklch(0.921 0.018 83);
-    --chart-3: oklch(0.7 0.12 150);
-    --chart-4: oklch(0.68 0.15 28);
-    --chart-5: oklch(0.66 0.1 235);
-    --sidebar: oklch(0.24 0 0);
-    --sidebar-foreground: oklch(0.99 0.005 89);
-    --sidebar-primary: oklch(0.97 0.013 88);
-    --sidebar-primary-foreground: oklch(0.26 0 0);
-    --sidebar-accent: oklch(0.35 0 0);
-    --sidebar-accent-foreground: oklch(0.99 0.005 89);
-    --sidebar-border: oklch(0.38 0 0);
-    --sidebar-ring: oklch(0.97 0.013 88);
-    --elev-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.4),
-        0 4px 14px rgba(0, 0, 0, 0.45);
+    --background: oklch(0.17 0 0);
+    --foreground: oklch(0.96 0 0);
+    --card: oklch(0.21 0 0);
+    --card-foreground: oklch(0.96 0 0);
+    --popover: oklch(0.21 0 0);
+    --popover-foreground: oklch(0.96 0 0);
+    --primary: oklch(0.96 0 0);
+    --primary-foreground: oklch(0.21 0 0);
+    --secondary: oklch(0.27 0 0);
+    --secondary-foreground: oklch(0.96 0 0);
+    --muted: oklch(0.26 0 0);
+    --muted-foreground: oklch(0.66 0 0);
+    --accent: oklch(0.3 0 0);
+    --accent-foreground: oklch(0.96 0 0);
+    --destructive: oklch(0.62 0.19 26);
+    --border: oklch(0.3 0 0);
+    --input: oklch(0.32 0 0);
+    --ring: oklch(0.62 0 0);
+    --chart-1: oklch(0.96 0 0);
+    --chart-2: oklch(0.8 0 0);
+    --chart-3: oklch(0.66 0 0);
+    --chart-4: oklch(0.52 0 0);
+    --chart-5: oklch(0.4 0 0);
+    --sidebar: oklch(0.19 0 0);
+    --sidebar-foreground: oklch(0.96 0 0);
+    --sidebar-primary: oklch(0.96 0 0);
+    --sidebar-primary-foreground: oklch(0.21 0 0);
+    --sidebar-accent: oklch(0.3 0 0);
+    --sidebar-accent-foreground: oklch(0.96 0 0);
+    --sidebar-border: oklch(0.3 0 0);
+    --sidebar-ring: oklch(0.62 0 0);
+    --elev-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 @layer base {
@@ -145,7 +146,7 @@
     h1,
     h2,
     h3 {
-        font-family: var(--font-ubuntu), system-ui, sans-serif;
+        font-family: var(--font-sans);
         letter-spacing: -0.01em;
     }
 }
@@ -154,9 +155,9 @@
    name (so components need no edits) but redefined to their clean, restrained
    equivalents: no marker swipe, no wobbly corners, no offset sticker shadows. */
 
-/* Highlighter → a restrained amber underline accent. */
+/* Highlighter → a restrained neutral underline accent (no brand hue). */
 @utility highlighter {
-    box-shadow: inset 0 -0.12em 0 color-mix(in oklch, #f59e0b 55%, transparent);
+    box-shadow: inset 0 -0.1em 0 color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
 /* Clean, even corners. */

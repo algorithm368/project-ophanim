@@ -111,7 +111,7 @@ export function ProfileCard({ result }: { result: CheckResult }) {
     const hasMap = typeof geo?.lat === "number" && typeof geo?.lon === "number";
 
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading
                     icon={Globe}
@@ -299,7 +299,7 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
     const mx = ctx?.mx ?? [];
 
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading
                     icon={Globe}
@@ -501,7 +501,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
     }
 
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading
                     icon={FileDigit}

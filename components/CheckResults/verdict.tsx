@@ -111,7 +111,7 @@ function VerdictShell({
     const style = VERDICT_STYLE[result.verdict];
 
     return (
-        <Card className="sketch-shadow relative overflow-hidden rounded-2xl border border-foreground/12 bg-card">
+        <Card className="sketch-shadow relative overflow-hidden rounded-lg border border-foreground/12 bg-card">
             <CardContent className="relative z-10 space-y-4">
                 <div className="flex flex-row items-start justify-between gap-4">
                     <div className="min-w-0 flex-1 space-y-3">

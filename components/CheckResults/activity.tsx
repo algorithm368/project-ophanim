@@ -25,10 +25,10 @@ export function SourceHealthNotice({ result }: { result: ResultLike }) {
     if (okCount > 0 || result.stats.queried === 0) return null;
 
     return (
-        <div className="sketch-shadow flex items-start gap-3 rounded-xl border-2 border-orange-500/40 bg-orange-500/10 px-4 py-3 text-orange-700 dark:text-orange-300">
+        <div className="sketch-shadow flex items-start gap-3 rounded-lg border border-orange-500/40 bg-orange-500/10 px-4 py-3 text-orange-700 dark:text-orange-300">
             <TriangleAlert className="mt-0.5 size-5 shrink-0" />
             <div className="space-y-0.5">
-                <p className="font-hand text-lg font-bold leading-tight">
+                <p className="text-base font-semibold leading-tight">
                     Heads up: no sources responded
                 </p>
                 <p className="text-sm leading-relaxed">
@@ -56,7 +56,7 @@ export function ActivityCard({ result, noun }: { result: ResultLike; noun: strin
     const responded = result.sources.filter((s) => s.status === "ok").length;
 
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading icon={TriangleAlert}>
                     Observed activity
@@ -185,7 +185,7 @@ export function HistoryCard({ result }: { result: ResultLike }) {
     const fmt = (iso: string) => new Date(iso).toLocaleDateString();
 
     return (
-        <Card className="sketch-shadow rounded-2xl border border-foreground/12">
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading
                     icon={History}
