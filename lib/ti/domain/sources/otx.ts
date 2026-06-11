@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
+import { fetchOtxMalwareRelations } from "../../otx-malware";
 
 interface OtxResponse {
   pulse_info?: {
@@ -34,12 +35,22 @@ export const otxDomainSource: TiSource = {
   async check(domain, signal): Promise<SourceFinding> {
     const key = process.env.OTX_API_KEY;
     if (!key) return { status: "skipped" };
+    const headers = { "X-OTX-API-KEY": key };
     try {
-      const { ok, status, data } = await getJson<OtxResponse>(
-        `https://otx.alienvault.com/api/v1/indicators/domain/${domain}/general`,
-        signal,
-        { "X-OTX-API-KEY": key },
-      );
+      // /general for the verdict; /malware (one extra parallel GET) for the
+      // sample hashes seen contacting this domain. Best-effort.
+      const [{ ok, status, data }, relations] = await Promise.all([
+        getJson<OtxResponse>(
+          `https://otx.alienvault.com/api/v1/indicators/domain/${domain}/general`,
+          signal,
+          headers,
+        ),
+        fetchOtxMalwareRelations(
+          `https://otx.alienvault.com/api/v1/indicators/domain/${domain}/malware`,
+          headers,
+          signal,
+        ),
+      ]);
       if (!ok || !data) {
         return { status: "error", error: data?.error ?? `HTTP ${status}` };
       }
@@ -66,6 +77,7 @@ export const otxDomainSource: TiSource = {
           pulseCount,
           pulses: pulses.slice(0, 8).map((p) => p.name).filter(Boolean),
         },
+        relations: relations.length ? relations : undefined,
         raw: data,
       };
     } catch (err) {

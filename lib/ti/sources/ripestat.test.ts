@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { ripestatFinding } from "./ripestat";
+import { ripestatFinding, rpkiCategories } from "./ripestat";
+
+describe("rpkiCategories", () => {
+  it("tags only an invalid RPKI origin", () => {
+    expect(rpkiCategories("invalid")).toEqual(["rpki-invalid"]);
+    expect(rpkiCategories("valid")).toEqual([]);
+    expect(rpkiCategories("unknown")).toEqual([]);
+    expect(rpkiCategories(undefined)).toEqual([]);
+  });
+});
 
 describe("ripestatFinding", () => {
   it("summarizes the announced prefix and ASN, and seeds geo.asn", () => {

@@ -10,6 +10,33 @@ interface NetworkInfoResponse {
   };
 }
 
+interface RpkiResponse {
+  data?: { status?: string };
+}
+
+/** An "invalid" RPKI origin (the prefix is announced by an AS the ROA forbids)
+ *  is a soft route-hijack signal; "valid"/"unknown" add no tag. */
+export function rpkiCategories(status: string | undefined): string[] {
+  return status === "invalid" ? ["rpki-invalid"] : [];
+}
+
+/** Best-effort RPKI origin validation for the announcing AS + prefix. */
+async function fetchRpkiStatus(
+  asn: string,
+  prefix: string,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  try {
+    const { ok, data } = await getJson<RpkiResponse>(
+      `https://stat.ripe.net/data/rpki-validation/data.json?resource=AS${asn}&prefix=${encodeURIComponent(prefix)}`,
+      signal,
+    );
+    return ok ? data?.data?.status : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Map RIPEstat network-info into a context finding (announced prefix + ASN). */
 export function ripestatFinding(data: NetworkInfoResponse["data"]): SourceFinding {
   const prefix = data?.prefix;
@@ -55,7 +82,20 @@ export const ripeStatSource: TiSource = {
         signal,
       );
       if (!ok || !data) return { status: "error", error: `HTTP ${status}` };
-      return { ...ripestatFinding(data.data), raw: data };
+
+      const finding = ripestatFinding(data.data);
+      // +1 best-effort call: validate the prefix's RPKI origin for the AS.
+      const asn = (data.data?.asns ?? []).filter(Boolean)[0];
+      const prefix = data.data?.prefix;
+      const rpkiStatus =
+        asn && prefix ? await fetchRpkiStatus(asn, prefix, signal) : undefined;
+
+      return {
+        ...finding,
+        categories: rpkiCategories(rpkiStatus),
+        details: { ...finding.details, rpkiStatus },
+        raw: data,
+      };
     } catch (err) {
       return {
         status: isTimeout(err) ? "timeout" : "error",
