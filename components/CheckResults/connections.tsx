@@ -1,36 +1,17 @@
 "use client";
 
-import { useContext } from "react";
-import {
-    Check,
-    Copy,
-    ExternalLink,
-    FileDigit,
-    Globe,
-    Link2,
-    Network,
-    Search,
-    Server,
-} from "lucide-react";
+import { Check, Copy, ExternalLink, Link2, Server } from "lucide-react";
 import {
     type CheckResult,
     type DomainCheckResult,
     type HashCheckResult,
-    type IndicatorType,
 } from "@/lib/ti/types";
 import { type ResultLike } from "@/lib/ti/narrative";
 import { relationsFor, groupRelations, type RelationGroup } from "@/lib/relations";
 import { hostFromUrl } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Pivot, PivotContext, SectionHeading, useCopied } from "./primitives";
-import type { IconType } from "./types";
-
-const TYPE_ICON: Record<IndicatorType, IconType> = {
-    ip: Network,
-    domain: Globe,
-    hash: FileDigit,
-};
+import { Pivot, PivotList, SectionHeading, useCopied } from "./primitives";
 
 export function ConnectionsCard({
     result,
@@ -43,83 +24,41 @@ export function ConnectionsCard({
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
-            <CardContent className="space-y-5">
+            <CardContent className="space-y-4">
                 <SectionHeading icon={Link2}>Related indicators</SectionHeading>
-                {groups.map((group) => (
-                    <RelationGroupSection key={group.relation} group={group} />
-                ))}
+                {/* Formal label→value readout: relation type on the left, the
+                    indicators as pivot chips on the right, long tails collapsed. */}
+                <dl className="divide-y divide-border [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+                    {groups.map((group) => (
+                        <RelationRow key={group.relation} group={group} />
+                    ))}
+                </dl>
             </CardContent>
         </Card>
     );
 }
 
-function RelationGroupSection({ group }: { group: RelationGroup }) {
+function RelationRow({ group }: { group: RelationGroup }) {
+    const values = group.items.map((i) => i.value);
     return (
-        <div className="space-y-2">
-            <div>
-                <div className="font-mono text-[12px] font-semibold tracking-wider text-foreground uppercase">
+        <div className="flex flex-col gap-1.5 py-3 sm:flex-row sm:gap-4">
+            <dt
+                title={group.description}
+                className="flex shrink-0 items-baseline gap-1.5 sm:w-44 sm:pt-0.5"
+            >
+                <span className="font-mono text-[11px] font-semibold tracking-wider text-foreground uppercase">
                     {group.label}
-                </div>
-                {group.description && (
-                    <p className="text-xs text-muted-foreground">
-                        {group.description}
-                    </p>
+                </span>
+                {group.items.length > 1 && (
+                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
+                        {group.items.length}
+                    </span>
                 )}
-            </div>
-            <ul className="space-y-1.5">
-                {group.items.map((item) => (
-                    <RelationRow
-                        key={item.value}
-                        value={item.value}
-                        type={item.type}
-                    />
-                ))}
-            </ul>
+            </dt>
+            <dd className="min-w-0 flex-1">
+                <PivotList values={values} max={8} />
+            </dd>
         </div>
-    );
-}
-
-function RelationRow({ value, type }: { value: string; type: IndicatorType }) {
-    const pivot = useContext(PivotContext);
-    const [copied, copy] = useCopied();
-    const Icon = TYPE_ICON[type] ?? Link2;
-    return (
-        <li className="flex items-center gap-2 rounded-md border border-foreground/10 bg-muted/40 p-2 text-xs">
-            <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-            <code
-                className="min-w-0 flex-1 truncate font-mono text-[12px]"
-                title={value}
-            >
-                {value}
-            </code>
-            {pivot && (
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    aria-label={`Check ${value}`}
-                    className="shrink-0 gap-1 font-mono text-[11px] text-muted-foreground hover:text-primary"
-                    onClick={() => pivot(value)}
-                >
-                    <Search className="size-3.5" />
-                    check
-                </Button>
-            )}
-            <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                aria-label={`Copy ${value}`}
-                className="size-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                onClick={() => copy(value)}
-            >
-                {copied ? (
-                    <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                ) : (
-                    <Copy className="size-3.5" />
-                )}
-            </Button>
-        </li>
     );
 }
 
