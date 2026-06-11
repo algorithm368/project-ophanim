@@ -12,6 +12,7 @@ interface MaltiverseSample {
   // host/IP strings (not objects).
   blacklist?: { description?: string }[] | null;
   contacted_host?: string[] | null;
+  tag?: string[] | null;
   error?: string;
 }
 
@@ -99,6 +100,9 @@ export const maltiverseSource: TiSource = {
       const name = Array.isArray(data.filename)
         ? data.filename[0]
         : data.filename;
+      const tags = [
+        ...new Set((data.tag ?? []).filter((t): t is string => Boolean(t))),
+      ].slice(0, 15);
 
       return {
         status: "ok",
@@ -112,8 +116,10 @@ export const maltiverseSource: TiSource = {
           fileType: data.filetype,
           fileSize: data.size,
           detectionNames: detectionNames.length ? detectionNames : undefined,
+          tags: tags.length ? tags : undefined,
         },
         relations: relations.length ? relations : undefined,
+        details: tags.length ? { tags } : undefined,
         raw: data,
       };
     } catch (err) {

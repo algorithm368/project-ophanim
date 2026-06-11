@@ -101,6 +101,8 @@ export interface HashContext {
   imphash?: string;
   /** Fuzzy hash for similarity matching. */
   ssdeep?: string;
+  /** TLSH locality-sensitive hash, another similarity/clustering digest. */
+  tlsh?: string;
   tags?: string[];
   /** URLs the sample has been served/downloaded from (distribution + in-the-wild). */
   distributionUrls?: string[];

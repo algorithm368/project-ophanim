@@ -10,6 +10,12 @@ interface KasperskyResponse {
     Md5?: string;
     Sha1?: string;
     Sha256?: string;
+    FirstSeen?: string;
+    LastSeen?: string;
+    /** Authenticode signer, when the file is signed. */
+    Signer?: string;
+    /** How many times Kaspersky's network has seen this file. */
+    HitsCount?: number;
   };
   DetectionsInfo?: { DetectionName?: string }[] | null;
 }
@@ -83,11 +89,17 @@ export const kasperskyOpenTipSource: TiSource = {
           sha256: info?.Sha256?.toLowerCase(),
           fileType: info?.Type,
           fileSize: info?.Size,
+          firstSeen: info?.FirstSeen,
+          lastSeen: info?.LastSeen,
           detectionNames: detections.length ? detections : undefined,
         },
         details: {
           zone: data.Zone,
           fileStatus: info?.FileStatus,
+          firstSeen: info?.FirstSeen,
+          lastSeen: info?.LastSeen,
+          signer: info?.Signer,
+          hitsCount: info?.HitsCount,
           detections,
         },
         raw: data,

@@ -30,6 +30,10 @@ interface VtFileResponse {
       sha1?: string;
       sha256?: string;
       magic?: string;
+      ssdeep?: string;
+      /** Import hash (PE imports) — absent for non-PE / packed files. */
+      imphash?: string;
+      tlsh?: string;
       meaningful_name?: string;
       names?: string[];
       reputation?: number;
@@ -144,6 +148,9 @@ export const virusTotalHashSource: TiSource = {
           malwareFamily: family,
           threatLabel,
           magic: attr.magic,
+          imphash: attr.imphash,
+          ssdeep: attr.ssdeep,
+          tlsh: attr.tlsh,
           firstSeen: isoFromEpoch(attr.first_submission_date),
           lastSeen: isoFromEpoch(attr.last_analysis_date),
           // Names the engines assigned — the hash profile card renders none of
@@ -158,6 +165,10 @@ export const virusTotalHashSource: TiSource = {
           typeDescription: attr.type_description,
           threatLabel,
           reputation: attr.reputation,
+          // Similarity/clustering digests — no profile row renders these.
+          imphash: attr.imphash,
+          ssdeep: attr.ssdeep,
+          tlsh: attr.tlsh,
           detections: detections.length ? detections.slice(0, 8) : undefined,
           communityVotes: hasVotes
             ? { harmless: votes?.harmless ?? 0, malicious: votes?.malicious ?? 0 }

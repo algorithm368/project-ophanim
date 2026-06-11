@@ -5,13 +5,31 @@ interface PdThreat {
   name?: string;
   category?: string;
 }
+interface PdFeed {
+  name?: string;
+  category?: string;
+  organization?: string;
+}
 interface PdResponse {
   iid?: number;
   indicator?: string;
   type?: string;
   risk?: string; // none | low | medium | high | critical | unknown | retired
   threats?: PdThreat[] | null;
+  /** Open-source feeds this indicator appears on. */
+  feeds?: PdFeed[] | null;
+  /** "YYYY-MM-DD HH:MM:SS" UTC — first added / most recently seen. */
+  stamp_added?: string;
+  stamp_seen?: string;
   error?: string;
+}
+
+/** Pulsedive stamps are "YYYY-MM-DD HH:MM:SS" in UTC; normalize to ISO so the
+ *  profile card's first/last-seen rows render consistently with other sources. */
+export function pdIso(stamp: string | undefined): string | undefined {
+  if (!stamp) return undefined;
+  const d = new Date(stamp.replace(" ", "T") + "Z");
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
 /** Pulsedive risk band → 0-100 contribution. Returns undefined when unknown. */
@@ -75,6 +93,24 @@ export const pulsediveSource: TiSource = {
             .filter((v): v is string => Boolean(v)),
         ),
       ];
+      const feeds = [
+        ...new Set(
+          (data.feeds ?? [])
+            .map((f) => f.name)
+            .filter((v): v is string => Boolean(v)),
+        ),
+      ].slice(0, 10);
+      const firstSeen = pdIso(data.stamp_added);
+      const lastSeen = pdIso(data.stamp_seen);
+
+      const hashContext =
+        threats.length || firstSeen || lastSeen
+          ? {
+              detectionNames: threats.length ? threats : undefined,
+              firstSeen,
+              lastSeen,
+            }
+          : undefined;
 
       return {
         status: "ok",
@@ -84,7 +120,8 @@ export const pulsediveSource: TiSource = {
         summary: `Pulsedive risk: ${data.risk ?? "unknown"}${
           threats.length ? ` (${threats.slice(0, 3).join(", ")})` : ""
         }`,
-        hashContext: threats.length ? { detectionNames: threats } : undefined,
+        hashContext,
+        details: feeds.length ? { feeds } : undefined,
         raw: data,
       };
     } catch (err) {
