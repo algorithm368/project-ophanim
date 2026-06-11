@@ -1,4 +1,4 @@
-import type { SourceFinding, TiSource } from "../../types";
+import type { RelatedIndicator, SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
 
 interface HaOverview {
@@ -12,7 +12,37 @@ interface HaOverview {
   last_file_name?: string | null;
   analysis_start_time?: string | null;
   whitelisted?: boolean | null;
+  /** SHA-256s of samples that bundle/drop this file. */
+  related_parent_hashes?: string[] | null;
+  /** SHA-256s of files this sample dropped/extracted. */
+  related_children_hashes?: string[] | null;
   message?: string;
+}
+
+/**
+ * The overview's parent/child links as typed pivots: parents bundle or drop
+ * this file (relation "parent"); children are files this one dropped (relation
+ * "drops"). Self-references and duplicates are removed. These ride along on the
+ * overview response — no extra request.
+ */
+export function haRelatedHashes(
+  parents: string[] | null | undefined,
+  children: string[] | null | undefined,
+  selfHash: string,
+  cap = 6,
+): RelatedIndicator[] {
+  const self = selfHash.toLowerCase();
+  const pick = (arr: string[] | null | undefined, relation: string) =>
+    [
+      ...new Set(
+        (arr ?? [])
+          .map((h) => h?.toLowerCase())
+          .filter((h): h is string => Boolean(h) && h !== self),
+      ),
+    ]
+      .slice(0, cap)
+      .map((value) => ({ value, type: "hash" as const, relation }));
+  return [...pick(parents, "parent"), ...pick(children, "drops")];
 }
 
 /**
@@ -87,6 +117,11 @@ export const hybridAnalysisSource: TiSource = {
         (data.type_short?.length ? data.type_short.join(", ") : undefined);
 
       const score = hybridAnalysisScore(verdict, threatScore, data.whitelisted);
+      const relations = haRelatedHashes(
+        data.related_parent_hashes,
+        data.related_children_hashes,
+        hash,
+      );
 
       return {
         status: "ok",
@@ -110,6 +145,7 @@ export const hybridAnalysisSource: TiSource = {
           vxFamily: family,
           whitelisted: data.whitelisted ?? undefined,
         },
+        relations: relations.length ? relations : undefined,
         raw: data,
       };
     } catch (err) {

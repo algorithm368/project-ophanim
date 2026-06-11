@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { hybridAnalysisScore } from "./hybrid-analysis";
+import { haRelatedHashes, hybridAnalysisScore } from "./hybrid-analysis";
+
+describe("haRelatedHashes", () => {
+  it("maps parents to 'parent' and children to 'drops', excluding self + dups", () => {
+    expect(
+      haRelatedHashes(["P1", "SELF", "p1"], ["C1", "C2"], "self"),
+    ).toEqual([
+      { value: "p1", type: "hash", relation: "parent" },
+      { value: "c1", type: "hash", relation: "drops" },
+      { value: "c2", type: "hash", relation: "drops" },
+    ]);
+  });
+
+  it("handles null/missing arrays and caps each side", () => {
+    expect(haRelatedHashes(null, undefined, "x")).toEqual([]);
+    const many = Array.from({ length: 9 }, (_, i) => `h${i}`);
+    expect(haRelatedHashes(many, [], "x")).toHaveLength(6);
+  });
+});
 
 describe("hybridAnalysisScore", () => {
   it("floors malicious at 75 and suspicious at 45", () => {

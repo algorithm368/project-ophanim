@@ -1,5 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { bareHost } from "./triage";
+import { bareHost, extractTriageRelations } from "./triage";
+
+describe("extractTriageRelations", () => {
+  it("merges extracted config C2 with target IOCs, typed and deduped", () => {
+    const rels = extractTriageRelations({
+      extracted: [{ config: { c2: ["http://45.9.148.0:443/gate"] } }],
+      targets: [
+        {
+          iocs: {
+            domains: ["evil.example.com", "evil.example.com"],
+            ips: ["203.0.113.5", "45.9.148.0"], // 45.9.148.0 dup of the c2 host
+          },
+        },
+      ],
+    });
+    expect(rels).toEqual([
+      { value: "45.9.148.0", type: "ip", relation: "contacts" },
+      { value: "evil.example.com", type: "domain", relation: "contacts" },
+      { value: "203.0.113.5", type: "ip", relation: "contacts" },
+    ]);
+  });
+
+  it("drops non-routable sandbox noise (loopback / private)", () => {
+    const rels = extractTriageRelations({
+      targets: [{ iocs: { ips: ["127.0.0.1", "10.0.0.5", "8.8.8.8"] } }],
+    });
+    // private/loopback removed; the public resolver is kept as a network contact
+    expect(rels).toEqual([
+      { value: "8.8.8.8", type: "ip", relation: "contacts" },
+    ]);
+  });
+
+  it("is empty when there are no extracted configs or target IOCs", () => {
+    expect(extractTriageRelations({})).toEqual([]);
+  });
+});
 
 describe("bareHost", () => {
   it("returns a bare hostname unchanged", () => {

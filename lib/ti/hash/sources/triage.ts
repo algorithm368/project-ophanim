@@ -1,6 +1,7 @@
 import type { RelatedIndicator, SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
 import { detectIOC } from "@/lib/ioc";
+import { parseIPv4 } from "@/lib/ip";
 
 interface TriageSearch {
   data?: { id?: string; status?: string }[];
@@ -13,11 +14,61 @@ interface TriageOverview {
     family?: string[];
     tags?: string[];
     signatures?: { name?: string }[];
+    // Sandbox-observed network IOCs for this target (mixes C2 with benign OS
+    // noise); read defensively.
+    iocs?: { domains?: string[]; ips?: string[]; urls?: string[] };
   }[];
   // Extracted network IOCs vary in shape; read defensively.
   extracted?: {
     config?: { c2?: string[]; domains?: string[]; hosts?: string[] };
   }[];
+}
+
+/** Drop only non-routable hosts (loopback / RFC1918 / link-local / CGNAT / …);
+ *  a bare domain or any public IP is kept. */
+function isRoutableHost(host: string): boolean {
+  const ip = parseIPv4(host);
+  return !ip || (!ip.isPrivate && !ip.isReserved);
+}
+
+/**
+ * Network pivots for a Triage report, from two places that ride along on the
+ * overview we already fetch: the extracted malware `config` (clean C2) and each
+ * target's sandbox-observed `iocs` (which also surfaces contacts for samples
+ * that yielded no extracted config). Values are normalized to a bare host,
+ * typed by what they parse as, deduped, and non-routable hosts dropped.
+ */
+export function extractTriageRelations(
+  data: TriageOverview,
+  cap = 12,
+): RelatedIndicator[] {
+  const relations: RelatedIndicator[] = [];
+  const seen = new Set<string>();
+  const add = (raw: unknown) => {
+    if (typeof raw !== "string") return;
+    const host = bareHost(raw);
+    if (!host || seen.has(host) || !isRoutableHost(host)) return;
+    seen.add(host);
+    relations.push({
+      value: host,
+      type: detectIOC(host) === "ip" ? "ip" : "domain",
+      relation: "contacts",
+    });
+  };
+  for (const e of data.extracted ?? []) {
+    const cfg = e.config ?? {};
+    for (const raw of [
+      ...(cfg.c2 ?? []),
+      ...(cfg.domains ?? []),
+      ...(cfg.hosts ?? []),
+    ])
+      add(raw);
+  }
+  for (const t of data.targets ?? []) {
+    const iocs = t.iocs ?? {};
+    for (const raw of [...(iocs.domains ?? []), ...(iocs.ips ?? [])]) add(raw);
+  }
+  return relations.slice(0, cap);
 }
 
 const API = "https://tria.ge/api/v0";
@@ -100,30 +151,7 @@ export const triageSource: TiSource = {
         ),
       ] as string[];
 
-      const relations: RelatedIndicator[] = [];
-      const seen = new Set<string>();
-      // c2 / domains / hosts mix hostnames and raw IPs (sometimes with a
-      // scheme, path, or :port). Normalize to a bare host, skip non-strings
-      // so one malformed entry can't fail the whole finding, and type each
-      // by what it actually parses as rather than which list it came from.
-      for (const e of data.extracted ?? []) {
-        const cfg = e.config ?? {};
-        for (const raw of [
-          ...(cfg.c2 ?? []),
-          ...(cfg.domains ?? []),
-          ...(cfg.hosts ?? []),
-        ]) {
-          if (typeof raw !== "string") continue;
-          const host = bareHost(raw);
-          if (!host || seen.has(host)) continue;
-          seen.add(host);
-          relations.push({
-            value: host,
-            type: detectIOC(host) === "ip" ? "ip" : "domain",
-            relation: "contacts",
-          });
-        }
-      }
+      const relations = extractTriageRelations(data);
 
       return {
         status: "ok",
@@ -138,9 +166,7 @@ export const triageSource: TiSource = {
           fileName: data.sample?.target,
           fileSize: data.sample?.size,
         },
-        relations: relations.slice(0, 10).length
-          ? relations.slice(0, 10)
-          : undefined,
+        relations: relations.length ? relations : undefined,
         raw: data,
       };
     } catch (err) {
