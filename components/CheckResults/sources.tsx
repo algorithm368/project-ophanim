@@ -1,31 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import {
-    ChevronRight,
-    CircleX,
-    Clock,
-    ExternalLink,
-    Gauge,
-    ShieldAlert,
-    ShieldCheck,
-    TriangleAlert,
-} from "lucide-react";
-import {
-    type SourceMeta,
-    type SourceResult,
-} from "@/lib/ti/types";
-import { formatDate } from "@/lib/ti/narrative";
+import { ChevronRight, ExternalLink } from "lucide-react";
+import { type SourceMeta, type SourceResult } from "@/lib/ti/types";
 import { algoFromLength } from "@/lib/hash";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { scoreBarColor } from "./classify";
 import type { Mode } from "./types";
-
-/** A source slower than this is flagged in the result card so a near-timeout
- *  (e.g. AlienVault OTX at 10s+) is visible rather than silent. */
-const SLOW_MS = 6000;
 
 const CATEGORY_LABEL: Record<string, string> = {
     reputation: "Reputation",
@@ -115,8 +95,7 @@ function relevanceRank(s: SourceResult): number {
     return 3;
 }
 
-/** One semantic state per source, driving both the status rail and the pill so
- *  the two never disagree. */
+/** One semantic state per source, driving the single status dot. */
 type SourceTone = "flagged" | "low" | "clean" | "error" | "limited" | "skipped";
 
 function sourceTone(result: SourceResult): SourceTone {
@@ -131,22 +110,33 @@ function sourceTone(result: SourceResult): SourceTone {
     return "skipped";
 }
 
-/** Color of the 3px status rail down the left edge of each card. */
-const TONE_RAIL: Record<SourceTone, string> = {
+/** The status dot is the only color in the breakdown (verdict-family). A hollow
+ *  ring marks skipped/no-key sources that never contributed. */
+const TONE_DOT: Record<SourceTone, string> = {
     flagged: "bg-red-500",
     low: "bg-amber-500",
     clean: "bg-emerald-500",
-    error: "bg-destructive",
+    error: "bg-muted-foreground/40",
     limited: "bg-amber-500",
-    skipped: "bg-foreground/20",
+    skipped: "border border-muted-foreground/40",
 };
 
-/** Risk number tint — same thresholds as the score bar (see scoreBarColor). */
-function scoreTextColor(score: number): string {
-    if (score >= 70) return "text-red-600 dark:text-red-400";
-    if (score >= 40) return "text-orange-600 dark:text-orange-400";
-    if (score >= 15) return "text-amber-600 dark:text-amber-400";
-    return "text-emerald-600 dark:text-emerald-400";
+const TONE_LABEL: Record<SourceTone, string> = {
+    flagged: "Flagged",
+    low: "Low risk",
+    clean: "Clean",
+    error: "No response",
+    limited: "Rate limited",
+    skipped: "Skipped",
+};
+
+function StatusDot({ tone }: { tone: SourceTone }) {
+    return (
+        <span
+            title={TONE_LABEL[tone]}
+            className={cn("size-2 shrink-0 rounded-full", TONE_DOT[tone])}
+        />
+    );
 }
 
 export function SourceBreakdown({
@@ -188,9 +178,9 @@ export function SourceBreakdown({
                             </span>
                             <div className="h-px flex-1 bg-border" />
                         </div>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div className="overflow-hidden rounded-lg border border-border">
                             {group.map((s) => (
-                                <SourceCard
+                                <SourceRow
                                     key={s.source.id}
                                     result={s}
                                     indicator={indicator}
@@ -205,7 +195,7 @@ export function SourceBreakdown({
     );
 }
 
-function SourceCard({
+function SourceRow({
     result,
     indicator,
     kind,
@@ -217,242 +207,71 @@ function SourceCard({
     const { source, status } = result;
     const skipped = status === "skipped";
     const errored = status === "error" || status === "timeout";
-    const rateLimited = status === "rate_limited";
-    const slow = result.durationMs >= SLOW_MS;
-    const score = result.score;
+    const tone = sourceTone(result);
     // Serialize the raw-details payload only once the disclosure is opened, so
     // the eager JSON.stringify doesn't run for every source on the result mount.
     const [detailsOpen, setDetailsOpen] = useState(false);
     const lookupUrl = sourceLookupUrl(source, indicator, kind);
+    const hasDetails =
+        !!result.details && Object.keys(result.details).length > 0;
 
-    function openLookup() {
-        window.open(lookupUrl, "_blank", "noopener,noreferrer");
-    }
-
-    const tone = sourceTone(result);
-    const hasScore = !skipped && typeof score === "number";
-    const seen = result.lastSeen ? formatDate(result.lastSeen) : null;
+    const summary = errored
+        ? (result.error ?? "Lookup failed")
+        : (result.summary ??
+          (skipped
+              ? source.keyEnv
+                  ? `Set ${source.keyEnv} to enable`
+                  : "Disabled"
+              : "No data"));
 
     return (
-        <Card
-            role="link"
-            tabIndex={0}
-            onClick={openLookup}
-            onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openLookup();
-                }
-            }}
-            title={`Look up ${indicator} on ${source.name}`}
+        <div
             className={cn(
-                "relative h-full cursor-pointer gap-0 py-0 transition-colors",
-                "hover:bg-accent/40 hover:ring-foreground/25",
-                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                (skipped || rateLimited) && "opacity-70",
+                "group/row border-b border-border last:border-0",
+                skipped && "opacity-60",
             )}
         >
-            {/* Status rail — instant red/amber/green read across the whole grid. */}
-            <span
-                aria-hidden
-                className={cn(
-                    "absolute inset-y-0 left-0 w-[3px]",
-                    TONE_RAIL[tone],
-                )}
-            />
-
-            <CardContent className="flex h-full flex-col gap-3 py-3.5 pl-5">
-                {/* Header: name + technical meta on the left, status pill aligned right. */}
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <a
-                            href={lookupUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="group/name inline-flex items-center gap-1.5 text-[15px] font-semibold leading-tight tracking-tight hover:text-primary"
-                        >
-                            <span className="truncate">{source.name}</span>
-                            <ExternalLink className="size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover/name:opacity-100" />
-                        </a>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground uppercase tabular-nums">
-                            {result.durationMs > 0 && (
-                                <span
-                                    className={cn(
-                                        slow &&
-                                            "text-amber-600 dark:text-amber-400",
-                                    )}
-                                    title={
-                                        slow
-                                            ? "This source was slow to respond"
-                                            : undefined
-                                    }
-                                >
-                                    {result.durationMs} ms{slow ? " · slow" : ""}
-                                </span>
-                            )}
-                            {result.durationMs > 0 && seen && (
-                                <span className="text-muted-foreground/40">
-                                    ·
-                                </span>
-                            )}
-                            {seen && (
-                                <span className="inline-flex items-center gap-1">
-                                    <Clock className="size-3" />
-                                    seen {seen}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                    <StatusPill result={result} />
-                </div>
-
-                {/* Score readout — fixed-width label + number so every card aligns. */}
-                {hasScore && (
-                    <div className="flex items-center gap-2.5">
-                        <span className="w-8 shrink-0 font-mono text-[10px] tracking-[0.1em] text-muted-foreground uppercase">
-                            risk
-                        </span>
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-[2px] bg-foreground/10">
-                            <div
-                                className={cn(
-                                    "h-full rounded-[2px] transition-all duration-500",
-                                    scoreBarColor(score),
-                                )}
-                                style={{ width: `${Math.max(score, 1)}%` }}
-                            />
-                        </div>
-                        <span
-                            className={cn(
-                                "w-7 shrink-0 text-right font-mono text-sm font-bold tabular-nums",
-                                scoreTextColor(score),
-                            )}
-                        >
-                            {score}
-                        </span>
-                    </div>
-                )}
-
-                {/* Summary grows so raw-details footers line up across a row. */}
-                <div className="flex-1 space-y-2.5">
-                    <p
-                        className={cn(
-                            "text-[13px] leading-relaxed",
-                            errored
-                                ? "text-destructive"
-                                : "text-foreground/85",
-                        )}
-                    >
-                        {errored
-                            ? (result.error ?? "Lookup failed")
-                            : (result.summary ??
-                              (skipped
-                                  ? source.keyEnv
-                                      ? `Set ${source.keyEnv} to enable this source.`
-                                      : "Disabled."
-                                  : "No data."))}
-                    </p>
-
-                    {result.categories && result.categories.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                            {result.categories.slice(0, 8).map((c, i) => (
-                                <Badge
-                                    key={`${c}-${i}`}
-                                    variant="outline"
-                                    className="rounded-[3px] border-foreground/15 px-1.5 py-0 font-mono text-[10px] font-normal tracking-wide text-muted-foreground"
-                                >
-                                    {c}
-                                </Badge>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {result.details && Object.keys(result.details).length > 0 && (
-                    <details
-                        className="group/raw border-t border-foreground/10 pt-2.5"
-                        onClick={(e) => e.stopPropagation()}
-                        onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
-                    >
-                        <summary className="inline-flex cursor-pointer items-center gap-1 font-mono text-[10px] tracking-[0.1em] text-muted-foreground uppercase select-none hover:text-foreground">
-                            <ChevronRight className="size-3 transition-transform group-open/raw:rotate-90" />
-                            Raw details
-                        </summary>
-                        {detailsOpen && (
-                            <pre className="mt-2 overflow-x-auto rounded-[4px] border border-foreground/10 bg-muted/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
-                                {JSON.stringify(result.details, null, 2)}
-                            </pre>
-                        )}
-                    </details>
-                )}
-            </CardContent>
-        </Card>
-    );
-}
-
-/** Shared chrome for every status chip: fixed height, mono, uppercase — so the
- *  pills form a tidy right-hand column down the grid. */
-const PILL = "h-5 shrink-0 gap-1 rounded-[3px] border-transparent px-1.5 font-mono text-[10px] font-semibold tracking-[0.1em] uppercase [&>svg]:size-3";
-
-function StatusPill({ result }: { result: SourceResult }) {
-    const { status } = result;
-    const score = result.score ?? 0;
-    const flagged =
-        status === "ok" && (result.malicious === true || score >= 40);
-
-    if (flagged) {
-        return (
-            <Badge className={cn(PILL, "bg-red-500/12 text-red-600 dark:text-red-400")}>
-                <TriangleAlert />
-                Flagged
-            </Badge>
-        );
-    }
-
-    // A non-zero-but-sub-threshold score is a real (if weak) signal, so it gets
-    // its own amber state instead of reading as a clean green pass.
-    if (status === "ok" && score > 0) {
-        return (
-            <Badge className={cn(PILL, "bg-amber-500/15 text-amber-700 dark:text-amber-400")}>
-                <ShieldAlert />
-                Low risk
-            </Badge>
-        );
-    }
-
-    switch (status) {
-        case "ok":
-            return (
-                <Badge className={cn(PILL, "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400")}>
-                    <ShieldCheck />
-                    Clean
-                </Badge>
-            );
-        case "error":
-        case "timeout":
-            return (
-                <Badge className={cn(PILL, "bg-destructive/12 text-destructive")}>
-                    <CircleX />
-                    {status === "timeout" ? "Timeout" : "Error"}
-                </Badge>
-            );
-        case "rate_limited":
-            return (
-                <Badge className={cn(PILL, "bg-amber-500/15 text-amber-700 dark:text-amber-400")}>
-                    <Gauge />
-                    Rate limit
-                </Badge>
-            );
-        default:
-            // Skipped: distinguish "needs a key" (never ran) from "not applicable
-            // for this indicator" (ran, but the source doesn't cover this type).
-            return (
-                <Badge
-                    variant="outline"
-                    className={cn(PILL, "border-foreground/20 text-muted-foreground")}
+            <div className="flex items-center gap-2 pr-2">
+                <a
+                    href={lookupUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Look up ${indicator} on ${source.name}`}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
                 >
-                    {result.enabled ? "N/A" : "No key"}
-                </Badge>
-            );
-    }
+                    <StatusDot tone={tone} />
+                    <span className="shrink-0 text-sm font-medium tracking-tight">
+                        {source.name}
+                    </span>
+                    <span className="sr-only">{TONE_LABEL[tone]}.</span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
+                        {summary}
+                    </span>
+                    <ExternalLink className="size-3.5 shrink-0 text-muted-foreground/50 opacity-0 transition group-hover/row:opacity-100" />
+                </a>
+                {hasDetails && (
+                    <button
+                        type="button"
+                        aria-label={
+                            detailsOpen ? "Hide raw details" : "Show raw details"
+                        }
+                        onClick={() => setDetailsOpen((o) => !o)}
+                        className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                        <ChevronRight
+                            className={cn(
+                                "size-3.5 transition-transform",
+                                detailsOpen && "rotate-90",
+                            )}
+                        />
+                    </button>
+                )}
+            </div>
+            {hasDetails && detailsOpen && (
+                <pre className="overflow-x-auto border-t border-border bg-muted/40 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    {JSON.stringify(result.details, null, 2)}
+                </pre>
+            )}
+        </div>
+    );
 }
