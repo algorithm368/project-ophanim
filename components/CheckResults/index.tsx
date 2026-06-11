@@ -9,8 +9,9 @@ import {
 } from "@/lib/ti/types";
 import { PivotContext } from "./primitives";
 import { VerdictHero } from "./verdict";
-import { SourceBreakdown, ScoreChart } from "./sources";
-import { SourceHealthNotice, ActivityCard, HistoryCard } from "./activity";
+import { SourceBreakdown } from "./sources";
+import { SourceHealthNotice } from "./activity";
+import { CertificatesCard, PassiveDnsCard } from "./deep";
 import {
     ConnectionsCard,
     DistributionUrlsCard,
@@ -33,14 +34,10 @@ function Results({
         <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
             <VerdictHero result={result} onRefresh={onRefresh} />
-            <div className="grid grid-cols-1 gap-6">
-                <ProfileCard result={result} />
-                <ActivityCard result={result} noun="address" />
-            </div>
+            <ProfileCard result={result} />
             <ExposedServicesCard result={result} />
-            <HistoryCard result={result} />
+            <PassiveDnsCard result={result} />
             <ConnectionsCard result={result} />
-            <ScoreChart result={result} subject="this IP" />
             <SourceBreakdown
                 sources={result.sources}
                 indicator={result.ip}
@@ -61,13 +58,10 @@ function DomainResults({
         <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
             <VerdictHero result={result} onRefresh={onRefresh} />
-            <div className="grid grid-cols-1 gap-6">
-                <DomainProfileCard result={result} />
-                <ActivityCard result={result} noun="domain" />
-            </div>
-            <HistoryCard result={result} />
+            <DomainProfileCard result={result} />
+            <CertificatesCard result={result} />
+            <PassiveDnsCard result={result} />
             <ConnectionsCard result={result} />
-            <ScoreChart result={result} subject="this domain" />
             <SourceBreakdown
                 sources={result.sources}
                 indicator={result.domain}
@@ -88,14 +82,9 @@ function HashResults({
         <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
             <VerdictHero result={result} onRefresh={onRefresh} />
-            <div className="grid grid-cols-1 gap-6">
-                <HashProfileCard result={result} />
-                <ActivityCard result={result} noun="file" />
-            </div>
-            <HistoryCard result={result} />
+            <HashProfileCard result={result} />
             <ConnectionsCard result={result} />
             <DistributionUrlsCard result={result} />
-            <ScoreChart result={result} subject="this file" />
             <SourceBreakdown
                 sources={result.sources}
                 indicator={result.hash}

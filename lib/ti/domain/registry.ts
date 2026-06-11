@@ -1,6 +1,7 @@
 import type { TiSource } from "../types";
 import { dnsSource } from "./sources/dns";
 import { rdapSource } from "./sources/rdap";
+import { certSpotterSource } from "./sources/certspotter";
 import { spamhausDblSource } from "./sources/spamhaus-dbl";
 import { surblSource } from "./sources/surbl";
 import { quad9Source } from "./sources/quad9";
@@ -9,12 +10,14 @@ import { urlhausSource } from "./sources/urlhaus";
 import { safeBrowsingSource } from "./sources/safebrowsing";
 import { virusTotalDomainSource } from "./sources/virustotal";
 import { otxDomainSource } from "./sources/otx";
+import { pdnsDomainSource } from "./sources/pdns";
 import { threatFoxDomainSource } from "./sources/threatfox";
 
 /** All registered domain TI sources, in display order. */
 export const domainSources: TiSource[] = [
   dnsSource,
   rdapSource,
+  certSpotterSource,
   spamhausDblSource,
   surblSource,
   quad9Source,
@@ -23,5 +26,6 @@ export const domainSources: TiSource[] = [
   safeBrowsingSource,
   virusTotalDomainSource,
   otxDomainSource,
+  pdnsDomainSource,
   threatFoxDomainSource,
 ];

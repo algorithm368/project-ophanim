@@ -74,15 +74,21 @@ assembly step, distinct from the existing single-object merge.
 
 | Source | File | Key | IOC | Produces |
 | --- | --- | --- | --- | --- |
-| **crt.sh** | `lib/ti/domain/sources/crtsh.ts` | none | domain | `certificates`, `subdomains` |
-| **OTX passive DNS** | extend `sources/otx.ts` (ip+domain) | reuse `OTX_API_KEY` | IP, domain | `passiveDns` |
-| **mnemonic pDNS** (optional) | `sources/mnemonic-pdns.ts` | none | IP, domain | `passiveDns` |
+| **Cert Spotter** (SSLMate) | `lib/ti/domain/sources/certspotter.ts` | none (optional `CERTSPOTTER_API_KEY`) | domain | `certificates`, `subdomains` |
+| **mnemonic** passive DNS | `lib/ti/passive-dns.ts` + `sources/pdns.ts` + `domain/sources/pdns.ts` | none | IP, domain | `passiveDns` |
 
-- **crt.sh**: `GET https://crt.sh/?q=%25.<domain>&output=json`; parse issuer,
-  `not_before`/`not_after`, `name_value` (SAN list); derive unique subdomains
-  (strip wildcards, dedupe, drop the apex). Bound result size; its own timeout.
-- **passive DNS**: OTX indicator `passive_dns` section → `PassiveDnsRecord[]`;
-  mnemonic `pdns/v3/<query>` as a no-key supplement. Cap rows; sort newest-first.
+- **Cert Spotter**: `GET https://api.certspotter.com/v1/issuances?domain=<apex>&include_subdomains=true&expand=dns_names&expand=issuer`;
+  parse issuer (`friendly_name`), `not_before`/`not_after`, `dns_names` (SANs);
+  derive unique subdomains (strip wildcards, dedupe, drop the apex). Bound size;
+  own timeout. **Chosen over crt.sh during build** — crt.sh is frequently slow or
+  returns 502 (verified), while Cert Spotter answered in ~0.9s.
+- **passive DNS**: mnemonic `pdns/v3/<value>?limit=200` (no key) →
+  `PassiveDnsRecord[]`; A/AAAA answers become IP resolutions (domain lookup) or
+  domain resolutions (IP lookup), CNAME → domain. Cap rows; sort newest-first.
+  **Chosen over OTX passive_dns during build** — OTX reliably exceeded a 12s
+  timeout (verified); mnemonic is no-key and answered in ~6s. Caveat: mnemonic
+  can still time out for hyper-popular IPs (e.g. 1.1.1.1) — it degrades
+  gracefully (no panel) for those.
 
 ### UI panels (`components/CheckResults/`)
 

@@ -9,6 +9,7 @@ import type {
 import type { HashAlgorithm } from "@/lib/hash";
 import { aggregateRisk, computeStats } from "./aggregate";
 import { mergeFields } from "./orchestrate";
+import { collectCertificates, collectPassiveDns, collectSubdomains } from "./deep";
 import { overlayResolution, reconcileGeo } from "./geo/reconcile";
 
 /**
@@ -38,6 +39,7 @@ export function assembleIpResult(
       ? overlayResolution(geoResolution, { reverse, fcrdns })
       : undefined,
     geoResolution,
+    passiveDns: collectPassiveDns(results),
     sources: results,
     stats: computeStats(results),
   };
@@ -63,6 +65,9 @@ export function assembleDomainResult(
     riskScore,
     verdict,
     context: mergeDomainContext(results),
+    certificates: collectCertificates(results),
+    subdomains: collectSubdomains(results),
+    passiveDns: collectPassiveDns(results),
     sources: results,
     stats: computeStats(results),
   };

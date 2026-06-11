@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import {
-    BarChart3,
     ChevronRight,
     CircleX,
     Clock,
@@ -16,17 +15,12 @@ import {
     type SourceMeta,
     type SourceResult,
 } from "@/lib/ti/types";
-import {
-    formatDate,
-    scoreExplanation,
-    type ResultLike,
-} from "@/lib/ti/narrative";
+import { formatDate } from "@/lib/ti/narrative";
 import { algoFromLength } from "@/lib/hash";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { scoreBarColor } from "./classify";
-import { SectionHeading } from "./primitives";
 import type { Mode } from "./types";
 
 /** A source slower than this is flagged in the result card so a near-timeout
@@ -208,93 +202,6 @@ export function SourceBreakdown({
                 );
             })}
         </div>
-    );
-}
-
-export function ScoreChart({
-    result,
-    subject,
-}: {
-    result: ResultLike;
-    subject: string;
-}) {
-    const scored = result.sources
-        .filter((s) => s.status === "ok" && typeof s.score === "number")
-        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-
-    if (scored.length === 0) return null;
-
-    const explanation = scoreExplanation(result);
-
-    const contextOnly = result.sources.filter(
-        (s) => s.status === "ok" && typeof s.score !== "number",
-    ).length;
-    const notes = [
-        contextOnly > 0 ? `${contextOnly} context-only` : "",
-        result.stats.errored > 0 ? `${result.stats.errored} no response` : "",
-        result.stats.rateLimited > 0
-            ? `${result.stats.rateLimited} rate-limited`
-            : "",
-        result.stats.skipped > 0 ? `${result.stats.skipped} no key` : "",
-    ].filter(Boolean);
-
-    return (
-        <Card className="sketch-shadow rounded-lg border border-foreground/12">
-            <CardContent className="space-y-4">
-                <SectionHeading icon={BarChart3}>
-                    Source scores · {subject}
-                </SectionHeading>
-                {explanation.length > 0 && (
-                    <div className="space-y-1.5 rounded-lg border border-border bg-muted/40 p-3">
-                        <div className="font-mono text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                            Why this score
-                        </div>
-                        {explanation.map((line, i) => (
-                            <p
-                                key={i}
-                                className="text-sm leading-relaxed text-foreground/85"
-                            >
-                                {line}
-                            </p>
-                        ))}
-                    </div>
-                )}
-                <div className="space-y-2">
-                    {scored.map((s) => {
-                        const score = s.score ?? 0;
-                        return (
-                            <div
-                                key={s.source.id}
-                                className="grid grid-cols-[7.5rem_1fr_1.75rem] items-center gap-3 sm:grid-cols-[10rem_1fr_2rem]"
-                            >
-                                <span className="truncate text-xs text-muted-foreground">
-                                    {s.source.name}
-                                </span>
-                                <div className="h-2.5 overflow-hidden rounded-sm bg-foreground/10">
-                                    <div
-                                        className={cn(
-                                            "h-full rounded-sm transition-all duration-500",
-                                            scoreBarColor(score),
-                                        )}
-                                        style={{
-                                            width: `${Math.max(score, 1.5)}%`,
-                                        }}
-                                    />
-                                </div>
-                                <span className="text-right text-xs font-semibold tabular-nums">
-                                    {score}
-                                </span>
-                            </div>
-                        );
-                    })}
-                </div>
-                {notes.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                        Plus {notes.join(", ")}.
-                    </p>
-                )}
-            </CardContent>
-        </Card>
     );
 }
 

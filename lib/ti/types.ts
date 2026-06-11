@@ -108,6 +108,36 @@ export interface HashContext {
   detectionNames?: string[];
 }
 
+/** One TLS certificate observed in certificate-transparency logs (e.g. crt.sh). */
+export interface CertificateRecord {
+  /** Issuing CA, e.g. "Let's Encrypt R3". */
+  issuer: string;
+  /** Leaf certificate common name. */
+  commonName?: string;
+  /** Subject alternative names (the dNSNames the cert covers). */
+  sans: string[];
+  /** Earliest validity / first-seen timestamp (ISO). */
+  firstSeen?: string;
+  /** Expiry (notAfter, ISO). */
+  notAfter?: string;
+}
+
+/**
+ * One passive-DNS resolution: a historical IP<->domain mapping observed by a
+ * passive-DNS provider. For an IP lookup `value` is a domain that resolved to
+ * the IP; for a domain lookup `value` is an IP the domain resolved to.
+ */
+export interface PassiveDnsRecord {
+  value: string;
+  type: "domain" | "ip";
+  /** First time the mapping was observed (ISO). */
+  firstSeen?: string;
+  /** Most recent observation (ISO). */
+  lastSeen?: string;
+  /** DNS record type, e.g. "A", "AAAA", "CNAME". */
+  recordType?: string;
+}
+
 export type Confidence = "high" | "medium" | "low";
 
 /** One reconciled field: winning value + how sure we are + what else was seen. */
@@ -203,6 +233,12 @@ export interface SourceFinding {
    * these across all sources and dedupes with the context-derived relations.
    */
   relations?: RelatedIndicator[];
+  /** TLS certificates observed for this indicator (certificate transparency). */
+  certificates?: CertificateRecord[];
+  /** Subdomains discovered for a domain (e.g. from certificate SAN lists). */
+  subdomains?: string[];
+  /** Passive-DNS resolutions (historical IP<->domain mappings). */
+  passiveDns?: PassiveDnsRecord[];
 }
 
 export interface SourceResult extends SourceFinding {
@@ -237,6 +273,8 @@ export interface CheckResult {
   geo?: GeoContext;
   /** Multi-provider reconciled geo with per-field confidence. */
   geoResolution?: GeoResolution;
+  /** Passive-DNS resolutions: domains historically hosted on this IP. */
+  passiveDns?: PassiveDnsRecord[];
   sources: SourceResult[];
   stats: CheckStats;
   /** Past reputation snapshots (oldest to newest), for the history timeline. */
@@ -251,6 +289,12 @@ export interface DomainCheckResult {
   riskScore: number;
   verdict: Verdict;
   context?: DomainContext;
+  /** TLS certificates from certificate transparency (crt.sh). */
+  certificates?: CertificateRecord[];
+  /** Subdomains discovered (certificate SANs, etc.). */
+  subdomains?: string[];
+  /** Passive-DNS resolutions: IPs this domain has historically resolved to. */
+  passiveDns?: PassiveDnsRecord[];
   sources: SourceResult[];
   stats: CheckStats;
   /** Past reputation snapshots (oldest to newest), for the history timeline. */

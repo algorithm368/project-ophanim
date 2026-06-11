@@ -17,6 +17,7 @@ import { torSource } from "./sources/tor";
 import { virusTotalSource } from "./sources/virustotal";
 import { abuseIpdbSource } from "./sources/abuseipdb";
 import { otxSource } from "./sources/otx";
+import { pdnsSource } from "./sources/pdns";
 import { greyNoiseSource } from "./sources/greynoise";
 import { threatFoxSource } from "./sources/threatfox";
 import { criminalIpSource } from "./sources/criminalip";
@@ -41,6 +42,7 @@ export const sources: TiSource[] = [
   virusTotalSource,
   abuseIpdbSource,
   otxSource,
+  pdnsSource,
   greyNoiseSource,
   threatFoxSource,
   criminalIpSource,
