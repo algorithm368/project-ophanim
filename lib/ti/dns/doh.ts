@@ -50,9 +50,16 @@ export async function dohQuery(
   return data;
 }
 
-/** Flatten answer `data` values, stripping the trailing dot. */
+// DNSSEC meta records (DS, RRSIG, NSEC, DNSKEY, NSEC3) ride along in the answer
+// set when the DO bit is set (`dnssec: true`). They are signatures/proofs, never
+// answer *values*, so an A query with do=1 would otherwise leak an RRSIG blob
+// into resolvedIps (and break resolver-agreement). Drop them.
+const DNSSEC_META_TYPES = new Set([43, 46, 47, 48, 50]);
+
+/** Flatten answer `data` values, stripping the trailing dot and DNSSEC meta records. */
 export function answers(res: DohResponse | null): string[] {
   return (res?.Answer ?? [])
+    .filter((a) => !DNSSEC_META_TYPES.has(a.type ?? 0))
     .map((a) => a.data?.replace(/\.$/, ""))
     .filter((d): d is string => Boolean(d));
 }
