@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { summarizeAbuse } from "./abuseipdb";
+import { categoryBreakdown, summarizeAbuse } from "./abuseipdb";
+
+describe("categoryBreakdown", () => {
+  it("tallies category ids into named buckets, most-reported first", () => {
+    expect(
+      categoryBreakdown([
+        { categories: [22, 18] }, // SSH, Brute-Force
+        { categories: [22] }, // SSH
+        { categories: [21] }, // Web App Attack
+      ]),
+    ).toEqual([
+      { name: "SSH", count: 2 },
+      { name: "Brute-Force", count: 1 },
+      { name: "Web App Attack", count: 1 },
+    ]);
+  });
+
+  it("labels unknown ids and tolerates empty input", () => {
+    expect(categoryBreakdown([{ categories: [99] }])).toEqual([
+      { name: "Category 99", count: 1 },
+    ]);
+    expect(categoryBreakdown(null)).toEqual([]);
+  });
+});
 
 describe("summarizeAbuse", () => {
   it("flags malicious at high confidence and lists tor + usage categories", () => {
@@ -30,5 +53,17 @@ describe("summarizeAbuse", () => {
   it("uses 50% as the malicious threshold", () => {
     expect(summarizeAbuse({ abuseConfidenceScore: 49 }).malicious).toBe(false);
     expect(summarizeAbuse({ abuseConfidenceScore: 50 }).malicious).toBe(true);
+  });
+
+  it("headlines the top report reasons and adds them to categories", () => {
+    const r = summarizeAbuse({
+      abuseConfidenceScore: 92,
+      totalReports: 3,
+      reports: [{ categories: [22] }, { categories: [22] }, { categories: [18] }],
+    });
+    expect(r.summary).toBe(
+      "92% abuse confidence from 3 report(s) for SSH, Brute-Force",
+    );
+    expect(r.categories).toEqual(["ssh", "brute-force"]);
   });
 });

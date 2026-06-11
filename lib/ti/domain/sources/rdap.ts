@@ -1,25 +1,25 @@
 import type { DomainContext, SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
 import { parseDomain } from "../../../domain";
+import {
+  abuseContact,
+  findEntityByRole,
+  vcardField,
+  type RdapVcardEntity,
+} from "../../rdap-shared";
 
 interface RdapEvent {
   eventAction?: string;
   eventDate?: string;
 }
 
-interface RdapVcard {
-  vcardArray?: [string, unknown[]];
-}
-
-interface RdapEntity extends RdapVcard {
-  roles?: string[];
-}
-
 interface RdapResponse {
   events?: RdapEvent[];
-  entities?: RdapEntity[];
+  entities?: RdapVcardEntity[];
   nameservers?: { ldhName?: string }[];
   status?: string[];
+  /** DNSSEC delegation posture from the registry. */
+  secureDNS?: { delegationSigned?: boolean };
   errorCode?: number;
   title?: string;
 }
@@ -31,16 +31,10 @@ export function eventDate(
   return events?.find((e) => e.eventAction === action)?.eventDate;
 }
 
-export function registrarName(entities: RdapEntity[] | undefined): string | undefined {
-  const reg = entities?.find((e) => e.roles?.includes("registrar"));
-  const vcard = reg?.vcardArray?.[1];
-  if (!Array.isArray(vcard)) return undefined;
-  for (const entry of vcard) {
-    if (Array.isArray(entry) && entry[0] === "fn" && typeof entry[3] === "string") {
-      return entry[3];
-    }
-  }
-  return undefined;
+export function registrarName(
+  entities: RdapVcardEntity[] | undefined,
+): string | undefined {
+  return vcardField(findEntityByRole(entities, "registrar"), "fn");
 }
 
 function ageDays(createdAt: string | undefined): number | undefined {
@@ -94,6 +88,15 @@ export const rdapSource: TiSource = {
         .map((n) => n.ldhName?.toLowerCase())
         .filter((n): n is string => Boolean(n));
       const statuses = data.status ?? [];
+      // Authoritative DNSSEC posture from the registry (the resolver's AD flag
+      // is a weaker proxy); only set it when RDAP actually reports secureDNS.
+      const dnssec =
+        data.secureDNS?.delegationSigned === undefined
+          ? undefined
+          : data.secureDNS.delegationSigned
+            ? ("signed" as const)
+            : ("unsigned" as const);
+      const abuse = abuseContact(data.entities);
 
       const context: DomainContext = {
         registrar,
@@ -103,6 +106,7 @@ export const rdapSource: TiSource = {
         ageDays: age,
         statuses,
         nameservers,
+        dnssec,
       };
 
       const score = scoreForAge(age);
@@ -134,6 +138,9 @@ export const rdapSource: TiSource = {
           ageDays: age,
           statuses,
           nameservers,
+          dnssec,
+          abuseContact: abuse?.email,
+          abuseOrg: abuse?.org,
         },
         raw: data,
       };

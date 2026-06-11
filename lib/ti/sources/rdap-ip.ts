@@ -1,5 +1,6 @@
 import type { GeoContext, SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
+import { abuseContact, type RdapVcardEntity } from "../rdap-shared";
 
 export interface RdapIpResponse {
   country?: string;
@@ -7,6 +8,8 @@ export interface RdapIpResponse {
   startAddress?: string;
   endAddress?: string;
   handle?: string;
+  events?: { eventAction?: string; eventDate?: string }[];
+  entities?: RdapVcardEntity[];
 }
 
 export function rdapIpToGeo(data: RdapIpResponse): GeoContext {
@@ -14,6 +17,17 @@ export function rdapIpToGeo(data: RdapIpResponse): GeoContext {
   if (data.country) geo.countryCode = data.country;
   if (data.name) geo.asnOrg = data.name;
   return geo;
+}
+
+/** Whole-day age of the allocation from its RDAP "registration" event. */
+export function allocationAgeDays(
+  events: RdapIpResponse["events"],
+  now = Date.now(),
+): number | undefined {
+  const reg = events?.find((e) => e.eventAction === "registration")?.eventDate;
+  if (!reg) return undefined;
+  const t = Date.parse(reg);
+  return Number.isNaN(t) ? undefined : Math.floor((now - t) / 86_400_000);
 }
 
 /** RDAP via rdap.org bootstrap: authoritative RIR allocation (no key). Context only. */
@@ -43,6 +57,11 @@ export const rdapIpSource: TiSource = {
         return { status: "error", error: `HTTP ${status}` };
       }
       const geo = rdapIpToGeo(data);
+      const abuse = abuseContact(data.entities);
+      const registeredAt = data.events?.find(
+        (e) => e.eventAction === "registration",
+      )?.eventDate;
+      const ageDays = allocationAgeDays(data.events);
       return {
         status: "ok",
         summary:
@@ -52,6 +71,10 @@ export const rdapIpSource: TiSource = {
           networkName: data.name,
           allocationCountry: data.country,
           range: [data.startAddress, data.endAddress].filter(Boolean).join(" – "),
+          registeredAt,
+          allocationAgeDays: ageDays,
+          abuseContact: abuse?.email,
+          abuseOrg: abuse?.org,
         },
         raw: data,
       };
