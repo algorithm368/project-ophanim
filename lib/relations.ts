@@ -156,6 +156,10 @@ export const RELATION_META: Record<string, { label: string; description: string 
     label: "Parent samples",
     description: "Samples that bundle or drop this file",
   },
+  communicating: {
+    label: "Communicating samples",
+    description: "Malware samples seen communicating with this indicator",
+  },
   similar: {
     label: "Similar samples",
     description: "Files structurally similar to this one",
@@ -197,6 +201,7 @@ export const RELATION_ORDER = [
   "contacts",
   "drops",
   "parent",
+  "communicating",
   "similar",
   "distribution",
   "hosted",

@@ -1,5 +1,11 @@
 import type { RelatedIndicator, SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
+import {
+  communicatingSamples,
+  relationshipIds,
+  resolutionDomain,
+  type VtRelationships,
+} from "../vt-relationships";
 
 interface VtResponse {
   data?: {
@@ -17,40 +23,26 @@ interface VtResponse {
       country?: string;
       tags?: string[];
     };
+    /** Inline relationship pivots fetched via the `?relationships=` param. */
+    relationships?: VtRelationships;
   };
   error?: { message?: string };
 }
 
-interface VtResolutionsResponse {
-  data?: { attributes?: { host_name?: string } }[];
-}
-
 /**
- * Pull recent passive-DNS resolutions for the IP - the domains seen pointing
- * at it - so results can surface related IP -> hosted-domain pivots. Best-effort:
- * any failure (timeout, quota, etc.) just yields no relations.
+ * Passive-DNS hosted domains + communicating malware samples from the inline
+ * `?relationships=` block. Resolution items carry only an `${ip}${host_name}`
+ * id (no inline attributes), so the domain is recovered by stripping the IP.
  */
-async function fetchIpResolutions(
+export function ipRelationsFromVt(
   ip: string,
-  signal: AbortSignal,
-  headers: Record<string, string>,
-): Promise<RelatedIndicator[]> {
-  try {
-    const { ok, data } = await getJson<VtResolutionsResponse>(
-      `https://www.virustotal.com/api/v3/ip_addresses/${ip}/resolutions?limit=10`,
-      signal,
-      headers,
-    );
-    if (!ok || !Array.isArray(data?.data)) return [];
-    const hosts = data.data
-      .map((d) => d?.attributes?.host_name)
-      .filter((h): h is string => typeof h === "string" && h.length > 0);
-    return [...new Set(hosts)]
-      .slice(0, 8)
-      .map((value) => ({ value, type: "domain", relation: "hosted" }));
-  } catch {
-    return [];
-  }
+  rels: VtRelationships | undefined,
+): RelatedIndicator[] {
+  const hosted = relationshipIds(rels, "resolutions", 8)
+    .map((id) => resolutionDomain(id, ip))
+    .filter((d): d is string => Boolean(d))
+    .map((value) => ({ value, type: "domain" as const, relation: "hosted" }));
+  return [...hosted, ...communicatingSamples(rels)];
 }
 
 /** VT vendor stats → 0-100 (IP weighting: 10× malicious + 3× suspicious). */
@@ -75,15 +67,14 @@ export const virusTotalSource: TiSource = {
     if (!key) return { status: "skipped" };
     try {
       const headers = { "x-apikey": key };
-      const [main, relations] = await Promise.all([
-        getJson<VtResponse>(
-          `https://www.virustotal.com/api/v3/ip_addresses/${ip}`,
-          signal,
-          headers,
-        ),
-        fetchIpResolutions(ip, signal, headers),
-      ]);
-      const { ok, status, data } = main;
+      // Single request: hosted-domain + communicating-sample pivots ride along
+      // on the main GET via ?relationships=, replacing the separate /resolutions
+      // call.
+      const { ok, status, data } = await getJson<VtResponse>(
+        `https://www.virustotal.com/api/v3/ip_addresses/${ip}?relationships=resolutions,communicating_files`,
+        signal,
+        headers,
+      );
       if (!ok || !data?.data?.attributes) {
         return {
           status: "error",
@@ -103,6 +94,7 @@ export const virusTotalSource: TiSource = {
         (stats.timeout ?? 0);
 
       const score = vtScore(malicious, suspicious);
+      const relations = ipRelationsFromVt(ip, data.data.relationships);
 
       return {
         status: "ok",

@@ -1,11 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCategories, vtScore } from "./virustotal";
+import { domainRelationsFromVt, normalizeCategories, vtScore } from "./virustotal";
+import type { VtRelationships } from "../../vt-relationships";
 
 describe("vtScore (domain)", () => {
   it("weights malicious 10x and suspicious 3x, capped at 100", () => {
     expect(vtScore(0, 0)).toBe(0);
     expect(vtScore(2, 1)).toBe(23);
     expect(vtScore(20, 0)).toBe(100);
+  });
+});
+
+describe("domainRelationsFromVt", () => {
+  it("recovers resolved IPs from resolution ids + adds communicating samples", () => {
+    const rels: VtRelationships = {
+      resolutions: {
+        data: [{ type: "resolution", id: "93.184.216.34example.com" }],
+      },
+      communicating_files: { data: [{ type: "file", id: "def456" }] },
+    };
+    expect(domainRelationsFromVt("example.com", rels)).toEqual([
+      { value: "93.184.216.34", type: "ip", relation: "resolved" },
+      { value: "def456", type: "hash", relation: "communicating" },
+    ]);
+  });
+
+  it("is empty when there are no relationships", () => {
+    expect(domainRelationsFromVt("example.com", undefined)).toEqual([]);
   });
 });
 

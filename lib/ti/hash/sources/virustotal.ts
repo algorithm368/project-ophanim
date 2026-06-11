@@ -1,96 +1,10 @@
-import type {
-  IndicatorType,
-  RelatedIndicator,
-  SourceFinding,
-  TiSource,
-} from "../../types";
+import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
-import { hostFromUrl } from "@/lib/url";
-
-interface VtRelItem {
-  id?: string;
-  attributes?: { url?: string };
-}
-interface VtRelList {
-  data?: VtRelItem[];
-}
-
-/** File/IP/domain relationship endpoints → typed RelatedIndicators. */
-const INDICATOR_RELS: {
-  kind: string;
-  type: IndicatorType;
-  relation: string;
-}[] = [
-  { kind: "contacted_ips", type: "ip", relation: "contacts" },
-  { kind: "contacted_domains", type: "domain", relation: "contacts" },
-  { kind: "dropped_files", type: "hash", relation: "drops" },
-  { kind: "execution_parents", type: "hash", relation: "parent" },
-];
-
-/** URL relationship endpoints → distribution URLs (+ host relations). */
-const URL_RELS = ["itw_urls", "contacted_urls"];
-
-/**
- * Pull what the sample reaches out to / drops / came from. Each list is fetched
- * best-effort and independently; any failure (timeout, quota, premium-gated)
- * just contributes nothing. Returns relation pivots plus the raw URLs to show.
- */
-async function fetchHashRelations(
-  hash: string,
-  signal: AbortSignal,
-  headers: Record<string, string>,
-): Promise<{ relations: RelatedIndicator[]; distributionUrls: string[] }> {
-  const getList = async (kind: string): Promise<VtRelItem[]> => {
-    try {
-      const { ok, data } = await getJson<VtRelList>(
-        `https://www.virustotal.com/api/v3/files/${hash}/${kind}?limit=10`,
-        signal,
-        headers,
-      );
-      return ok && Array.isArray(data?.data) ? data.data : [];
-    } catch {
-      return [];
-    }
-  };
-
-  const [indicatorLists, urlLists] = await Promise.all([
-    Promise.all(INDICATOR_RELS.map((r) => getList(r.kind))),
-    Promise.all(URL_RELS.map((k) => getList(k))),
-  ]);
-
-  const relations: RelatedIndicator[] = [];
-  INDICATOR_RELS.forEach((r, i) => {
-    const values = [
-      ...new Set(
-        indicatorLists[i]
-          .map((d) => d.id)
-          .filter((v): v is string => typeof v === "string" && v.length > 0),
-      ),
-    ].slice(0, 6);
-    for (const value of values)
-      relations.push({ value, type: r.type, relation: r.relation });
-  });
-
-  const distributionUrls = [
-    ...new Set(
-      urlLists
-        .flat()
-        .map((d) => d.attributes?.url)
-        .filter((v): v is string => typeof v === "string" && v.length > 0),
-    ),
-  ].slice(0, 8);
-
-  const seenHosts = new Set<string>();
-  for (const u of distributionUrls) {
-    const host = hostFromUrl(u);
-    if (host && !seenHosts.has(host)) {
-      seenHosts.add(host);
-      relations.push({ value: host, type: "domain", relation: "distribution" });
-    }
-  }
-
-  return { relations, distributionUrls };
-}
+import {
+  detectionNames,
+  fileRelationsFromVt,
+  type VtRelationships,
+} from "../../vt-relationships";
 
 interface VtFileResponse {
   data?: {
@@ -102,6 +16,13 @@ interface VtFileResponse {
         undetected?: number;
         timeout?: number;
       };
+      /** Per-engine verdicts; only "malicious" entries carry a label. */
+      last_analysis_results?: Record<
+        string,
+        { category?: string; result?: string | null }
+      >;
+      /** Community up/down votes on the file's harmfulness. */
+      total_votes?: { harmless?: number; malicious?: number };
       type_description?: string;
       type_tag?: string;
       size?: number;
@@ -120,6 +41,8 @@ interface VtFileResponse {
         popular_threat_name?: { value?: string }[];
       };
     };
+    /** Inline relationship pivots fetched via the `?relationships=` param. */
+    relationships?: VtRelationships;
   };
   error?: { message?: string; code?: string };
 }
@@ -151,15 +74,16 @@ export const virusTotalHashSource: TiSource = {
     if (!key) return { status: "skipped" };
     try {
       const headers = { "x-apikey": key };
-      const [main, rel] = await Promise.all([
-        getJson<VtFileResponse>(
-          `https://www.virustotal.com/api/v3/files/${hash}`,
-          signal,
-          headers,
-        ),
-        fetchHashRelations(hash, signal, headers),
-      ]);
-      const { ok, status, data } = main;
+      // One request: the contacted/dropped/parent pivots ride along on the main
+      // file GET via ?relationships=, instead of the old 7-request fan-out
+      // (main + 4 indicator-rel + 2 url-rel). itw_urls is Enterprise-only and
+      // contacted_urls returns no usable URL inline, so both are dropped — this
+      // keeps a hash lookup at 1 VT request under the 500/day, 4/min free key.
+      const { ok, status, data } = await getJson<VtFileResponse>(
+        `https://www.virustotal.com/api/v3/files/${hash}?relationships=contacted_ips,contacted_domains,dropped_files,execution_parents`,
+        signal,
+        headers,
+      );
 
       // 404 = VT has never seen this file. That isn't a clean result, so emit
       // no score and let the verdict stay inconclusive unless another feed hits.
@@ -193,6 +117,11 @@ export const virusTotalHashSource: TiSource = {
         new Set([attr.meaningful_name, ...(attr.names ?? [])].filter(Boolean)),
       ) as string[];
 
+      const relations = fileRelationsFromVt(data.data.relationships);
+      const detections = detectionNames(attr.last_analysis_results);
+      const votes = attr.total_votes;
+      const hasVotes = Boolean(votes && (votes.harmless || votes.malicious));
+
       return {
         status: "ok",
         malicious: malicious >= 3,
@@ -217,9 +146,9 @@ export const virusTotalHashSource: TiSource = {
           magic: attr.magic,
           firstSeen: isoFromEpoch(attr.first_submission_date),
           lastSeen: isoFromEpoch(attr.last_analysis_date),
-          distributionUrls: rel.distributionUrls.length
-            ? rel.distributionUrls
-            : undefined,
+          // Names the engines assigned — the hash profile card renders none of
+          // these, so they also surface in `details` (the raw disclosure).
+          detectionNames: detections.length ? detections : undefined,
         },
         details: {
           maliciousEngines: malicious,
@@ -229,8 +158,12 @@ export const virusTotalHashSource: TiSource = {
           typeDescription: attr.type_description,
           threatLabel,
           reputation: attr.reputation,
+          detections: detections.length ? detections.slice(0, 8) : undefined,
+          communityVotes: hasVotes
+            ? { harmless: votes?.harmless ?? 0, malicious: votes?.malicious ?? 0 }
+            : undefined,
         },
-        relations: rel.relations.length ? rel.relations : undefined,
+        relations: relations.length ? relations : undefined,
         raw: data,
       };
     } catch (err) {
