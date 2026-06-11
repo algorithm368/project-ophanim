@@ -22,6 +22,11 @@ interface VtResponse {
       asn?: number;
       country?: string;
       tags?: string[];
+      last_https_certificate?: {
+        subject?: { CN?: string };
+        issuer?: { O?: string; CN?: string };
+        validity?: { not_after?: string };
+      };
     };
     /** Inline relationship pivots fetched via the `?relationships=` param. */
     relationships?: VtRelationships;
@@ -95,6 +100,16 @@ export const virusTotalSource: TiSource = {
 
       const score = vtScore(malicious, suspicious);
       const relations = ipRelationsFromVt(ip, data.data.relationships);
+      // VT serves a TLS cert for many IPs, but there is no IP certificate card,
+      // so keep it in details only (a compact subject/issuer line).
+      const cert = attr.last_https_certificate;
+      const certInfo = cert
+        ? {
+            subject: cert.subject?.CN,
+            issuer: cert.issuer?.O || cert.issuer?.CN,
+            notAfter: cert.validity?.not_after,
+          }
+        : undefined;
 
       return {
         status: "ok",
@@ -113,6 +128,7 @@ export const virusTotalSource: TiSource = {
           asOwner: attr.as_owner,
           asn: attr.asn,
           country: attr.country,
+          certificate: certInfo,
         },
         relations: relations.length ? relations : undefined,
         raw: data,

@@ -30,6 +30,25 @@ export function urlhausVerdict(
   return { score: Math.min(70, 20 + total * 4), malicious: total >= 5 };
 }
 
+/**
+ * Reputable-blocklist listing for the host. `spamhaus_dbl` reports a specific
+ * abuse label ("malware_domain", "phishing_domain", "abused_legit_malware", …)
+ * or "not listed"; `surbl` is "listed" / "not listed". A listing on either is a
+ * reputable-blocklist confirmation — the one URLhaus signal that moves the score
+ * on its own (independent of whether any malware URLs are currently catalogued).
+ */
+export function blacklistVerdict(
+  blacklists: Record<string, string> | undefined,
+): { listed: boolean; score: number; categories: string[] } {
+  const categories: string[] = [];
+  const dbl = blacklists?.spamhaus_dbl;
+  const surbl = blacklists?.surbl;
+  if (dbl && dbl !== "not listed") categories.push(`spamhaus:${dbl}`);
+  if (surbl && surbl !== "not listed") categories.push(`surbl:${surbl}`);
+  const listed = categories.length > 0;
+  return { listed, score: listed ? 65 : 0, categories };
+}
+
 /** URLhaus (abuse.ch) - malicious URLs hosted on a domain (shared abuse.ch key). */
 export const urlhausSource: TiSource = {
   meta: {
@@ -54,7 +73,22 @@ export const urlhausSource: TiSource = {
         { "Auth-Key": key },
       );
 
+      const blacklist = blacklistVerdict(data?.blacklists);
+
       if (data?.query_status === "no_results") {
+        // No catalogued URLs, but the host can still be on a reputable
+        // blocklist — that listing alone is a verdict-moving signal.
+        if (blacklist.listed) {
+          return {
+            status: "ok",
+            malicious: true,
+            score: blacklist.score,
+            categories: blacklist.categories,
+            summary: `On reputable blocklist: ${blacklist.categories.join(", ")}`,
+            details: { blacklists: data.blacklists },
+            raw: data,
+          };
+        }
         return { status: "ok", score: 0, summary: "No malicious URLs on record" };
       }
       if (!ok || data?.query_status !== "ok") {
@@ -74,15 +108,20 @@ export const urlhausSource: TiSource = {
       ).slice(0, 10);
       const total = Number(data.url_count ?? urls.length) || urls.length;
 
-      const { score, malicious } = urlhausVerdict(online, total);
+      const url = urlhausVerdict(online, total);
+      // Reputable-blocklist membership floors the score and the malicious call.
+      const score = Math.max(url.score, blacklist.score);
+      const malicious = url.malicious || blacklist.listed;
 
       return {
         status: "ok",
         malicious,
         score,
-        categories: [...threats, ...tags].slice(0, 12),
+        categories: [...threats, ...tags, ...blacklist.categories].slice(0, 12),
         lastSeen: data.firstseen,
-        summary: `Hosts ${total} malicious URL(s)${online > 0 ? `, ${online} online` : ""}`,
+        summary:
+          `Hosts ${total} malicious URL(s)${online > 0 ? `, ${online} online` : ""}` +
+          (blacklist.listed ? `; ${blacklist.categories.join(", ")}` : ""),
         details: {
           urlCount: total,
           onlineUrls: online,

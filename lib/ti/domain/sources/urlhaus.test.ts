@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { urlhausVerdict } from "./urlhaus";
+import { blacklistVerdict, urlhausVerdict } from "./urlhaus";
+
+describe("blacklistVerdict", () => {
+  it("does not move the score when the host is not listed", () => {
+    expect(
+      blacklistVerdict({ spamhaus_dbl: "not listed", surbl: "not listed" }),
+    ).toEqual({ listed: false, score: 0, categories: [] });
+    expect(blacklistVerdict(undefined)).toEqual({
+      listed: false,
+      score: 0,
+      categories: [],
+    });
+  });
+
+  it("scores + labels a reputable-blocklist listing", () => {
+    expect(
+      blacklistVerdict({ spamhaus_dbl: "malware_domain", surbl: "listed" }),
+    ).toEqual({
+      listed: true,
+      score: 65,
+      categories: ["spamhaus:malware_domain", "surbl:listed"],
+    });
+  });
+});
 
 describe("urlhausVerdict", () => {
   it("treats any live URL as a hard malicious signal", () => {

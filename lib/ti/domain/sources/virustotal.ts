@@ -1,4 +1,10 @@
-import type { RelatedIndicator, SourceFinding, TiSource } from "../../types";
+import type {
+  CertificateRecord,
+  DomainContext,
+  RelatedIndicator,
+  SourceFinding,
+  TiSource,
+} from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
 import {
   communicatingSamples,
@@ -6,6 +12,92 @@ import {
   resolutionIp,
   type VtRelationships,
 } from "../../vt-relationships";
+import { crossApexSans } from "../san-pivots";
+
+interface VtHttpsCertificate {
+  subject?: { CN?: string };
+  issuer?: { O?: string; CN?: string };
+  validity?: { not_before?: string; not_after?: string };
+  extensions?: { subject_alternative_name?: string[] };
+}
+
+interface VtDnsRecord {
+  type?: string;
+  value?: string;
+  flag?: number;
+  tag?: string;
+}
+
+/** VT timestamps are "YYYY-MM-DD HH:MM:SS" UTC; normalize to ISO for the cert card. */
+function vtCertDate(s: string | undefined): string | undefined {
+  if (!s) return undefined;
+  const d = new Date(s.replace(" ", "T") + "Z");
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
+/** The domain's last-served HTTPS cert → one normalized record, plus the SAN
+ *  names split into in-apex subdomains and cross-apex shared-cert domains. */
+export function vtCertificate(
+  cert: VtHttpsCertificate | undefined,
+  apex: string,
+): {
+  certificate?: CertificateRecord;
+  subdomains: string[];
+  sharedDomains: string[];
+} {
+  if (!cert) return { subdomains: [], sharedDomains: [] };
+  const apexLc = apex.toLowerCase();
+  const sans = [
+    ...new Set(
+      (cert.extensions?.subject_alternative_name ?? [])
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  const subdomains = sans
+    .map((n) => n.replace(/^\*\./, ""))
+    .filter((n) => n !== apexLc && n.endsWith(`.${apexLc}`));
+  const certificate: CertificateRecord = {
+    issuer: cert.issuer?.O || cert.issuer?.CN || "Unknown CA",
+    commonName: cert.subject?.CN,
+    sans,
+    firstSeen: vtCertDate(cert.validity?.not_before),
+    notAfter: vtCertDate(cert.validity?.not_after),
+  };
+  return {
+    certificate,
+    subdomains: [...new Set(subdomains)],
+    sharedDomains: crossApexSans(sans, apex),
+  };
+}
+
+/** VT last_dns_records → the domain-context rows the profile card renders. */
+export function vtDnsContext(records: VtDnsRecord[] | undefined): DomainContext {
+  const ctx: DomainContext = {};
+  const pick = (type: string) =>
+    (records ?? [])
+      .filter((r) => r.type === type && r.value)
+      .map((r) => r.value as string);
+  const a = pick("A");
+  const aaaa = pick("AAAA");
+  const mx = pick("MX");
+  const ns = pick("NS");
+  const caa = (records ?? [])
+    .filter((r) => r.type === "CAA" && r.value)
+    .map((r) => `${r.flag ?? 0} ${r.tag ?? "issue"} "${r.value}"`);
+  const cname = pick("CNAME");
+  const txt = pick("TXT");
+  const soa = pick("SOA")[0];
+  if (a.length) ctx.resolvedIps = [...new Set(a)];
+  if (aaaa.length) ctx.ipv6 = [...new Set(aaaa)];
+  if (mx.length) ctx.mx = [...new Set(mx)];
+  if (ns.length) ctx.nameservers = [...new Set(ns.map((n) => n.toLowerCase()))];
+  if (caa.length) ctx.caa = caa;
+  if (cname.length) ctx.cname = [...new Set(cname)];
+  if (txt.length) ctx.txt = txt;
+  if (soa) ctx.soa = soa;
+  return ctx;
+}
 
 /**
  * Passive-DNS resolved IPs + communicating malware samples from the inline
@@ -38,6 +130,8 @@ interface VtDomainResponse {
       registrar?: string;
       creation_date?: number;
       tags?: string[];
+      last_https_certificate?: VtHttpsCertificate;
+      last_dns_records?: VtDnsRecord[];
     };
     /** Inline relationship pivots fetched via the `?relationships=` param. */
     relationships?: VtRelationships;
@@ -193,6 +287,17 @@ export const virusTotalDomainSource: TiSource = {
       const contentCategories = normalizeCategories(attr.categories ?? {});
       const relations = domainRelationsFromVt(domain, data.data.relationships);
 
+      // last_https_certificate -> Certificates card; last_dns_records -> the
+      // domain-profile DNS rows. Both ride along on the main GET (no extra call).
+      const apex = domain.toLowerCase();
+      const { certificate, subdomains, sharedDomains } = vtCertificate(
+        attr.last_https_certificate,
+        apex,
+      );
+      const dnsContext = vtDnsContext(attr.last_dns_records);
+      for (const value of sharedDomains)
+        relations.push({ value, type: "domain", relation: "sharedCert" });
+
       return {
         status: "ok",
         malicious: malicious >= 3,
@@ -200,7 +305,9 @@ export const virusTotalDomainSource: TiSource = {
         summary: `${malicious}/${total} vendors flagged malicious${
           suspicious ? `, ${suspicious} suspicious` : ""
         }`,
-        domainContext: { categories: contentCategories },
+        domainContext: { categories: contentCategories, ...dnsContext },
+        certificates: certificate ? [certificate] : undefined,
+        subdomains: subdomains.length ? subdomains : undefined,
         details: {
           maliciousVendors: malicious,
           suspiciousVendors: suspicious,

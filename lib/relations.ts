@@ -169,6 +169,10 @@ export const RELATION_META: Record<string, { label: string; description: string 
     description: "Hosts that distributed this file",
   },
   hosted: { label: "Hosted domains", description: "Domains hosted on this address" },
+  sharedCert: {
+    label: "Shares a certificate (SAN)",
+    description: "Other domains named on a certificate with this one",
+  },
   A: {
     label: "Resolves to (A)",
     description: "IP addresses this domain resolves to",
@@ -213,6 +217,7 @@ export const RELATION_ORDER = [
   "MX",
   "rDNS",
   "host",
+  "sharedCert",
 ];
 
 /** A file's other digests are shown in the profile card, not as "connections". */

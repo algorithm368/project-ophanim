@@ -1,6 +1,75 @@
 import { describe, expect, it } from "vitest";
-import { domainRelationsFromVt, normalizeCategories, vtScore } from "./virustotal";
+import {
+  domainRelationsFromVt,
+  normalizeCategories,
+  vtCertificate,
+  vtDnsContext,
+  vtScore,
+} from "./virustotal";
 import type { VtRelationships } from "../../vt-relationships";
+
+describe("vtCertificate", () => {
+  it("normalizes the cert and splits SANs into subdomains + shared domains", () => {
+    const { certificate, subdomains, sharedDomains } = vtCertificate(
+      {
+        subject: { CN: "example.com" },
+        issuer: { O: "Let's Encrypt", CN: "R3" },
+        validity: { not_before: "2026-01-01 00:00:00", not_after: "2026-04-01 00:00:00" },
+        extensions: {
+          subject_alternative_name: [
+            "example.com",
+            "www.example.com",
+            "cdn.partner.net",
+          ],
+        },
+      },
+      "example.com",
+    );
+    expect(certificate).toEqual({
+      issuer: "Let's Encrypt",
+      commonName: "example.com",
+      sans: ["example.com", "www.example.com", "cdn.partner.net"],
+      firstSeen: "2026-01-01T00:00:00.000Z",
+      notAfter: "2026-04-01T00:00:00.000Z",
+    });
+    expect(subdomains).toEqual(["www.example.com"]);
+    expect(sharedDomains).toEqual(["partner.net"]);
+  });
+
+  it("returns an empty result when no cert is present", () => {
+    expect(vtCertificate(undefined, "example.com")).toEqual({
+      subdomains: [],
+      sharedDomains: [],
+    });
+  });
+});
+
+describe("vtDnsContext", () => {
+  it("maps DNS records to the domain-context rows the profile renders", () => {
+    expect(
+      vtDnsContext([
+        { type: "A", value: "1.2.3.4" },
+        { type: "A", value: "1.2.3.4" }, // dup
+        { type: "AAAA", value: "2001:db8::1" },
+        { type: "MX", value: "mail.example.com" },
+        { type: "NS", value: "NS1.EXAMPLE.COM" },
+        { type: "CAA", flag: 0, tag: "issue", value: "letsencrypt.org" },
+        { type: "SOA", value: "ns1.example.com hostmaster ..." },
+      ]),
+    ).toEqual({
+      resolvedIps: ["1.2.3.4"],
+      ipv6: ["2001:db8::1"],
+      mx: ["mail.example.com"],
+      nameservers: ["ns1.example.com"],
+      caa: ['0 issue "letsencrypt.org"'],
+      soa: "ns1.example.com hostmaster ...",
+    });
+  });
+
+  it("is an empty object when there are no records", () => {
+    expect(vtDnsContext(undefined)).toEqual({});
+  });
+});
 
 describe("vtScore (domain)", () => {
   it("weights malicious 10x and suspicious 3x, capped at 100", () => {

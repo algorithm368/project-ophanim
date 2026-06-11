@@ -38,6 +38,20 @@ describe("parseCertspotter", () => {
     expect(subdomains.sort()).toEqual(["m.wikipedia.org"]);
   });
 
+  it("emits cross-apex SAN domains as shared-cert pivots", () => {
+    const { subdomains, sharedDomains } = parseCertspotter(
+      [
+        {
+          issuer: { friendly_name: "Let's Encrypt" },
+          dns_names: ["a.example.com", "example.com", "other-site.net"],
+        },
+      ],
+      "example.com",
+    );
+    expect(subdomains).toEqual(["a.example.com"]);
+    expect(sharedDomains).toEqual(["other-site.net"]);
+  });
+
   it("falls back to the issuer DN when friendly_name is absent", () => {
     const { certificates } = parseCertspotter(
       [

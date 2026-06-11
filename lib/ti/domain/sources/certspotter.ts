@@ -1,10 +1,12 @@
 import type {
   CertificateRecord,
+  RelatedIndicator,
   SourceFinding,
   TiSource,
 } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
 import { parseDomain } from "../../../domain";
+import { crossApexSans } from "../san-pivots";
 
 interface CertspotterIssuance {
   dns_names?: string[];
@@ -26,14 +28,20 @@ export function issuerLabel(dn: string | undefined): string {
   return cn ?? dn;
 }
 
-/** Parse Cert Spotter issuances into normalized certificate records + subdomains. */
+/** Parse Cert Spotter issuances into normalized certificate records, subdomains,
+ *  and cross-apex SAN domains (other sites sharing a certificate). */
 export function parseCertspotter(
   issuances: CertspotterIssuance[],
   apex: string,
-): { certificates: CertificateRecord[]; subdomains: string[] } {
+): {
+  certificates: CertificateRecord[];
+  subdomains: string[];
+  sharedDomains: string[];
+} {
   const apexLc = apex.toLowerCase();
   const certificates: CertificateRecord[] = [];
   const subdomains = new Set<string>();
+  const allNames = new Set<string>();
 
   for (const c of issuances.slice(0, MAX_ENTRIES)) {
     const names = (c.dns_names ?? [])
@@ -44,6 +52,7 @@ export function parseCertspotter(
       // Strip wildcard prefix; keep names under the apex, drop the bare apex.
       const name = raw.replace(/^\*\./, "").trim();
       if (!name || name === apexLc) continue;
+      allNames.add(name);
       if (name.endsWith(`.${apexLc}`)) subdomains.add(name);
     }
 
@@ -60,7 +69,11 @@ export function parseCertspotter(
     });
   }
 
-  return { certificates, subdomains: [...subdomains] };
+  return {
+    certificates,
+    subdomains: [...subdomains],
+    sharedDomains: crossApexSans([...allNames], apex),
+  };
 }
 
 /**
@@ -100,12 +113,21 @@ export const certSpotterSource: TiSource = {
         return { status: "ok", summary: "No certificate-transparency records" };
       }
 
-      const { certificates, subdomains } = parseCertspotter(data, apex);
+      const { certificates, subdomains, sharedDomains } = parseCertspotter(
+        data,
+        apex,
+      );
       const summary =
         `${certificates.length} certificate${certificates.length === 1 ? "" : "s"} in CT logs` +
         (subdomains.length
           ? `, ${subdomains.length} subdomain${subdomains.length === 1 ? "" : "s"}`
           : "");
+
+      const relations: RelatedIndicator[] = sharedDomains.map((value) => ({
+        value,
+        type: "domain",
+        relation: "sharedCert",
+      }));
 
       return {
         status: "ok",
@@ -113,6 +135,7 @@ export const certSpotterSource: TiSource = {
         summary,
         certificates,
         subdomains,
+        relations: relations.length ? relations : undefined,
       };
     } catch (err) {
       return {
