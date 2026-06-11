@@ -68,6 +68,20 @@ describe("ipRelations", () => {
   it("returns nothing when no context is present", () => {
     expect(ipRelations(baseIp)).toEqual([]);
   });
+
+  it("links passive-DNS domains hosted on the IP", () => {
+    const result: CheckResult = {
+      ...baseIp,
+      passiveDns: [
+        { value: "hosted.example.com", type: "domain", recordType: "A" },
+      ],
+    };
+    expect(ipRelations(result)).toContainEqual({
+      value: "hosted.example.com",
+      type: "domain",
+      relation: "hosted",
+    });
+  });
 });
 
 describe("domainRelations", () => {
@@ -104,6 +118,28 @@ describe("domainRelations", () => {
       type: "domain",
       relation: "MX",
     });
+  });
+
+  it("links passive-DNS IPs, CNAME, AAAA, and PTR hosts", () => {
+    const result: DomainCheckResult = {
+      domain: "example.com",
+      checkedAt: "",
+      riskScore: 0,
+      verdict: "clean",
+      sources: [],
+      stats: { total: 0, queried: 0, flagged: 0, skipped: 0, errored: 0, rateLimited: 0 },
+      context: {
+        cname: ["cdn.example.net"],
+        ipv6: ["2001:db8::1"],
+        reverse: ["ptr.example.com"],
+      },
+      passiveDns: [{ value: "9.9.9.9", type: "ip", recordType: "A" }],
+    };
+    const rels = domainRelations(result);
+    expect(rels).toContainEqual({ value: "9.9.9.9", type: "ip", relation: "resolved" });
+    expect(rels).toContainEqual({ value: "cdn.example.net", type: "domain", relation: "CNAME" });
+    expect(rels).toContainEqual({ value: "2001:db8::1", type: "ip", relation: "AAAA" });
+    expect(rels).toContainEqual({ value: "ptr.example.com", type: "domain", relation: "rDNS" });
   });
 });
 

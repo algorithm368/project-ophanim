@@ -3,6 +3,7 @@ import type {
   DomainCheckResult,
   HashCheckResult,
   IndicatorType,
+  PassiveDnsRecord,
   RelatedIndicator,
 } from "@/lib/ti/types";
 
@@ -32,6 +33,23 @@ function dedupe(nodes: RelatedIndicator[]): RelatedIndicator[] {
   return out;
 }
 
+/** Passive-DNS resolutions as pivots: for an IP lookup the records are domains
+ *  (relation "hosted"); for a domain lookup they are IPs (relation "resolved"). */
+function passiveDnsRelations(
+  records: PassiveDnsRecord[] | undefined,
+  cap = 12,
+): RelatedIndicator[] {
+  const out: RelatedIndicator[] = [];
+  for (const r of (records ?? []).slice(0, cap)) {
+    out.push({
+      value: r.value,
+      type: r.type,
+      relation: r.type === "domain" ? "hosted" : "resolved",
+    });
+  }
+  return out;
+}
+
 /** Hostnames Shodan InternetDB reports for an IP (PTR + observed vhosts). */
 function shodanHostnames(result: CheckResult): string[] {
   const d = (result.sources.find((s) => s.source.id === "shodan-internetdb")
@@ -48,6 +66,7 @@ export function ipRelations(result: CheckResult): RelatedIndicator[] {
     out.push({ value: result.geo.reverse, type: "domain", relation: "rDNS" });
   for (const h of shodanHostnames(result).slice(0, 6))
     out.push({ value: h, type: "domain", relation: "host" });
+  out.push(...passiveDnsRelations(result.passiveDns));
   return dedupe(out);
 }
 
@@ -56,10 +75,17 @@ export function domainRelations(result: DomainCheckResult): RelatedIndicator[] {
   const out: RelatedIndicator[] = [];
   for (const ip of (ctx?.resolvedIps ?? []).slice(0, 6))
     out.push({ value: ip, type: "ip", relation: "A" });
+  for (const v6 of (ctx?.ipv6 ?? []).slice(0, 6))
+    out.push({ value: v6, type: "ip", relation: "AAAA" });
+  for (const cn of (ctx?.cname ?? []).slice(0, 4))
+    out.push({ value: cn, type: "domain", relation: "CNAME" });
   for (const ns of (ctx?.nameservers ?? []).slice(0, 4))
     out.push({ value: ns, type: "domain", relation: "NS" });
   for (const mx of (ctx?.mx ?? []).slice(0, 4))
     out.push({ value: mx, type: "domain", relation: "MX" });
+  for (const ptr of (ctx?.reverse ?? []).slice(0, 4))
+    out.push({ value: ptr, type: "domain", relation: "rDNS" });
+  out.push(...passiveDnsRelations(result.passiveDns));
   return dedupe(out);
 }
 
@@ -143,6 +169,14 @@ export const RELATION_META: Record<string, { label: string; description: string 
     label: "Resolves to (A)",
     description: "IP addresses this domain resolves to",
   },
+  AAAA: {
+    label: "Resolves to (AAAA)",
+    description: "IPv6 addresses this domain resolves to",
+  },
+  CNAME: {
+    label: "Canonical name (CNAME)",
+    description: "Canonical hostnames this domain points to",
+  },
   resolved: {
     label: "Resolves to (passive DNS)",
     description: "IPs seen for this domain in passive DNS",
@@ -167,7 +201,9 @@ export const RELATION_ORDER = [
   "distribution",
   "hosted",
   "A",
+  "AAAA",
   "resolved",
+  "CNAME",
   "NS",
   "MX",
   "rDNS",
