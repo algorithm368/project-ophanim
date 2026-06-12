@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { ipInfoToGeo, mapIpInfoBatch, type IpInfoResponse } from "./ipinfo";
+import {
+  ipInfoLiteToGeo,
+  ipInfoToGeo,
+  mapIpInfoBatch,
+  type IpInfoResponse,
+} from "./ipinfo";
+
+describe("ipInfoLiteToGeo", () => {
+  it("maps the Lite ASN + country fields to GeoContext", () => {
+    expect(
+      ipInfoLiteToGeo({
+        ip: "8.8.8.8",
+        asn: "AS15169",
+        as_name: "Google LLC",
+        as_domain: "google.com",
+        country_code: "US",
+        country: "United States",
+      }),
+    ).toEqual({
+      countryCode: "US",
+      country: "United States",
+      asn: "AS15169",
+      asnOrg: "Google LLC",
+    });
+  });
+
+  it("tolerates a sparse response", () => {
+    expect(ipInfoLiteToGeo({ country_code: "DE" })).toEqual({ countryCode: "DE" });
+  });
+});
 
 describe("ipInfoToGeo", () => {
   it("parses loc and org into GeoContext fields", () => {

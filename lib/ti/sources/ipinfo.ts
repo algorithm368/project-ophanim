@@ -11,6 +11,26 @@ export interface IpInfoResponse {
   bogon?: boolean;
 }
 
+/** The free `api.ipinfo.io/lite/{ip}` response — ASN + country only (no city). */
+export interface IpInfoLiteResponse {
+  ip?: string;
+  asn?: string;
+  as_name?: string;
+  as_domain?: string;
+  country_code?: string;
+  country?: string;
+  bogon?: boolean;
+}
+
+export function ipInfoLiteToGeo(data: IpInfoLiteResponse): GeoContext {
+  const geo: GeoContext = {};
+  if (data.country_code) geo.countryCode = data.country_code;
+  if (data.country) geo.country = data.country;
+  if (data.asn) geo.asn = data.asn;
+  if (data.as_name) geo.asnOrg = data.as_name;
+  return geo;
+}
+
 export function ipInfoToGeo(data: IpInfoResponse): GeoContext {
   const geo: GeoContext = {};
   if (data.city) geo.city = data.city;
@@ -75,7 +95,10 @@ export async function bulkIpInfo(
   }
 }
 
-/** ipinfo.io: strong ASN/company + geo (free token via IPINFO_TOKEN). Context only. */
+/** ipinfo.io: strong ASN/company context (free token via IPINFO_TOKEN). Context
+ *  only. Uses the free Lite endpoint (api.ipinfo.io/lite) since the legacy
+ *  /{ip}/json is being sunset; Lite returns ASN + country (no city — ip-api
+ *  already provides city-level geo), and crucially clean asn/as_name fields. */
 export const ipInfoSource: TiSource = {
   meta: {
     id: "ipinfo",
@@ -91,17 +114,17 @@ export const ipInfoSource: TiSource = {
     const token = process.env.IPINFO_TOKEN;
     if (!token) return { status: "skipped" };
     try {
-      const { ok, status, data } = await getJson<IpInfoResponse>(
-        `https://ipinfo.io/${ip}/json?token=${token}`,
+      const { ok, status, data } = await getJson<IpInfoLiteResponse>(
+        `https://api.ipinfo.io/lite/${ip}?token=${token}`,
         signal,
       );
       if (!ok || !data || data.bogon) {
         return { status: "error", error: `HTTP ${status}` };
       }
-      const geo = ipInfoToGeo(data);
+      const geo = ipInfoLiteToGeo(data);
       return {
         status: "ok",
-        summary: [data.city, data.region, data.country].filter(Boolean).join(", "),
+        summary: [data.as_name, data.country].filter(Boolean).join(" · "),
         geo,
         raw: data,
       };
