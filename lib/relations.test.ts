@@ -214,6 +214,33 @@ describe("relationsFor", () => {
     });
   });
 
+  it("drops non-routable IP relations (loopback / private) from any source", () => {
+    const vtSource: SourceResult = {
+      source: {
+        id: "virustotal",
+        name: "VirusTotal",
+        url: "",
+        category: "reputation",
+        requiresKey: true,
+        weight: 1,
+      },
+      enabled: true,
+      status: "ok",
+      durationMs: 1,
+      relations: [
+        { value: "127.0.0.1", type: "ip", relation: "contacts" },
+        { value: "10.0.0.5", type: "ip", relation: "contacts" },
+        { value: "8.8.8.8", type: "ip", relation: "contacts" },
+        { value: "evil.example.com", type: "domain", relation: "contacts" },
+      ],
+    };
+    const { related } = relationsFor({ ...baseIp, sources: [vtSource] });
+    expect(related.map((r) => r.value).sort()).toEqual([
+      "8.8.8.8",
+      "evil.example.com",
+    ]);
+  });
+
   it("drops any relation pointing back at the focus itself", () => {
     const vtSource: SourceResult = {
       source: {

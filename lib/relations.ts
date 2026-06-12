@@ -6,6 +6,16 @@ import type {
   PassiveDnsRecord,
   RelatedIndicator,
 } from "@/lib/ti/types";
+import { parseIPv4 } from "@/lib/ip";
+
+/** A non-routable IPv4 (loopback / RFC1918 / CGNAT / …) is never a useful pivot;
+ *  sandbox + reputation feeds sometimes report 127.0.0.1 and the like. Domains
+ *  and IPv6 are always kept. */
+function isRoutableRelation(r: RelatedIndicator): boolean {
+  if (r.type !== "ip") return true;
+  const p = parseIPv4(r.value);
+  return !p || (!p.isPrivate && !p.isReserved);
+}
 
 export type { IndicatorType, RelatedIndicator };
 
@@ -139,7 +149,7 @@ export function relationsFor(
   // lowercased value and drop any entry that points back at the focus itself.
   const focusKey = value.toLowerCase();
   const merged = dedupe([...contextual, ...sourceRelations(result)]).filter(
-    (r) => r.value.toLowerCase() !== focusKey,
+    (r) => r.value.toLowerCase() !== focusKey && isRoutableRelation(r),
   );
   return { value, type, related: merged };
 }
