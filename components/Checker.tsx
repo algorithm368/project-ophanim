@@ -32,7 +32,7 @@ import {
 import { parseIPv4, type ParsedIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
 import { parseHash } from "@/lib/hash";
-import { detectIOC, refangIOC, extractIps } from "@/lib/ioc";
+import { detectIOC, refangIOC, extractIps, iocFromPath } from "@/lib/ioc";
 import type { GeoRow } from "@/lib/ti/geo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -269,26 +269,70 @@ export default function Checker({
     }
   }, [initialQuery, initialResult]);
 
-  // Lookups change the URL via pushState, so browser back/forward only swaps
-  // the URL — the page itself doesn't move. Land the user at the top (search
-  // box in view) instead of a mid-page readout. Two things fight us: the
-  // browser's default "auto" scroll restoration re-applies the old position one
-  // frame *after* popstate, and Next resets that flag to "auto" on cross-route
-  // history traversals. So we both set "manual" (no flash when it sticks) and,
-  // as a flag-independent fallback, re-assert top on the next frame — after any
-  // restoration has run — so the scroll-to-top always wins.
+  // Lookups change the URL via pushState, so browser Back/Forward only swaps the
+  // URL — the page never remounts. Re-sync the whole view to the URL on popstate:
+  // restore the box, mode, and result from the in-memory cache (instant), re-fetch
+  // on a miss, or clear to the empty state at "/". We also land the user at the
+  // top: the browser's "auto" scroll restoration re-applies the old position one
+  // frame after popstate (and Next resets the flag to "auto" on cross-route hops),
+  // so we set "manual" and re-assert top on the next frame as a fallback.
   useEffect(() => {
-    if (!("scrollRestoration" in window.history)) return;
-    const prev = window.history.scrollRestoration;
-    window.history.scrollRestoration = "manual";
+    const prevRestoration =
+      "scrollRestoration" in window.history
+        ? window.history.scrollRestoration
+        : undefined;
+    if (prevRestoration !== undefined) {
+      window.history.scrollRestoration = "manual";
+    }
+
     function onPopState() {
+      // Cancel any in-flight lookup so it can't error or clobber the restore.
+      if (abortRef.current) {
+        abortRef.current.abort(NAV_ABORT);
+        abortRef.current = null;
+      }
+
+      const ioc = iocFromPath(window.location.pathname);
+      if (ioc === null) {
+        // Back to the home page: clear to the empty state.
+        setQuery("");
+        setResult(null);
+        setError(null);
+        setLoading(false);
+        setProgress(null);
+        setBulkRows(null);
+        setIsBulk(false);
+      } else {
+        setQuery(ioc);
+        const detected = detectIOC(ioc);
+        if (detected) setMode(detected);
+        const cached = resultsCache.current.get(ioc);
+        if (cached) {
+          // Cache hit: restore instantly, no network.
+          setResult(cached);
+          setError(null);
+          setLoading(false);
+          setProgress(null);
+          setBulkRows(null);
+          setIsBulk(false);
+        } else {
+          // Cache miss (e.g. after a hard reload): re-fetch this indicator. The
+          // pathname === url guard in runCheck means it won't push a duplicate
+          // history entry for the URL we're already on.
+          runCheckRef.current(ioc);
+        }
+      }
+
       window.scrollTo({ top: 0 });
       requestAnimationFrame(() => window.scrollTo({ top: 0 }));
     }
+
     window.addEventListener("popstate", onPopState);
     return () => {
       window.removeEventListener("popstate", onPopState);
-      window.history.scrollRestoration = prev;
+      if (prevRestoration !== undefined) {
+        window.history.scrollRestoration = prevRestoration;
+      }
     };
   }, []);
 
