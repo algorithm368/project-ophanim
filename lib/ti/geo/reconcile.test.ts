@@ -186,3 +186,95 @@ describe("overlayResolution", () => {
     expect(geo.isMobile).toBe(false);
   });
 });
+
+describe("reconcileGeo — weighted reliability", () => {
+  it("a heavier provider outweighs a lighter majority", () => {
+    const res = reconcileGeo([
+      r("ip-api", { city: "Berlin" }), // weight 0.85
+      r("reverse-dns", { city: "Paris" }), // weight 0.2
+      r("abuseipdb", { city: "Paris" }), // weight 0.5 (no city entry -> default)
+    ])!;
+    expect(res.city!.value).toBe("Berlin");
+    expect(res.city!.confidence).toBe("medium");
+    expect(res.city!.alternatives).toEqual([
+      { value: "Paris", sources: ["reverse-dns", "abuseipdb"] },
+    ]);
+  });
+
+  it("ripestat is authoritative for ASN and forces high", () => {
+    const res = reconcileGeo([
+      r("ip-api", { asn: "AS111" }),
+      r("ipinfo", { asn: "AS111" }),
+      r("ripestat", { asn: "AS222" }),
+    ])!;
+    expect(res.asn!.value).toBe("AS222");
+    expect(res.asn!.confidence).toBe("high");
+  });
+
+  it("a single strong provider is medium, a single weak provider is low", () => {
+    expect(reconcileGeo([r("ipinfo", { city: "Berlin" })])!.city!.confidence).toBe("medium");
+    expect(reconcileGeo([r("reverse-dns", { city: "Berlin" })])!.city!.confidence).toBe("low");
+  });
+
+  it("every resolved field carries a numeric score", () => {
+    const res = reconcileGeo([
+      r("ip-api", { city: "Berlin", country: "Germany", countryCode: "DE" }),
+      r("ipinfo", { city: "Berlin", country: "Germany", countryCode: "DE" }),
+    ])!;
+    expect(typeof res.city!.score).toBe("number");
+    expect(typeof res.country!.score).toBe("number");
+  });
+});
+
+describe("reconcileGeo — graded coordinates", () => {
+  it("a single high-reliability provider is medium", () => {
+    const res = reconcileGeo([r("ip-api", { lat: 1, lon: 1 })])!;
+    expect(res.coordinates!.confidence).toBe("medium");
+  });
+
+  it("points ~100 km apart land in the medium band", () => {
+    // ~0.9 deg latitude ~= 100 km, so each point is ~50 km from the centroid.
+    const res = reconcileGeo([
+      r("ip-api", { lat: 52.0, lon: 13.0 }),
+      r("ipinfo", { lat: 52.9, lon: 13.0 }),
+    ])!;
+    expect(res.coordinates!.confidence).toBe("medium");
+  });
+});
+
+describe("reconcileGeo — city proximity clustering", () => {
+  it("near cities with coordinates corroborate instead of splitting", () => {
+    const res = reconcileGeo([
+      r("ip-api", { city: "Mountain View", lat: 37.42, lon: -122.08 }),
+      r("ipinfo", { city: "Palo Alto", lat: 37.44, lon: -122.14 }),
+    ])!;
+    expect(res.city!.confidence).toBe("high");
+    expect(res.city!.sources.sort()).toEqual(["ip-api", "ipinfo"]);
+    expect(res.city!.alternatives).toBeUndefined();
+  });
+
+  it("far-apart cities stay split", () => {
+    const res = reconcileGeo([
+      r("ip-api", { city: "Berlin", lat: 52.52, lon: 13.4 }),
+      r("ipinfo", { city: "Munich", lat: 48.14, lon: 11.58 }),
+    ])!;
+    expect(res.city!.alternatives!.length).toBe(1);
+  });
+});
+
+describe("reconcileGeo — overall confidence", () => {
+  it("blends present fields into an overall score and tier", () => {
+    const res = reconcileGeo([
+      r("ip-api", { country: "Germany", countryCode: "DE", city: "Berlin", lat: 52.52, lon: 13.4, asn: "AS3320" }),
+      r("ipinfo", { country: "Germany", countryCode: "DE", city: "Berlin", lat: 52.5, lon: 13.4, asn: "AS3320" }),
+    ])!;
+    expect(res.overall).toBeDefined();
+    expect(res.overall!.confidence).toBe("high");
+    expect(res.overall!.score).toBeGreaterThan(0.66);
+  });
+
+  it("omits overall when no located field is present", () => {
+    const res = reconcileGeo([r("ip-api", { isProxy: true })])!;
+    expect(res.overall).toBeUndefined();
+  });
+});

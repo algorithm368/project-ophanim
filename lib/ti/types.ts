@@ -147,6 +147,8 @@ export interface ResolvedField<T> {
   value: T;
   /** high = providers agree, low = single provider or tie. */
   confidence: Confidence;
+  /** weighted 0-1 measure that drives the tier (provider-reliability aware). */
+  score: number;
   /** agreeing providers / providers that reported this field (0–1). */
   agreement: number;
   /** provider ids backing the winning value. */
@@ -184,6 +186,8 @@ export interface GeoResolution {
   flags: GeoFlags;
   /** how many providers returned any geo at all. */
   providerCount: number;
+  /** blended confidence across the located fields. */
+  overall?: { score: number; confidence: Confidence };
 }
 
 export interface GeoContext {

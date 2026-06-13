@@ -6,91 +6,232 @@ import type {
   SourceResult,
 } from "../types";
 import { canonicalAsn, haversineKm, normalizeKey } from "./geokit";
+import {
+  authorityFor,
+  CITY_CLUSTER_KM,
+  COORD_HIGH_KM,
+  COORD_MEDIUM_KM,
+  CORROBORATION_TARGET,
+  getWeight,
+  HIGH_SCORE,
+  MEDIUM_SCORE,
+  type GeoField,
+} from "./weights";
 
 export interface GeoInput {
   id: string;
   geo: GeoContext;
 }
 
-interface Vote {
-  /** grouping key (normalized) */
-  key: string;
-  /** display value (original casing of the first contributor) */
-  value: string;
-  ids: string[];
+function tierFromScore(score: number): Confidence {
+  if (score >= HIGH_SCORE) return "high";
+  if (score >= MEDIUM_SCORE) return "medium";
+  return "low";
 }
 
-function tally(
-  inputs: GeoInput[],
-  field: keyof GeoContext,
-  normalize: (v: string) => string,
-): ResolvedField<string> | undefined {
-  const votes = new Map<string, Vote>();
-  let reporting = 0;
+interface WVote {
+  key: string;
+  value: string;
+  ids: string[];
+  weight: number;
+}
 
-  for (const { id, geo } of inputs) {
-    const raw = geo[field];
-    if (typeof raw !== "string" || raw.trim() === "") continue;
-    reporting++;
-    const key = normalize(raw);
-    if (key === "") continue;
-    const existing = votes.get(key);
-    if (existing) existing.ids.push(id);
-    else votes.set(key, { key, value: raw.trim(), ids: [id] });
-  }
-
-  if (reporting === 0) return undefined;
-
-  const ranked = [...votes.values()].sort((a, b) => b.ids.length - a.ids.length);
-  const winner = ranked[0];
-  const top = winner.ids.length;
-  const second = ranked.find((v) => v !== winner)?.ids.length ?? 0;
-  const agreement = top / reporting;
-
-  let confidence: Confidence;
-  if (reporting >= 2 && agreement >= 2 / 3) confidence = "high";
-  else if (reporting >= 2 && top > second) confidence = "medium";
-  else confidence = "low";
-
-  const alternatives = ranked
+/** Rank weighted votes, derive confidence + score, collect alternatives.
+ *  `authorityFor(weightField)` forces high when it backs the winner. */
+function finalizeVotes(
+  votes: WVote[],
+  reporting: number,
+  reportingWeight: number,
+  weightField: GeoField,
+): ResolvedField<string> {
+  const authority = authorityFor(weightField);
+  // Callers always pass a freshly built array, so the in-place sort is safe.
+  votes.sort((a, b) => b.weight - a.weight || b.ids.length - a.ids.length);
+  const authoritativeVote = authority
+    ? votes.find((v) => v.ids.includes(authority))
+    : undefined;
+  const winner = authoritativeVote ?? votes[0];
+  const agreement = winner.ids.length / reporting;
+  const coverage = Math.min(1, reportingWeight / CORROBORATION_TARGET);
+  // score stays a weight-ratio measure even when an authority forces the tier
+  // high, so consumers can still see how corroborated the winning value was.
+  const score = (winner.weight / reportingWeight) * coverage;
+  const confidence: Confidence = authoritativeVote ? "high" : tierFromScore(score);
+  const alternatives = votes
     .filter((v) => v !== winner)
     .map((v) => ({ value: v.value, sources: v.ids }));
-
   return {
     value: winner.value,
     confidence,
+    score,
     agreement,
     sources: winner.ids,
     ...(alternatives.length ? { alternatives } : {}),
   };
 }
 
-const SPREAD_KM = 50;
+/** Weighted plurality vote over a string field. `weightField` selects the
+ *  per-provider reliability column; `normalize` controls grouping. */
+function tally(
+  inputs: GeoInput[],
+  field: keyof GeoContext,
+  weightField: GeoField,
+  normalize: (v: string) => string,
+): ResolvedField<string> | undefined {
+  const votes = new Map<string, WVote>();
+  let reporting = 0;
+  let reportingWeight = 0;
+
+  for (const { id, geo } of inputs) {
+    const raw = geo[field];
+    if (typeof raw !== "string" || raw.trim() === "") continue;
+    const key = normalize(raw);
+    if (key === "") continue;
+    const w = getWeight(id, weightField);
+    reporting++;
+    reportingWeight += w;
+    const existing = votes.get(key);
+    if (existing) {
+      existing.ids.push(id);
+      existing.weight += w;
+    } else {
+      votes.set(key, { key, value: raw.trim(), ids: [id], weight: w });
+    }
+  }
+
+  if (reporting === 0 || reportingWeight === 0) return undefined;
+  return finalizeVotes([...votes.values()], reporting, reportingWeight, weightField);
+}
+
+interface CityCand {
+  value: string;
+  ids: string[];
+  weight: number;
+  lat?: number;
+  lon?: number;
+  coordCount: number;
+}
+
+/** City is reconciled with coordinate awareness: candidates whose representative
+ *  coordinates fall within CITY_CLUSTER_KM collapse into one, so adjacent place
+ *  names corroborate instead of splitting. Falls back to string grouping when a
+ *  provider has no coordinates. */
+function reconcileCity(inputs: GeoInput[]): ResolvedField<string> | undefined {
+  const byKey = new Map<string, CityCand>();
+  let reporting = 0;
+  let reportingWeight = 0;
+
+  for (const { id, geo } of inputs) {
+    const raw = geo.city;
+    if (typeof raw !== "string" || raw.trim() === "") continue;
+    const key = normalizeKey(raw);
+    if (key === "") continue;
+    const w = getWeight(id, "city");
+    reporting++;
+    reportingWeight += w;
+    const hasCoord = typeof geo.lat === "number" && typeof geo.lon === "number";
+    let c = byKey.get(key);
+    if (!c) {
+      c = { value: raw.trim(), ids: [], weight: 0, coordCount: 0 };
+      byKey.set(key, c);
+    }
+    c.ids.push(id);
+    c.weight += w;
+    if (hasCoord) {
+      const n = c.coordCount;
+      c.lat = ((c.lat ?? 0) * n + (geo.lat as number)) / (n + 1);
+      c.lon = ((c.lon ?? 0) * n + (geo.lon as number)) / (n + 1);
+      c.coordCount = n + 1;
+    }
+  }
+
+  if (reporting === 0 || reportingWeight === 0) return undefined;
+
+  const merged: CityCand[] = [];
+  for (const cand of byKey.values()) {
+    const near =
+      cand.coordCount > 0
+        ? merged.find(
+            (m) =>
+              m.coordCount > 0 &&
+              haversineKm(
+                { lat: m.lat as number, lon: m.lon as number },
+                { lat: cand.lat as number, lon: cand.lon as number },
+              ) <= CITY_CLUSTER_KM,
+          )
+        : undefined;
+    if (near) {
+      const total = near.coordCount + cand.coordCount;
+      if (cand.weight > near.weight) near.value = cand.value;
+      near.lat =
+        ((near.lat as number) * near.coordCount +
+          (cand.lat as number) * cand.coordCount) /
+        total;
+      near.lon =
+        ((near.lon as number) * near.coordCount +
+          (cand.lon as number) * cand.coordCount) /
+        total;
+      near.ids = [...near.ids, ...cand.ids];
+      near.weight += cand.weight;
+      near.coordCount = total;
+    } else {
+      merged.push({ ...cand });
+    }
+  }
+
+  return finalizeVotes(
+    merged.map((c) => ({ key: c.value, value: c.value, ids: c.ids, weight: c.weight })),
+    reporting,
+    reportingWeight,
+    "city",
+  );
+}
 
 function reconcileCoordinates(
   inputs: GeoInput[],
 ): ResolvedField<{ lat: number; lon: number }> | undefined {
   const points = inputs
     .filter((i) => typeof i.geo.lat === "number" && typeof i.geo.lon === "number")
-    .map((i) => ({ id: i.id, lat: i.geo.lat as number, lon: i.geo.lon as number }));
+    .map((i) => ({
+      id: i.id,
+      lat: i.geo.lat as number,
+      lon: i.geo.lon as number,
+      w: getWeight(i.id, "coords"),
+    }));
 
   if (points.length === 0) return undefined;
 
+  const totalW = points.reduce((s, p) => s + p.w, 0) || points.length;
   const centroid = {
-    lat: points.reduce((s, p) => s + p.lat, 0) / points.length,
-    lon: points.reduce((s, p) => s + p.lon, 0) / points.length,
+    lat: points.reduce((s, p) => s + p.lat * p.w, 0) / totalW,
+    lon: points.reduce((s, p) => s + p.lon * p.w, 0) / totalW,
   };
-  const spread = Math.max(...points.map((p) => haversineKm(centroid, p)));
+  const coverage = Math.min(1, totalW / CORROBORATION_TARGET);
 
   let confidence: Confidence;
-  if (points.length === 1) confidence = "low";
-  else if (spread <= SPREAD_KM) confidence = "high";
-  else confidence = "low";
+  let agreement: number;
+  if (points.length === 1) {
+    confidence = points[0].w >= 0.7 ? "medium" : "low";
+    agreement = 1;
+  } else {
+    const spread = Math.max(...points.map((p) => haversineKm(centroid, p)));
+    if (spread <= COORD_HIGH_KM) {
+      confidence = "high";
+      agreement = 1;
+    } else if (spread <= COORD_MEDIUM_KM) {
+      confidence = "medium";
+      agreement = 0.6;
+    } else {
+      confidence = "low";
+      agreement = 0.2;
+    }
+  }
 
   const result: ResolvedField<{ lat: number; lon: number }> = {
     value: centroid,
     confidence,
-    agreement: points.length === 1 ? 1 : spread <= SPREAD_KM ? 1 : 0,
+    score: agreement * coverage,
+    agreement,
     sources: points.map((p) => p.id),
   };
   if (confidence === "low" && points.length > 1) {
@@ -121,10 +262,8 @@ function reconcileFlags(inputs: GeoInput[]): GeoResolution["flags"] {
   return flags;
 }
 
-const COUNTRY_AUTHORITY = "rdap-ip";
-
-/** Country is reconciled separately: votes group by ISO code (so RDAP, which
- *  emits only a code, participates), and RDAP's allocation country breaks ties. */
+/** Country votes group by ISO code (so RDAP, which emits only a code,
+ *  participates), and RDAP's allocation country is authoritative. */
 function reconcileCountry(inputs: GeoInput[]): {
   field?: ResolvedField<string>;
   code?: string;
@@ -133,41 +272,45 @@ function reconcileCountry(inputs: GeoInput[]): {
     code: string;
     name: string;
     ids: string[];
+    weight: number;
   }
   const votes = new Map<string, CVote>();
   let reporting = 0;
+  let reportingWeight = 0;
 
   for (const { id, geo } of inputs) {
     const code = geo.countryCode?.trim().toUpperCase() ?? "";
     const name = geo.country?.trim() ?? "";
     if (!code && !name) continue;
+    const w = getWeight(id, "country");
     reporting++;
+    reportingWeight += w;
     const key = code || normalizeKey(name);
     const existing = votes.get(key);
     if (existing) {
       existing.ids.push(id);
+      existing.weight += w;
       if (!existing.name && name) existing.name = name;
       if (!existing.code && code) existing.code = code;
     } else {
-      votes.set(key, { code, name, ids: [id] });
+      votes.set(key, { code, name, ids: [id], weight: w });
     }
   }
 
-  if (reporting === 0) return {};
+  if (reporting === 0 || reportingWeight === 0) return {};
 
-  const ranked = [...votes.values()].sort((a, b) => b.ids.length - a.ids.length);
-  const authoritative = ranked.find((v) => v.ids.includes(COUNTRY_AUTHORITY));
-  const winner = authoritative ?? ranked[0];
-  const top = winner.ids.length;
-  const second = ranked.find((v) => v !== winner)?.ids.length ?? 0;
-  const agreement = top / reporting;
-
-  let confidence: Confidence;
-  if (authoritative) confidence = "high";
-  else if (reporting >= 2 && agreement >= 2 / 3) confidence = "high";
-  else if (reporting >= 2 && top > second) confidence = "medium";
-  else confidence = "low";
-
+  const authority = authorityFor("country");
+  const ranked = [...votes.values()].sort(
+    (a, b) => b.weight - a.weight || b.ids.length - a.ids.length,
+  );
+  const authoritativeVote = authority
+    ? ranked.find((v) => v.ids.includes(authority))
+    : undefined;
+  const winner = authoritativeVote ?? ranked[0];
+  const agreement = winner.ids.length / reporting;
+  const coverage = Math.min(1, reportingWeight / CORROBORATION_TARGET);
+  const score = (winner.weight / reportingWeight) * coverage;
+  const confidence: Confidence = authoritativeVote ? "high" : tierFromScore(score);
   const alternatives = ranked
     .filter((v) => v !== winner)
     .map((v) => ({ value: v.name || v.code, sources: v.ids }));
@@ -175,11 +318,34 @@ function reconcileCountry(inputs: GeoInput[]): {
   const field: ResolvedField<string> = {
     value: winner.name || winner.code,
     confidence,
+    score,
     agreement,
     sources: winner.ids,
     ...(alternatives.length ? { alternatives } : {}),
   };
   return { field, code: winner.code || undefined };
+}
+
+/** Blend the located fields into one overall confidence, importance-weighted
+ *  over the fields that are present. */
+function computeOverall(res: GeoResolution): GeoResolution["overall"] {
+  const parts: [number, number | undefined][] = [
+    [0.3, res.country?.score],
+    [0.3, res.city?.score],
+    [0.25, res.coordinates?.score],
+    [0.15, res.asn?.score],
+  ];
+  let num = 0;
+  let den = 0;
+  for (const [w, s] of parts) {
+    if (s !== undefined) {
+      num += w * s;
+      den += w;
+    }
+  }
+  if (den === 0) return undefined;
+  const score = num / den;
+  return { score, confidence: tierFromScore(score) };
 }
 
 /** Pure reconciliation core: votes over already-extracted provider inputs. */
@@ -189,19 +355,20 @@ export function reconcileGeoInputs(
   if (inputs.length === 0) return undefined;
 
   const country = reconcileCountry(inputs);
-
-  return {
+  const resolution: GeoResolution = {
     country: country.field,
     countryCode: country.code,
-    region: tally(inputs, "region", normalizeKey),
-    city: tally(inputs, "city", normalizeKey),
-    asn: tally(inputs, "asn", canonicalAsn),
-    asnOrg: tally(inputs, "asnOrg", normalizeKey),
-    isp: tally(inputs, "isp", normalizeKey),
+    region: tally(inputs, "region", "region", normalizeKey),
+    city: reconcileCity(inputs),
+    asn: tally(inputs, "asn", "asn", canonicalAsn),
+    asnOrg: tally(inputs, "asnOrg", "asn", normalizeKey),
+    isp: tally(inputs, "isp", "isp", normalizeKey),
     coordinates: reconcileCoordinates(inputs),
     flags: reconcileFlags(inputs),
     providerCount: inputs.length,
   };
+  resolution.overall = computeOverall(resolution);
+  return resolution;
 }
 
 /** Thin adapter for single-IP callers that hold full SourceResults. */
@@ -218,10 +385,7 @@ export function reconcileGeo(
  *  the OG image, history, and bulk geo). Present reconciled winners overlay the
  *  base; absent winners leave the base value intact (so provider-only fields
  *  like `org`, and `reverse`/`fcrdns` passed in via `base`, survive). Flags are
- *  written explicitly from the resolution (already OR'd across providers).
- *
- *  This is the single flattening helper; `checkIp` passes `{ reverse, fcrdns }`
- *  as the base since those are not reconciled fields. */
+ *  written explicitly from the resolution (already OR'd across providers). */
 export function overlayResolution(
   res: GeoResolution,
   base: GeoContext = {},
