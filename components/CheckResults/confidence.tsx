@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import type { Confidence, ResolvedField } from "@/lib/ti/types";
+import type { Confidence, GeoResolution, ResolvedField } from "@/lib/ti/types";
 
 const TONE: Record<Confidence, string> = {
   high: "border-emerald-600/40 text-emerald-700 dark:text-emerald-400",
@@ -30,6 +30,48 @@ export function ConfidenceChip({ confidence }: { confidence: Confidence }) {
       {confidence}
     </span>
   );
+}
+
+/** Larger chip summarizing overall geolocation confidence. */
+export function OverallConfidence({
+  confidence,
+}: {
+  confidence: Confidence;
+}) {
+  return (
+    <span
+      title={LABEL[confidence]}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
+        TONE[confidence],
+      )}
+    >
+      <span className="size-1.5 rounded-full bg-current" aria-hidden />
+      Geo confidence: {confidence}
+    </span>
+  );
+}
+
+/** One-line, comma-separated explanation of the geo confidence (house style:
+ *  commas, no dashes). */
+export function geoConfidenceReason(res: GeoResolution): string {
+  const parts: string[] = [
+    `${res.providerCount} provider${res.providerCount === 1 ? "" : "s"}`,
+  ];
+  if (res.country && res.country.sources.length > 1) {
+    parts.push(`${res.country.sources.length} agree on country`);
+  }
+  if (res.city && res.city.confidence !== "low") {
+    parts.push("city corroborated");
+  }
+  if (res.coordinates && res.coordinates.sources.length > 1) {
+    parts.push(
+      res.coordinates.confidence === "high"
+        ? "coordinates tightly clustered"
+        : "coordinates loosely clustered",
+    );
+  }
+  return parts.join(", ");
 }
 
 /** Tappable disclosure of which providers disagreed on a field. */

@@ -35,7 +35,7 @@ import {
     SectionHeading,
     useCopied,
 } from "./primitives";
-import { Disagreement } from "./confidence";
+import { Disagreement, OverallConfidence, geoConfidenceReason } from "./confidence";
 import { LocationMap } from "./location-map";
 import type { IconType } from "./types";
 
@@ -268,11 +268,11 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                     </div>
                 )}
 
-                {res && res.providerCount > 0 && (
-                    <p className="text-sm text-muted-foreground">
-                        Reconciled from {res.providerCount} geo provider
-                        {res.providerCount > 1 ? "s" : ""}.
-                    </p>
+                {res?.overall && (
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                        <OverallConfidence confidence={res.overall.confidence} />
+                        <span>{geoConfidenceReason(res)}</span>
+                    </div>
                 )}
             </CardContent>
         </Card>
