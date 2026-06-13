@@ -190,6 +190,10 @@ const STREAM_INACTIVITY_MS = 20000;
  *  reads as a known laggard about to time out, not a frozen UI. */
 const SLOW_THRESHOLD_S = 5;
 
+/** abort() reason used when a history navigation cancels an in-flight lookup, so
+ *  runCheck's catch can tell a deliberate Back/Forward from a real failure. */
+const NAV_ABORT = "nav-abort";
+
 const loadCheckResults = () => import("./CheckResults");
 const CheckResults = dynamic(loadCheckResults, { ssr: false });
 const loadBulkGeo = () => import("./BulkGeoResults");
@@ -235,6 +239,15 @@ export default function Checker({
   // listing the (re-created-each-render) function as a dependency.
   const runCheckRef = useRef(runCheck);
   const didInit = useRef(false);
+  // Session-scoped client cache of completed results, keyed by the canonical IOC
+  // that appears in /check/<ioc> (the decoded path segment). Lets Back/Forward
+  // restore a prior result instantly with no network; seeded from initialResult
+  // and written on every completed lookup.
+  const resultsCache = useRef<
+    Map<string, CheckResult | DomainCheckResult | HashCheckResult>
+  >(new Map());
+  // The in-flight lookup's AbortController, so a history navigation can cancel it.
+  const abortRef = useRef<AbortController | null>(null);
 
   // On first mount: show a server-provided cached result as-is (no client
   // round-trip), auto-run the check for a permalinked IOC (/check/<ioc>), or
@@ -243,8 +256,11 @@ export default function Checker({
     if (didInit.current) return;
     didInit.current = true;
     if (initialResult) {
-      // Cached permalink: the result is already on screen. Warm the lazy chunk
-      // so it paints instantly; the user can still re-check via refresh.
+      // Cached permalink: the result is already on screen. Seed the client cache
+      // (initialQuery is the canonical IOC from the URL) so Back/Forward to this
+      // indicator restores instantly, and warm the lazy chunk so it paints fast;
+      // the user can still re-check via refresh.
+      if (initialQuery) resultsCache.current.set(initialQuery, initialResult);
       void loadCheckResults();
     } else if (initialQuery && detectIOC(initialQuery)) {
       runCheckRef.current(initialQuery);
@@ -252,6 +268,29 @@ export default function Checker({
       inputRef.current?.focus();
     }
   }, [initialQuery, initialResult]);
+
+  // Lookups change the URL via pushState, so browser back/forward only swaps
+  // the URL — the page itself doesn't move. Land the user at the top (search
+  // box in view) instead of a mid-page readout. Two things fight us: the
+  // browser's default "auto" scroll restoration re-applies the old position one
+  // frame *after* popstate, and Next resets that flag to "auto" on cross-route
+  // history traversals. So we both set "manual" (no flash when it sticks) and,
+  // as a flag-independent fallback, re-assert top on the next frame — after any
+  // restoration has run — so the scroll-to-top always wins.
+  useEffect(() => {
+    if (!("scrollRestoration" in window.history)) return;
+    const prev = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    function onPopState() {
+      window.scrollTo({ top: 0 });
+      requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      window.history.scrollRestoration = prev;
+    };
+  }, []);
 
   // "/" focuses the search from anywhere, Esc clears it: quick keyboard access
   // for the analysts who live in this tool.
@@ -401,6 +440,7 @@ export default function Checker({
     // bounds each at ~12s, so a long gap means the stream genuinely stalled.
     // The whole result is shown at once when complete — no partial reveal.
     const controller = new AbortController();
+    abortRef.current = controller;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     const bump = () => {
       if (watchdog) clearTimeout(watchdog);
@@ -486,6 +526,9 @@ export default function Checker({
       if (streamError) {
         setError({ kind: "request", message: streamError });
       } else if (finalResult) {
+        // Cache the completed result so Back/Forward to this indicator restores
+        // instantly — `canonical` is the exact key the URL was built from.
+        resultsCache.current.set(canonical, finalResult);
         setResult(finalResult);
       } else {
         setError({
@@ -495,17 +538,27 @@ export default function Checker({
         });
       }
     } catch {
-      // Network drop or the watchdog firing because the stream stalled.
-      setError({
-        kind: "request",
-        message: controller.signal.aborted
-          ? "This check is taking longer than expected. Please try again."
-          : "Couldn't reach the server. Check your connection and try again.",
-      });
+      // A history navigation aborted this lookup (signal.reason === NAV_ABORT):
+      // the popstate handler owns the next state, so don't surface an error.
+      // Otherwise it's a network drop or the watchdog firing on a stalled stream.
+      if (controller.signal.reason !== NAV_ABORT) {
+        setError({
+          kind: "request",
+          message: controller.signal.aborted
+            ? "This check is taking longer than expected. Please try again."
+            : "Couldn't reach the server. Check your connection and try again.",
+        });
+      }
     } finally {
       if (watchdog) clearTimeout(watchdog);
-      setLoading(false);
-      setProgress(null);
+      // Only clear shared lookup state if a newer lookup hasn't taken over: a
+      // navigation may have aborted this one and started another, which now owns
+      // abortRef/loading/progress.
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setLoading(false);
+        setProgress(null);
+      }
     }
   }
 
