@@ -47,6 +47,24 @@ export function detectIOC(input: string): IOCType | null {
 }
 
 /**
+ * The canonical IOC encoded in a `/check/<ioc>` permalink path, or null for any
+ * other path (e.g. the home "/"). Used to re-sync the checker view to the URL on
+ * browser Back/Forward. The segment is URL-decoded so it matches the key the
+ * lookup cached the result under, and a stray trailing slash is tolerated.
+ */
+export function iocFromPath(pathname: string): string | null {
+  const match = /^\/check\/(.+?)\/?$/.exec(pathname);
+  if (!match) return null;
+  try {
+    const decoded = decodeURIComponent(match[1]);
+    return decoded.trim() ? decoded : null;
+  } catch {
+    // Malformed percent-encoding — treat as "no indicator".
+    return null;
+  }
+}
+
+/**
  * Pull every distinct, routable IP (v4 or v6) out of a free-form blob — the
  * input the bulk-geolocation path receives. Tokens split on whitespace,
  * commas, and semicolons; each is refanged then parsed. Private/reserved/

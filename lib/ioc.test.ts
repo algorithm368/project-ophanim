@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectIOC, refangIOC, extractIps } from "@/lib/ioc";
+import { detectIOC, refangIOC, extractIps, iocFromPath } from "@/lib/ioc";
 
 describe("refangIOC", () => {
   it.each([
@@ -88,5 +88,30 @@ describe("extractIps", () => {
   it("caps the number of IPs", () => {
     const many = Array.from({ length: 150 }, (_, i) => `1.1.${(i >> 8) & 255}.${i & 255}`).join(" ");
     expect(extractIps(many).length).toBe(100);
+  });
+});
+
+describe("iocFromPath", () => {
+  it.each([
+    ["/check/8.8.8.8", "8.8.8.8"],
+    ["/check/evil.com", "evil.com"],
+    [
+      "/check/275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+      "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+    ],
+    ["/check/%31.%31.%31.%31", "1.1.1.1"], // URL-encoded segment decodes
+    ["/check/8.8.8.8/", "8.8.8.8"], // tolerate a trailing slash
+  ])("parses %s -> %s", (pathname, expected) => {
+    expect(iocFromPath(pathname)).toBe(expected);
+  });
+
+  it.each([
+    ["/", null],
+    ["/check/", null],
+    ["/check", null],
+    ["/about", null],
+    ["", null],
+  ])("returns null for %s", (pathname) => {
+    expect(iocFromPath(pathname)).toBeNull();
   });
 });
