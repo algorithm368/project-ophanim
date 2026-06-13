@@ -15,6 +15,7 @@ Works out of the box, **no API key required**:
 | ------------------ | ----------------------------------------------- |
 | ip-api.com         | Geolocation, ASN, ISP, proxy/hosting flag       |
 | ipwho.is           | Second geolocation/ASN opinion (reconciled)     |
+| freeipapi.com      | Third geolocation/ASN opinion (reconciled)      |
 | RDAP (RIR)         | Authoritative allocation country + network name |
 | Reverse DNS (FCrDNS)| PTR + forward-confirmed reverse DNS             |
 | RIPEstat           | Announced BGP prefix + origin ASN (RIPE NCC)    |
