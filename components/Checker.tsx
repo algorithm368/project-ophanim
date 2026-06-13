@@ -303,10 +303,17 @@ export default function Checker({
         setBulkRows(null);
         setIsBulk(false);
       } else {
-        setQuery(ioc);
-        const detected = detectIOC(ioc);
+        // Canonicalize the path segment the same way runCheck does before it
+        // builds the URL, so the cache key and re-fetch target match what a
+        // lookup stored. A directly-visited non-canonical permalink (mixed-case
+        // domain, "algo:"-prefixed hash) then normalizes via one push and hits
+        // the cache on subsequent Back, instead of bouncing.
+        const refanged = refangIOC(ioc);
+        const detected = detectIOC(refanged);
+        const canonical = canonicalFor(refanged, detected);
+        setQuery(canonical);
         if (detected) setMode(detected);
-        const cached = resultsCache.current.get(ioc);
+        const cached = resultsCache.current.get(canonical);
         if (cached) {
           // Cache hit: restore instantly, no network.
           setResult(cached);
@@ -318,8 +325,9 @@ export default function Checker({
         } else {
           // Cache miss (e.g. after a hard reload): re-fetch this indicator. The
           // pathname === url guard in runCheck means it won't push a duplicate
-          // history entry for the URL we're already on.
-          runCheckRef.current(ioc);
+          // entry for an already-canonical URL we're on (a non-canonical one
+          // normalizes with a single push).
+          runCheckRef.current(canonical);
         }
       }
 
