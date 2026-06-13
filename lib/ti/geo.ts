@@ -5,8 +5,11 @@ import { IP_API_FIELDS, ipApiToGeo, type IpApiResponse } from "./sources/ipapi";
 import { bulkIpInfo } from "./sources/ipinfo";
 import { overlayResolution, reconcileGeoInputs } from "./geo/reconcile";
 import {
+  bulkGeoFanoutConcurrency,
+  bulkGeoFanoutMax,
   bulkRdapConcurrency,
   bulkRdapMax,
+  fetchFreeIpApiGeo,
   fetchRdapCountries,
   selectUncertainIps,
   transposeByIp,
@@ -95,22 +98,31 @@ export async function bulkGeolocate(
     { id: "ipinfo", byIp: ipinfoByIp },
   ]);
 
-  // 4. Adaptive RDAP country authority for uncertain IPs (capped + logged).
+  // 4. Adaptive authority + corroboration for uncertain IPs. RDAP gives an
+  //    allocation country; freeipapi adds a third city/coords voter. Both are
+  //    capped (latency guard) and run concurrently; over-cap IPs are logged.
   const qualifying = selectUncertainIps(perIp, Number.POSITIVE_INFINITY);
-  const cap = bulkRdapMax();
-  if (qualifying.length > cap) {
+  const rdapCap = bulkRdapMax();
+  const fanoutCap = bulkGeoFanoutMax();
+  if (qualifying.length > rdapCap) {
     console.warn(
-      `bulkGeolocate: ${qualifying.length - cap} uncertain IP(s) skipped RDAP (cap ${cap})`,
+      `bulkGeolocate: ${qualifying.length - rdapCap} uncertain IP(s) skipped RDAP (cap ${rdapCap})`,
     );
   }
-  const uncertain = qualifying.slice(0, cap);
-  const rdapByIp = await fetchRdapCountries(
-    uncertain,
-    signal,
-    bulkRdapConcurrency(),
-  );
+  if (qualifying.length > fanoutCap) {
+    console.warn(
+      `bulkGeolocate: ${qualifying.length - fanoutCap} uncertain IP(s) skipped freeipapi fan-out (cap ${fanoutCap})`,
+    );
+  }
+  const [rdapByIp, freeIpByIp] = await Promise.all([
+    fetchRdapCountries(qualifying.slice(0, rdapCap), signal, bulkRdapConcurrency()),
+    fetchFreeIpApiGeo(qualifying.slice(0, fanoutCap), signal, bulkGeoFanoutConcurrency()),
+  ]);
   for (const [ip, geo] of rdapByIp) {
     perIp.get(ip)?.push({ id: "rdap-ip", geo });
+  }
+  for (const [ip, geo] of freeIpByIp) {
+    perIp.get(ip)?.push({ id: "freeipapi", geo });
   }
 
   // 5. Reconcile per IP; keep the error row when nothing resolved.

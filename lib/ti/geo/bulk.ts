@@ -1,6 +1,7 @@
 import type { GeoContext } from "../types";
 import { getJson, isTimeout } from "../http";
 import { type RdapIpResponse, rdapIpToGeo } from "../sources/rdap-ip";
+import { type FreeIpApiResponse, freeIpApiToGeo } from "../sources/freeipapi";
 import { normalizeKey } from "./geokit";
 import type { GeoInput } from "./reconcile";
 
@@ -104,6 +105,32 @@ export async function fetchRdapCountries(
   return out;
 }
 
+/** Fetch freeipapi geo per IP, concurrency-capped. A third city/coords voter
+ *  for the bulk path. Failures drop out silently; aborts propagate. */
+export async function fetchFreeIpApiGeo(
+  ips: string[],
+  signal: AbortSignal,
+  concurrency: number,
+): Promise<Map<string, GeoContext>> {
+  const out = new Map<string, GeoContext>();
+  if (ips.length === 0) return out;
+  await mapLimit(ips, concurrency, async (ip) => {
+    try {
+      const { ok, data } = await getJson<FreeIpApiResponse>(
+        `https://freeipapi.com/api/json/${ip}`,
+        signal,
+      );
+      if (ok && data && (data.countryCode || data.countryName)) {
+        out.set(ip, freeIpApiToGeo(data));
+      }
+    } catch (err) {
+      if (isTimeout(err)) throw err; // propagate abort/cancel; degrade on real errors
+      // else: drop this IP's freeipapi corroboration
+    }
+  });
+  return out;
+}
+
 function intEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   const n = raw ? Number.parseInt(raw, 10) : NaN;
@@ -115,3 +142,9 @@ export const bulkRdapMax = (): number => intEnv("BULK_RDAP_MAX", 25);
 /** Max concurrent RDAP requests. */
 export const bulkRdapConcurrency = (): number =>
   intEnv("BULK_RDAP_CONCURRENCY", 8);
+
+/** Hard ceiling on per-request freeipapi fan-out lookups (latency guard). */
+export const bulkGeoFanoutMax = (): number => intEnv("BULK_GEO_FANOUT_MAX", 15);
+/** Max concurrent freeipapi fan-out requests. */
+export const bulkGeoFanoutConcurrency = (): number =>
+  intEnv("BULK_GEO_FANOUT_CONCURRENCY", 8);

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchRdapCountries, selectUncertainIps, transposeByIp } from "./bulk";
+import { fetchFreeIpApiGeo, fetchRdapCountries, selectUncertainIps, transposeByIp } from "./bulk";
 import { getJson } from "../http";
 
 vi.mock("../http", async (importOriginal) => {
@@ -62,6 +62,40 @@ describe("fetchRdapCountries", () => {
   it("degrades to an empty map on a real network error", async () => {
     vi.mocked(getJson).mockRejectedValue(new Error("ECONNRESET"));
     const out = await fetchRdapCountries(["1.1.1.1"], new AbortController().signal, 2);
+    expect(out.size).toBe(0);
+  });
+});
+
+describe("fetchFreeIpApiGeo", () => {
+  it("maps freeipapi responses to GeoContext by IP", async () => {
+    vi.mocked(getJson).mockResolvedValue({
+      ok: true,
+      data: {
+        countryCode: "US",
+        countryName: "United States",
+        cityName: "Ashburn",
+        latitude: 39.0,
+        longitude: -77.5,
+        asn: "14618",
+        asnOrganization: "Amazon",
+      },
+    } as never);
+    const out = await fetchFreeIpApiGeo(["1.2.3.4"], new AbortController().signal, 2);
+    expect(out.get("1.2.3.4")?.city).toBe("Ashburn");
+    expect(out.get("1.2.3.4")?.asn).toBe("AS14618");
+  });
+
+  it("propagates an abort/timeout instead of swallowing it", async () => {
+    const abortErr = new DOMException("The operation was aborted", "AbortError");
+    vi.mocked(getJson).mockRejectedValue(abortErr);
+    await expect(
+      fetchFreeIpApiGeo(["1.1.1.1"], new AbortController().signal, 2),
+    ).rejects.toBe(abortErr);
+  });
+
+  it("degrades to an empty map on a real network error", async () => {
+    vi.mocked(getJson).mockRejectedValue(new Error("ECONNRESET"));
+    const out = await fetchFreeIpApiGeo(["1.1.1.1"], new AbortController().signal, 2);
     expect(out.size).toBe(0);
   });
 });
