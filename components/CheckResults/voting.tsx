@@ -1,175 +1,182 @@
 "use client";
 
-import { Check, Star } from "lucide-react";
-import type { GeoResolution } from "@/lib/ti/types";
+import { Fragment } from "react";
 import {
-  buildVoteTable,
-  providerLabel,
-  type VoteCell,
-  type VoteColumn,
+    Asterisk,
+    Check,
+    Circle,
+    SignalHigh,
+    SignalLow,
+    SignalMedium,
+    Star,
+} from "lucide-react";
+import type { Confidence, GeoResolution } from "@/lib/ti/types";
+import {
+    buildVoteTable,
+    providerLabel,
+    type VoteCell,
+    type VoteColumn,
 } from "@/lib/ti/geo/votes";
-import { ConfidenceDot, OverallGauge, geoConfidenceReason } from "./confidence";
+import { geoConfidenceReason } from "./confidence";
+import type { IconType } from "./types";
 
-/** One matrix cell, rendered by status. Agreement recedes (a light check),
- *  disagreement reads as the differing value, all in grayscale. */
-function Cell({ cell }: { cell: VoteCell }) {
-  switch (cell.status) {
-    case "win":
-      return (
-        <span className="inline-flex items-center justify-center gap-0.5">
-          <Check className="size-3.5 text-foreground/75" aria-label="agrees" />
-          {cell.authority && (
-            <Star className="size-3 text-foreground/55" aria-label="allocation authority" />
-          )}
+/** Fixed three-letter codes so the confidence levels are equal width in mono. */
+const CONF_ABBR: Record<Confidence, string> = {
+    high: "HIG",
+    medium: "MED",
+    low: "LOW",
+};
+
+/** Plain signal-strength icon, bars reflecting the level. */
+const CONF_ICON: Record<Confidence, IconType> = {
+    high: SignalHigh,
+    medium: SignalMedium,
+    low: SignalLow,
+};
+
+/** Confidence as a plain icon plus a fixed three-letter code, all grey mono so
+ *  the levels line up wherever they appear. */
+function ConfidenceLevel({ confidence }: { confidence: Confidence }) {
+    const Icon = CONF_ICON[confidence];
+    return (
+        <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+            <Icon className="size-3 shrink-0 text-foreground/50" aria-hidden />
+            {CONF_ABBR[confidence]}
         </span>
-      );
-    case "dissent":
-      return <span className="text-[12px] text-muted-foreground">{cell.value}</span>;
-    case "scatter":
-      return (
-        <span className="text-foreground/40" aria-label="scattered point">
-          ·
-        </span>
-      );
-    case "absent":
-    default:
-      return (
-        <span className="text-foreground/25" aria-label="not reported">
-          –
-        </span>
-      );
-  }
+    );
 }
 
-/** Wide layout: provider x field tally sheet. */
-function Matrix({ providers, fields }: { providers: string[]; fields: VoteColumn[] }) {
-  return (
-    <table className="w-full border-collapse">
-      <thead>
-        <tr className="border-b border-foreground/10">
-          <th className="py-1.5 pr-3 text-left font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Provider
-          </th>
-          {fields.map((f) => (
-            <th
-              key={f.key}
-              className="px-3 py-1.5 text-center font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
-            >
-              {f.label}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-foreground/[0.06]">
-        {providers.map((id) => (
-          <tr key={id} className="transition-colors hover:bg-foreground/[0.03]">
-            <td className="py-1.5 pr-3 font-mono text-[12px] text-foreground/65">
-              {providerLabel(id)}
-            </td>
-            {fields.map((f) => (
-              <td key={f.key} className="px-3 py-1.5 text-center">
-                <Cell cell={f.cells[id]} />
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-      <tfoot>
-        <tr className="border-t border-foreground/15 bg-muted/40">
-          <td className="py-2 pr-3 font-mono text-[11px] font-semibold uppercase tracking-wider text-foreground">
-            Result
-          </td>
-          {fields.map((f) => (
-            <td key={f.key} className="px-3 py-2 text-center align-top">
-              <div className="truncate text-[13px] font-medium text-foreground">{f.winner}</div>
-              <div className="mt-1 flex items-center justify-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                <ConfidenceDot confidence={f.confidence} />
-                {f.confidence}
-              </div>
-            </td>
-          ))}
-        </tr>
-      </tfoot>
-    </table>
-  );
-}
-
-/** Narrow layout: one ballot per field. */
-function Ballots({ fields }: { fields: VoteColumn[] }) {
-  return (
-    <div className="space-y-3">
-      {fields.map((f) => (
-        <div
-          key={f.key}
-          className="border-t border-foreground/[0.06] pt-3 first:border-t-0 first:pt-0"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              {f.label}
+/** Compact resolved-value reference: the field label, the consensus value, and
+ *  that field's confidence. Renders three grid cells so the columns line up
+ *  across every row. The "answer" the source votes below support. */
+function ResolvedRow({ field }: { field: VoteColumn }) {
+    return (
+        <>
+            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                {field.label}
             </span>
-            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              <ConfidenceDot confidence={f.confidence} />
-              {f.confidence}
+            <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
+                {field.winner}
             </span>
-          </div>
-          <div className="mt-0.5 text-sm font-medium text-foreground">{f.winner}</div>
-          {f.backers.length > 0 && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px]">
-              <span className="text-foreground/45">backed</span>
-              {f.backers.map((id) => (
-                <span key={id} className="inline-flex items-center gap-0.5 text-foreground/75">
-                  {providerLabel(id)}
-                  {id === f.authorityId && (
-                    <Star className="size-3 text-foreground/55" aria-label="allocation authority" />
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
-          {f.dissent.map((d, i) => (
-            <div key={i} className="mt-0.5 text-[12px] leading-snug text-foreground/75">
-              <span className="text-foreground/45">differs </span>
-              {d.value}, {d.sources.map(providerLabel).join(", ")}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
+            <ConfidenceLevel confidence={field.confidence} />
+        </>
+    );
 }
 
-/** Full-width geo-confidence card: overall gauge + per-provider voting,
- *  responsive matrix (sm+) / ballots (below sm). No-op when nothing resolved. */
+/** One source's vote in a single field column. Every state shares the same grey,
+ *  so the icon shape, not color, carries the meaning: a check for agreement, a
+ *  ring for a scattered point, and a minimal asterisk plus the value for a
+ *  dissent (the one that should pop). Absent votes render blank. */
+function VoteMark({ cell }: { cell: VoteCell | undefined }) {
+    if (!cell || cell.status === "absent") return <span aria-hidden />;
+    if (cell.status === "scatter")
+        return (
+            <Circle
+                className="size-2.5 text-foreground/40"
+                aria-label="scattered point"
+            />
+        );
+    if (cell.status === "dissent")
+        return (
+            <span className="inline-flex items-center gap-1 text-foreground/70">
+                <Asterisk
+                    className="size-3 shrink-0 text-foreground/55"
+                    aria-label="differs"
+                />
+                {cell.value}
+            </span>
+        );
+    return (
+        <span className="inline-flex items-center gap-1 text-foreground/45">
+            <Check className="size-3.5" aria-label="agrees" />
+            {cell.authority && (
+                <Star
+                    className="size-3 text-foreground/55"
+                    aria-label="allocation authority"
+                />
+            )}
+        </span>
+    );
+}
+
+/** Geo-confidence section: a plain header, the resolved values, then a ballot per
+ *  TI source showing how each one voted. Minimal, document-style, no masthead or
+ *  gauge. No-op when nothing resolved. */
 export function VotingCard({ res }: { res: GeoResolution }) {
-  const table = buildVoteTable(res);
-  if (!table) return null;
-  return (
-    <div className="rounded-xl border border-foreground/10 bg-muted/30 p-4">
-      {res.overall && (
-        <div className="flex items-center gap-3 pb-3">
-          <OverallGauge overall={res.overall} />
-          <div className="min-w-0">
-            <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-foreground">
-              Geo confidence, {res.overall.confidence}
+    const table = buildVoteTable(res);
+    if (!table) return null;
+    const confidence = res.overall?.confidence ?? "low";
+    const pct = res.overall ? Math.round(res.overall.score * 100) : null;
+
+    return (
+        <section className="space-y-4">
+            {/* Plain header: uppercase label left, confidence on the right. */}
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-foreground/10 pb-3">
+                <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.12em] text-foreground">
+                    Geo confidence
+                </span>
+                <span className="flex items-center gap-1.5">
+                    <ConfidenceLevel confidence={confidence} />
+                    {pct != null && (
+                        <span className="font-mono text-[10px] tabular-nums text-foreground/55">
+                            {pct}/100
+                        </span>
+                    )}
+                </span>
             </div>
-            <div className="mt-0.5 text-[13px] text-muted-foreground">
-              {geoConfidenceReason(res)}
+
+            <p className="text-[13px] leading-snug text-muted-foreground">
+                {geoConfidenceReason(res)}
+            </p>
+
+            {/* Resolved consensus values, the answer the votes support. One field
+                per row, with label / value / confidence in aligned columns. */}
+            <div className="grid grid-cols-[auto_minmax(0,auto)_auto] items-baseline justify-start gap-x-2.5 gap-y-2">
+                {table.fields.map((f) => (
+                    <ResolvedRow key={f.key} field={f} />
+                ))}
             </div>
-          </div>
-        </div>
-      )}
-      <div className="hidden sm:block">
-        <Matrix providers={table.providers} fields={table.fields} />
-      </div>
-      <div className="sm:hidden">
-        <Ballots fields={table.fields} />
-      </div>
-      {table.fields.some((f) => f.authorityId) && (
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          <Star className="mr-1 inline size-3 align-[-1px] text-foreground/55" />
-          allocation authority, RDAP country, RIPEstat ASN
-        </p>
-      )}
-    </div>
-  );
+
+            {/* How each TI source voted: a tally with one column per field, so the
+                votes line up. Same grey throughout, icons carry the meaning. */}
+            <div className="border-t border-foreground/10 pt-3">
+                <div className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Source votes
+                </div>
+                <div
+                    className="grid items-center gap-x-5 gap-y-2.5 text-[12px]"
+                    style={{
+                        gridTemplateColumns: `auto repeat(${table.fields.length}, auto)`,
+                    }}
+                >
+                    <span aria-hidden />
+                    {table.fields.map((f) => (
+                        <span
+                            key={f.key}
+                            className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground"
+                        >
+                            {f.label}
+                        </span>
+                    ))}
+                    {table.providers.map((id) => (
+                        <Fragment key={id}>
+                            <span className="font-mono text-[12px] text-foreground/65">
+                                {providerLabel(id)}
+                            </span>
+                            {table.fields.map((f) => (
+                                <VoteMark key={f.key} cell={f.cells[id]} />
+                            ))}
+                        </Fragment>
+                    ))}
+                </div>
+            </div>
+
+            {table.fields.some((f) => f.authorityId) && (
+                <p className="text-[11px] text-muted-foreground">
+                    <Star className="mr-1 inline size-3 align-[-1px] text-foreground/55" />
+                    allocation authority, RIPEstat ASN
+                </p>
+            )}
+        </section>
+    );
 }

@@ -36,7 +36,6 @@ import {
     useCopied,
 } from "./primitives";
 import { VotingCard } from "./voting";
-import { LocationMap } from "./location-map";
 import type { IconType } from "./types";
 
 /** Compact classification header for the domain / hash profile cards: a small
@@ -95,176 +94,129 @@ export function ProfileCard({ result }: { result: CheckResult }) {
             ? `${geo.lat.toFixed(4)}, ${geo.lon.toFixed(4)}`
             : undefined;
 
-    // Accent tint keyed to the dominant trait, for the type label/badge.
-    const accent = geo?.isProxy
-        ? "text-orange-600 dark:text-orange-400"
-        : geo?.isMobile
-            ? "text-sky-600 dark:text-sky-400"
-            : geo?.isHosting
-                ? "text-foreground/70"
-                : "text-emerald-600 dark:text-emerald-400";
-
-    const hasDetails = !!(
-        geo &&
-        (geo.asn || geo.asnOrg || geo.isp || geo.org || geo.reverse || coords)
-    );
-    const hasMap = typeof geo?.lat === "number" && typeof geo?.lon === "number";
-
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading
-                    icon={Globe}
-                    action={
-                        <code className="rounded-sm border border-foreground/15 bg-muted/60 px-2.5 py-1 font-mono text-xs font-semibold tracking-tight">
-                            {result.ip}
-                        </code>
-                    }
-                >
-                    Geolocation &amp; network
-                </SectionHeading>
+                <SectionHeading icon={Globe}>Origin</SectionHeading>
 
-                {/* Identity strip: flag, country, city, and one classification chip. */}
-                <div className="flex items-center gap-3">
-                    {flag ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
-                        <img
-                            src={flag}
-                            alt={`Flag of ${geo?.country ?? geo?.countryCode}`}
-                            width={64}
-                            height={48}
-                            loading="lazy"
-                            className="h-9 w-auto shrink-0 rounded-sm border border-foreground/20 object-cover shadow-sm"
-                        />
-                    ) : (
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-muted-foreground">
-                            <MapPin className="size-5" />
-                        </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="text-lg font-bold leading-tight tracking-tight">
-                                {geo?.country ?? "Unknown location"}
-                            </span>
-                            {geo?.countryCode && (
-                                <span className="font-mono text-sm text-muted-foreground">
-                                    {geo.countryCode}
+                {/* Uniform bento grid: location, type, network, host. Every block
+                    shares the same cell chrome and stays monochrome — color is
+                    reserved for the verdict elsewhere. */}
+                <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
+                    {/* Where the address sits: grayscale flag, country, city. */}
+                    <BentoCell label="Location">
+                        <div className="flex items-center gap-3">
+                            {flag ? (
+                                // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
+                                <img
+                                    src={flag}
+                                    alt={`Flag of ${geo?.country ?? geo?.countryCode}`}
+                                    width={64}
+                                    height={48}
+                                    loading="lazy"
+                                    className="h-9 w-auto shrink-0 rounded-sm border border-foreground/20 object-cover"
+                                />
+                            ) : (
+                                <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-muted-foreground">
+                                    <MapPin className="size-5" />
                                 </span>
                             )}
+                            <div className="min-w-0">
+                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                    <span className="text-base font-semibold leading-tight tracking-tight">
+                                        {geo?.country ?? "Unknown location"}
+                                    </span>
+                                    {geo?.countryCode && (
+                                        <span className="font-mono text-xs text-muted-foreground">
+                                            {geo.countryCode}
+                                        </span>
+                                    )}
+                                </div>
+                                {cityRegion && (
+                                    <div className="truncate text-sm text-muted-foreground">
+                                        {cityRegion}
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        {cityRegion && (
-                            <div className="truncate text-sm text-muted-foreground">
-                                {cityRegion}
+                    </BentoCell>
+
+                    {/* What kind of address it is, monochrome (no risk tint). */}
+                    <BentoCell label="Type">
+                        <div className="flex items-start gap-3">
+                            <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-foreground/65">
+                                <TypeIcon className="size-5" />
+                            </span>
+                            <div className="min-w-0">
+                                <div className="text-base font-semibold leading-tight tracking-tight text-foreground">
+                                    {type.label}
+                                </div>
+                                <div className="mt-0.5 text-sm text-muted-foreground">
+                                    {type.desc}
+                                </div>
                             </div>
-                        )}
-                    </div>
-                    <span
-                        className={cn(
-                            "inline-flex shrink-0 items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 text-sm font-medium",
-                            accent,
-                        )}
-                    >
-                        <TypeIcon className="size-4" />
-                        {type.label}
-                    </span>
+                        </div>
+                    </BentoCell>
+
+                    {(geo?.asn || geo?.asnOrg || geo?.isp || geo?.org) && (
+                        <FieldGroup label="Network">
+                            {geo!.asn && (
+                                <Field
+                                    label="ASN"
+                                    hint="Autonomous System Number, the network block this IP routes through"
+                                >
+                                    <span className="font-mono text-[13px]">
+                                        {geo!.asn}
+                                    </span>
+                                </Field>
+                            )}
+                            {geo!.asnOrg && (
+                                <Field label="ASN operator">{geo!.asnOrg}</Field>
+                            )}
+                            {geo!.isp && <Field label="ISP">{geo!.isp}</Field>}
+                            {geo!.org && (
+                                <Field label="Organization">{geo!.org}</Field>
+                            )}
+                        </FieldGroup>
+                    )}
+
+                    {(geo?.reverse || coords) && (
+                        <FieldGroup label="Host & location">
+                            {geo!.reverse && (
+                                <Field
+                                    label="Reverse DNS"
+                                    hint="The PTR hostname this IP maps back to"
+                                >
+                                    <Pivot value={geo!.reverse} />
+                                    {geo!.fcrdns && (
+                                        <span
+                                            title={
+                                                geo!.fcrdns.verified
+                                                    ? "Forward-confirmed reverse DNS, the PTR host resolves back to this IP"
+                                                    : "PTR is not forward-confirmed, the hostname does not resolve back to this IP"
+                                            }
+                                            className={cn(
+                                                "ml-2 inline-flex items-center rounded-sm border px-1.5 py-0.5 align-middle text-[10px] font-semibold tracking-wide uppercase",
+                                                geo!.fcrdns.verified
+                                                    ? "border-foreground/20 text-muted-foreground"
+                                                    : "border-foreground bg-foreground text-background",
+                                            )}
+                                        >
+                                            {geo!.fcrdns.verified
+                                                ? "FCrDNS pass"
+                                                : "FCrDNS fail"}
+                                        </span>
+                                    )}
+                                </Field>
+                            )}
+                            {coords && (
+                                <Field label="Coordinates">
+                                    <span className="font-mono text-[13px]">{coords}</span>
+                                </Field>
+                            )}
+                        </FieldGroup>
+                    )}
                 </div>
-
-                {/* Bento: map tile on the left, detail cells stacked on the right.
-                    items-stretch + a filling map keep both columns the same height. */}
-                {(hasMap || hasDetails) && (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-                        {hasMap && (
-                            <div className="w-full shrink-0 sm:w-72">
-                                <LocationMap
-                                    lat={geo!.lat!}
-                                    lon={geo!.lon!}
-                                    fill={hasDetails}
-                                    caption={
-                                        joinPlace([
-                                            geo!.city,
-                                            geo!.region,
-                                            geo!.country,
-                                        ]) || coords
-                                    }
-                                />
-                            </div>
-                        )}
-
-                        {hasDetails && (
-                            <div className="flex-1 space-y-3">
-                                {(geo!.asn || geo!.asnOrg || geo!.isp || geo!.org) && (
-                                    <FieldGroup label="Network">
-                                        {geo!.asn && (
-                                            <Field
-                                                label="ASN"
-                                                hint="Autonomous System Number, the network block this IP routes through"
-                                            >
-                                                <span className="font-mono text-[13px]">
-                                                    {geo!.asn}
-                                                </span>
-                                            </Field>
-                                        )}
-                                        {geo!.asnOrg && (
-                                            <Field label="ASN operator">
-                                                {geo!.asnOrg}
-                                            </Field>
-                                        )}
-                                        {geo!.isp && (
-                                            <Field label="ISP">{geo!.isp}</Field>
-                                        )}
-                                        {geo!.org && (
-                                            <Field label="Organization">
-                                                {geo!.org}
-                                            </Field>
-                                        )}
-                                    </FieldGroup>
-                                )}
-
-                                {(geo!.reverse || coords) && (
-                                    <FieldGroup label="Host & location">
-                                        {geo!.reverse && (
-                                            <Field
-                                                label="Reverse DNS"
-                                                hint="The PTR hostname this IP maps back to"
-                                                tone={
-                                                    geo!.fcrdns && !geo!.fcrdns.verified
-                                                        ? "text-red-600 dark:text-red-400"
-                                                        : undefined
-                                                }
-                                            >
-                                                <Pivot value={geo!.reverse} />
-                                                {geo!.fcrdns && (
-                                                    <span
-                                                        title={
-                                                            geo!.fcrdns.verified
-                                                                ? "Forward-confirmed reverse DNS, the PTR host resolves back to this IP"
-                                                                : "PTR is not forward-confirmed, the hostname does not resolve back to this IP"
-                                                        }
-                                                        className={cn(
-                                                            "ml-2 inline-flex items-center rounded-sm border px-1.5 py-0.5 align-middle text-[10px] font-semibold tracking-wide uppercase",
-                                                            geo!.fcrdns.verified
-                                                                ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
-                                                                : "border-red-600/40 text-red-700 dark:text-red-400",
-                                                        )}
-                                                    >
-                                                        {geo!.fcrdns.verified
-                                                            ? "FCrDNS pass"
-                                                            : "FCrDNS fail"}
-                                                    </span>
-                                                )}
-                                            </Field>
-                                        )}
-                                        {coords && (
-                                            <Field label="Coordinates">
-                                                <span className="font-mono text-[13px]">{coords}</span>
-                                            </Field>
-                                        )}
-                                    </FieldGroup>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
 
                 {res && <VotingCard res={res} />}
             </CardContent>
