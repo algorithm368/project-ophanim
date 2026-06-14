@@ -127,16 +127,9 @@ function Ballots({ fields }: { fields: VoteColumn[] }) {
             </div>
           )}
           {f.dissent.map((d, i) => (
-            <div
-              key={i}
-              className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12px] text-foreground/75"
-            >
-              <span className="text-foreground/45">differs</span>
-              <span>{d.value}</span>
-              <span className="text-foreground/45">,</span>
-              {d.sources.map((s) => (
-                <span key={s}>{providerLabel(s)}</span>
-              ))}
+            <div key={i} className="mt-0.5 text-[12px] leading-snug text-foreground/75">
+              <span className="text-foreground/45">differs </span>
+              {d.value}, {d.sources.map(providerLabel).join(", ")}
             </div>
           ))}
         </div>
