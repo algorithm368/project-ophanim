@@ -49,7 +49,7 @@ export const maltiverseSource: TiSource = {
     if (hash.length !== 64) {
       return {
         status: "skipped",
-        summary: "SHA-256 only — paste a SHA-256 hash to query Maltiverse",
+        summary: "SHA-256 only, paste a SHA-256 hash to query Maltiverse",
       };
     }
 

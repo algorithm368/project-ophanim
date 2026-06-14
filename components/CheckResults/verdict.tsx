@@ -206,7 +206,7 @@ function ConsensusMini({
     return (
         <div
             className="flex shrink-0 flex-col items-end gap-1.5"
-            title={`Detector consensus — ${title}`}
+            title={`Detector consensus, ${title}`}
         >
             <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 <span className="text-foreground">{c.responded}</span>/{c.total}{" "}

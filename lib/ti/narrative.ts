@@ -49,9 +49,11 @@ export function aggregateCategories(
       map.set(key, entry);
     }
   }
-  return Array.from(map.values()).sort(
-    (a, b) => b.count - a.count || a.name.localeCompare(b.name),
-  );
+  // Count-tied categories keep insertion order (sort is stable), so callers
+  // that pass sources strongest-first get that source's own ordering — an
+  // alphabetical tiebreak would promote junk tags like "academico" over a
+  // threat label merely because it sorts earlier.
+  return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }
 
 export function joinPlace(parts: (string | undefined)[]): string {
@@ -103,7 +105,7 @@ const VERDICT_PHRASE: Record<Verdict, string> = {
  */
 function headline(subject: string, result: ResultLike): string {
   if (result.verdict === "unknown") {
-    return `This ${subject} ${VERDICT_PHRASE.unknown} — no scoring TI source returned data, so this is "no information", not a clean result.`;
+    return `This ${subject} ${VERDICT_PHRASE.unknown}, no scoring TI source returned data, so this is "no information", not a clean result.`;
   }
   return `This ${subject} ${VERDICT_PHRASE[result.verdict]}, scoring ${result.riskScore}/100.`;
 }
@@ -139,14 +141,89 @@ const PLATFORM_NOISE = new Set([
   "arm64",
 ]);
 
+/** File-format / delivery tags (mostly VirusTotal type tags) that describe
+ *  what a file *is*, not why it was flagged — "flagged it for peexe" reads as
+ *  if being a PE executable were the offense. */
+const FORMAT_NOISE = new Set([
+  "peexe",
+  "pedll",
+  "pe32",
+  "pe64",
+  "exe",
+  "dll",
+  "elf",
+  "macho",
+  "mach-o",
+  "apk",
+  "dex",
+  "jar",
+  "class",
+  "msi",
+  "lnk",
+  "com",
+  "assembly",
+  "mono",
+  "dotnet",
+  ".net",
+  "executable",
+  "binary",
+  "script",
+  "powershell",
+  "ps1",
+  "vbs",
+  "js",
+  "javascript",
+  "jscript",
+  "html",
+  "hta",
+  "wsf",
+  "bat",
+  "cmd",
+  "sh",
+  "shell",
+  "python",
+  "doc",
+  "docx",
+  "docm",
+  "xls",
+  "xlsx",
+  "xlsm",
+  "ppt",
+  "pptx",
+  "pdf",
+  "rtf",
+  "swf",
+  "zip",
+  "rar",
+  "7z",
+  "7zip",
+  "gzip",
+  "gz",
+  "tar",
+  "iso",
+  "img",
+  "archive",
+  "document",
+  "attachment",
+  "file",
+  "sample",
+  "text",
+  "txt",
+  "xml",
+  "json",
+  "email",
+  "eml",
+]);
+
 /** Keep junk out of the "flagged it for …" reason clause: md5/sha1/sha256 or
- *  imphash hex blobs (which some sources list as categories) and bare platform
- *  words are not threat categories. */
+ *  imphash hex blobs (which some sources list as categories), bare platform
+ *  words, and file-format tags are not threat categories. */
 function isMeaningfulCategory(name: string): boolean {
   const n = name.trim().toLowerCase();
   if (!n) return false;
   if (/^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(n)) return false;
   if (PLATFORM_NOISE.has(n)) return false;
+  if (FORMAT_NOISE.has(n)) return false;
   return true;
 }
 
@@ -166,8 +243,20 @@ export function threatSentences(result: ResultLike, noun: string): string[] {
   );
   if (flaggedSources.length > 0) {
     // Categories must come from the flagging sources only, so the "for …"
-    // clause reflects why it was flagged — not labels from quiet/context sources.
-    const cats = aggregateCategories(flaggedSources)
+    // clause reflects why it was flagged — not labels from quiet/context
+    // sources. Rank flagging sources by effective signal so the strongest
+    // feed's own ordering leads (VirusTotal lists its threat label first),
+    // and only take single-source categories from that strongest feed —
+    // unconfirmed tags from weaker feeds (e.g. arbitrary OTX pulse tags) are
+    // too noisy for the headline.
+    const byStrength = [...flaggedSources].sort(
+      (a, b) =>
+        (b.score ?? 0) * (b.source.weight ?? 1) -
+        (a.score ?? 0) * (a.source.weight ?? 1),
+    );
+    const strongest = byStrength[0].source.name;
+    const cats = aggregateCategories(byStrength)
+      .filter((c) => c.count >= 2 || c.sources.includes(strongest))
       .map((c) => c.name)
       .filter(isMeaningfulCategory)
       .slice(0, 3);
@@ -176,10 +265,7 @@ export function threatSentences(result: ResultLike, noun: string): string[] {
         cats.length ? ` for ${cats.join(", ")}` : ""
       }.`,
     );
-    const flaggedBy = [...flaggedSources]
-      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-      .map((x) => x.source.name)
-      .slice(0, 4);
+    const flaggedBy = byStrength.map((x) => x.source.name).slice(0, 4);
     out.push(`Flagged by ${flaggedBy.join(", ")}.`);
   } else if (responded > 0) {
     out.push(`None of the ${responded} TI sources flagged this ${noun}.`);
@@ -244,7 +330,17 @@ export function buildDomainNarrative(result: DomainCheckResult): string[] {
   const ctx = result.context;
   const sentences: string[] = [];
 
-  sentences.push(headline("domain", result));
+  if (ctx?.nxdomain && result.verdict === "unknown") {
+    // assembleDomainResult downgrades clean→unknown for NXDOMAIN: the generic
+    // unknown headline ("no scoring TI source returned data") would be false
+    // here — sources did respond, their absence-of-listing just proves nothing
+    // for a name that doesn't exist.
+    sentences.push(
+      "This domain does not exist in DNS (NXDOMAIN), it appears unregistered, expired, or taken down. Blocklists have nothing live to rate, so this is \"no information\", not a clean bill.",
+    );
+  } else {
+    sentences.push(headline("domain", result));
+  }
 
   // What the domain is: maturity, registrar, and content category in one read.
   const categories = ctx?.categories ?? [];
@@ -283,6 +379,13 @@ export function buildDomainNarrative(result: DomainCheckResult): string[] {
       extra > 0 ? ` and ${extra} other host${extra > 1 ? "s" : ""}` : "";
     const mail = mx.length ? `, with mail handled by ${mx[0]}` : "";
     sentences.push(`It currently resolves to ${ips[0]}${hosts}${mail}.`);
+  } else if (ctx?.nxdomain && result.verdict !== "unknown") {
+    // Flagged-but-NXDOMAIN (e.g. a taken-down C2 still on blocklists): the
+    // verdict stands, but say plainly that the name is currently dead. The
+    // unknown case already leads with NXDOMAIN, so don't repeat it.
+    sentences.push(
+      "It currently returns NXDOMAIN, the name no longer exists in DNS (unregistered, expired, or taken down).",
+    );
   } else if (
     ctx &&
     (ctx.nameservers?.length ?? 0) > 0 &&
@@ -310,7 +413,7 @@ export function buildHashNarrative(result: HashCheckResult): string[] {
   // An unrated file is genuinely unknown, not clean - say so plainly.
   if (result.verdict === "unknown" && !ctx) {
     sentences.push(
-      `No threat-intel source has this ${HASH_ALGO_LABEL[result.algorithm]} hash on record, so it can't be rated. That isn't the same as safe - the file may simply be new or unseen.`,
+      `No threat-intel source has this ${HASH_ALGO_LABEL[result.algorithm]} hash on record, so it can't be rated. That isn't the same as safe, the file may simply be new or unseen.`,
     );
     return [...sentences, ...threatSentences(result, "file")];
   }

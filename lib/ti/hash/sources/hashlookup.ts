@@ -96,7 +96,7 @@ export const hashlookupSource: TiSource = {
         status: "ok",
         score: 0,
         summary: `Known legitimate file${origin ? ` (${origin})` : ""}${
-          fileName ? ` - "${fileName}"` : ""
+          fileName ? `, "${fileName}"` : ""
         }`,
         hashContext,
         details,

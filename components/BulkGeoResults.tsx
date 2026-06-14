@@ -164,7 +164,7 @@ export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
       <CardContent className="space-y-4">
         <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
           <Globe className="size-5 text-muted-foreground" />
-          Geolocation — {rows.length} {rows.length === 1 ? "address" : "addresses"}
+          Geolocation, {rows.length} {rows.length === 1 ? "address" : "addresses"}
         </h2>
 
         <CopyableList rows={rows} />

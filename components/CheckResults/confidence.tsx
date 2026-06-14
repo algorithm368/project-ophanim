@@ -11,9 +11,9 @@ const TONE: Record<Confidence, string> = {
 };
 
 const LABEL: Record<Confidence, string> = {
-  high: "high confidence — providers agree",
-  medium: "medium confidence — contested",
-  low: "low confidence — single provider or split",
+  high: "high confidence, providers agree",
+  medium: "medium confidence, contested",
+  low: "low confidence, single provider or split",
 };
 
 /** Small inline chip indicating how trustworthy a reconciled field is. */
@@ -94,7 +94,7 @@ export function Disagreement<T>({ field }: { field: ResolvedField<T> }) {
         <ul className="mt-1 space-y-0.5 text-muted-foreground">
           {alts.map((a, i) => (
             <li key={i}>
-              {String(a.value)} — {a.sources.join(", ")}
+              {String(a.value)}, {a.sources.join(", ")}
             </li>
           ))}
         </ul>

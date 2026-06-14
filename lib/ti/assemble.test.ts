@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assembleIpResult } from "./assemble";
+import { assembleDomainResult, assembleIpResult } from "./assemble";
 import type { SourceMeta, SourceResult } from "./types";
 
 function meta(id: string, weight: number): SourceMeta {
@@ -64,5 +64,53 @@ describe("assembleIpResult", () => {
     const r = assembleIpResult("1.2.3.4", [], "t");
     expect(r.verdict).toBe("unknown");
     expect(r.stats.total).toBe(0);
+  });
+});
+
+describe("assembleDomainResult — NXDOMAIN verdict (P1.2)", () => {
+  const dns = (nxdomain: boolean): SourceResult =>
+    ok("dns", 0, 0, { domainContext: { nxdomain, resolvedIps: [] } });
+
+  it("rates an unflagged NXDOMAIN domain unknown, not clean", () => {
+    // Blocklists answering "not listed" for a name that doesn't exist is
+    // vacuous — it must not produce a clean (vetted-good) verdict.
+    const r = assembleDomainResult(
+      "no-such-name.example",
+      [ok("surbl", 1, 0), ok("urlhaus", 1, 0), dns(true)],
+      "t",
+    );
+    expect(r.verdict).toBe("unknown");
+    expect(r.riskScore).toBe(0);
+    expect(r.context?.nxdomain).toBe(true);
+  });
+
+  it("keeps the scored verdict when a flagging source hits despite NXDOMAIN", () => {
+    // A taken-down C2 can return NXDOMAIN while still being blocklisted.
+    const r = assembleDomainResult(
+      "sinkholed-c2.example",
+      [ok("urlhaus", 1, 90, { malicious: true }), ok("surbl", 1, 0), dns(true)],
+      "t",
+    );
+    expect(r.verdict).toBe("malicious");
+  });
+
+  it("keeps a low verdict on NXDOMAIN — only vacuous clean is downgraded", () => {
+    // A weak scored signal (e.g. a delisted URLhaus entry) is information;
+    // downgrading it to unknown would hide it.
+    const r = assembleDomainResult(
+      "delisted.example",
+      [ok("urlhaus", 1, 20), ok("surbl", 1, 0), dns(true)],
+      "t",
+    );
+    expect(r.verdict).toBe("low");
+  });
+
+  it("still rates a resolving quiet domain clean", () => {
+    const r = assembleDomainResult(
+      "example.com",
+      [ok("surbl", 1, 0), ok("urlhaus", 1, 0), dns(false)],
+      "t",
+    );
+    expect(r.verdict).toBe("clean");
   });
 });

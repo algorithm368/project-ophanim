@@ -686,18 +686,15 @@ export default function Checker({
             type="submit"
             size="lg"
             disabled={loading || !query.trim() || (!detected && !bulkPreview)}
-            className="h-12 rounded-lg px-7 text-base font-semibold"
+            className="h-12 min-w-[8.5rem] rounded-lg px-6 text-sm font-medium"
           >
             {loading ? (
               <>
-                <Loader2 className="size-5 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
                 Checking…
               </>
             ) : (
-              <>
-                <Search className="size-5" />
-                Check
-              </>
+              "Check"
             )}
           </Button>
         </form>
@@ -713,8 +710,8 @@ export default function Checker({
               <Network className="size-4" />
               {bulkPreview.length === 1
                 ? "Detected an IPv6 address"
-                : `Detected ${bulkPreview.length} IP addresses`}{" "}
-              <span className="text-muted-foreground">— bulk geolocation</span>
+                : `Detected ${bulkPreview.length} IP addresses`}
+              <span className="text-muted-foreground">, bulk geolocation</span>
             </span>
           ) : detected ? (
             <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
@@ -805,7 +802,7 @@ function EmptyState({ detected }: { detected: Mode | null }) {
   // IOCs so the tool doesn't read as IP-only; once detection has picked a type,
   // tailor the copy to what that lookup will actually return.
   const copy = !detected
-    ? "Paste an IP address, domain, or file hash above — we'll detect the type, then tell you what it is, where it lives, and whether any threat-intel source has flagged it, summarized into one risk score."
+    ? "Paste an IP address, domain, or file hash above, we'll detect the type, then tell you what it is, where it lives, and whether any threat-intel source has flagged it, summarized into one risk score."
     : detected === "ip"
       ? "Enter an IPv4 address above and we'll tell you what kind of address it is, where it's located, and whether any threat-intel source has flagged it, summarized into one risk score."
       : detected === "domain"
@@ -1098,7 +1095,7 @@ function SearchProgress({
               Waiting on {pendingMetas.length} slow{" "}
               {pendingMetas.length === 1 ? "source" : "sources"}
               {pendingMetas.length <= 4
-                ? ` — ${pendingMetas.map((m) => m.name).join(", ")}`
+                ? `, ${pendingMetas.map((m) => m.name).join(", ")}`
                 : ""}
               . These time out at ~{maxTimeoutS}s.
             </span>

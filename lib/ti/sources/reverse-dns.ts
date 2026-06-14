@@ -27,7 +27,7 @@ export const reverseDnsSource: TiSource = {
         status: "ok",
         summary: fcrdns.verified
           ? `PTR ${fcrdns.hostname} (forward-confirmed)`
-          : `PTR ${fcrdns.hostname} (unconfirmed — forward record does not match)`,
+          : `PTR ${fcrdns.hostname} (unconfirmed, forward record does not match)`,
         details: { hostname: fcrdns.hostname, forwardConfirmed: fcrdns.verified },
         geo: { reverse: fcrdns.hostname, fcrdns },
       };

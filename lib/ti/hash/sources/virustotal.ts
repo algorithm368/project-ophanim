@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
+import { vtDefinitive } from "../../vt-verdict";
 import {
   detectionNames,
   fileRelationsFromVt,
@@ -128,7 +129,7 @@ export const virusTotalHashSource: TiSource = {
 
       return {
         status: "ok",
-        malicious: malicious >= 3,
+        malicious: vtDefinitive(malicious, total),
         score,
         categories: [threatLabel, ...(attr.tags ?? [])]
           .filter(Boolean)

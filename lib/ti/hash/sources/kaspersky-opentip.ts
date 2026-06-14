@@ -81,7 +81,7 @@ export const kasperskyOpenTipSource: TiSource = {
         score,
         categories: detections.slice(0, 10),
         summary: `Kaspersky zone: ${data.Zone ?? "Unknown"}${
-          detections.length ? ` — ${detections[0]}` : ""
+          detections.length ? `, ${detections[0]}` : ""
         }`,
         hashContext: {
           md5: info?.Md5?.toLowerCase(),

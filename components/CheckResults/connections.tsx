@@ -115,7 +115,7 @@ export function DistributionUrlsCard({ result }: { result: HashCheckResult }) {
                 </SectionHeading>
                 <p className="text-xs text-muted-foreground">
                     URLs that distributed this file. Use the pivot to check the
-                    host — open links cautiously; they may still be live.
+                    host, open links cautiously; they may still be live.
                 </p>
                 <ul className="space-y-1.5">
                     {shown.map((u) => (

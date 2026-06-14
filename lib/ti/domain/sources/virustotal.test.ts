@@ -1,12 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   domainRelationsFromVt,
   normalizeCategories,
+  virusTotalDomainSource,
   vtCertificate,
   vtDnsContext,
   vtScore,
 } from "./virustotal";
+import { getJson } from "../../http";
 import type { VtRelationships } from "../../vt-relationships";
+
+vi.mock("../../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
+type GetJsonResult = Awaited<ReturnType<typeof getJson>>;
+
+function vtDomainResponse(stats: Record<string, number>): GetJsonResult {
+  return {
+    ok: true,
+    status: 200,
+    data: { data: { attributes: { last_analysis_stats: stats } } },
+  } as GetJsonResult;
+}
 
 describe("vtCertificate", () => {
   it("normalizes the cert and splits SANs into subdomains + shared domains", () => {
@@ -118,5 +135,40 @@ describe("normalizeCategories", () => {
     expect(normalizeCategories({ a: "weather" })).toEqual(["Weather"]);
     expect(normalizeCategories({ a: "", b: "  " })).toEqual([]);
     expect(normalizeCategories({})).toEqual([]);
+  });
+});
+
+// Pin the P1.1 wiring at the check() level so a revert to an absolute
+// engine-count flag fails here.
+describe("virusTotalDomainSource.check — definitive-flag wiring (P1.1)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("does not hard-flag a small vendor minority (4/91)", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue(
+      vtDomainResponse({ malicious: 4, harmless: 70, undetected: 17 }),
+    );
+    const f = await virusTotalDomainSource.check(
+      "example.com",
+      new AbortController().signal,
+    );
+    expect(f.status).toBe("ok");
+    expect(f.malicious).toBe(false);
+    expect(f.score).toBe(40);
+  });
+
+  it("hard-flags a broad vendor consensus", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue(
+      vtDomainResponse({ malicious: 12, harmless: 70, undetected: 9 }),
+    );
+    const f = await virusTotalDomainSource.check(
+      "evil.example",
+      new AbortController().signal,
+    );
+    expect(f.malicious).toBe(true);
   });
 });

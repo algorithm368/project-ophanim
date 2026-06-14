@@ -116,6 +116,7 @@ export const dnsSource: TiSource = {
         domainContext: {
           resolvedIps,
           ipv6,
+          nxdomain,
           mx: mxHosts,
           nameservers: nsHosts,
           reverse,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateCategories,
   buildDomainNarrative,
   buildHashNarrative,
   buildNarrative,
@@ -164,6 +165,239 @@ describe("unknown verdict is not rendered as 0/100 (issue #3)", () => {
     };
     const text = buildNarrative(result).join(" ");
     expect(text).toContain("scoring 75/100");
+  });
+});
+
+describe("threatSentences — headline category quality (P1.3)", () => {
+  it("drops file-format/type tags from the 'flagged for' clause", () => {
+    const vt = makeSource({
+      name: "VirusTotal",
+      score: 100,
+      malicious: true,
+      categories: ["virus.eicar/test", "peexe", "assembly", "attachment"],
+    });
+    const result: ResultLike = {
+      riskScore: 89,
+      verdict: "malicious",
+      checkedAt: "2026-06-13T00:00:00Z",
+      sources: [vt],
+      stats: makeStats({ flagged: 1 }),
+    };
+    const text = threatSentences(result, "file").join(" ");
+    expect(text).toContain("flagged it for virus.eicar/test.");
+    expect(text).not.toContain("peexe");
+    expect(text).not.toContain("assembly");
+    expect(text).not.toContain("attachment");
+  });
+
+  it("leads with the strongest source's first category, not alphabetical junk", () => {
+    // OTX-style arbitrary pulse tags sort alphabetically before VT's threat
+    // label; the strongest feed's own ordering must win instead.
+    const otx = makeSource({
+      name: "AlienVault OTX",
+      score: 60,
+      weight: 0.85,
+      categories: ["academico", "auditoria"],
+    });
+    const vt = makeSource({
+      name: "VirusTotal",
+      score: 100,
+      malicious: true,
+      categories: ["virus.eicar/test"],
+    });
+    const result: ResultLike = {
+      riskScore: 89,
+      verdict: "malicious",
+      checkedAt: "2026-06-13T00:00:00Z",
+      sources: [otx, vt],
+      stats: makeStats({ flagged: 2 }),
+    };
+    const text = threatSentences(result, "file").join(" ");
+    // Single-source tags from the weaker feed are excluded outright.
+    expect(text).toContain("flagged it for virus.eicar/test.");
+    expect(text).not.toContain("academico");
+    // The strongest source also leads the "Flagged by" list.
+    expect(text).toContain("Flagged by VirusTotal, AlienVault OTX.");
+  });
+
+  it("ranks by effective signal (score × weight), not raw score", () => {
+    // Raw-score order would put IPsum (90) first; weighted order (27 vs 70)
+    // must flip both the "Flagged by" list and which source's single-source
+    // categories pass the strongest-source gate.
+    const ipsum = makeSource({
+      name: "IPsum",
+      score: 90,
+      weight: 0.3,
+      categories: ["ipsum-only-tag"],
+    });
+    const abuse = makeSource({
+      name: "AbuseIPDB",
+      score: 70,
+      weight: 1,
+      categories: ["abuse-only-tag"],
+    });
+    const result: ResultLike = {
+      riskScore: 70,
+      verdict: "malicious",
+      checkedAt: "2026-06-13T00:00:00Z",
+      sources: [ipsum, abuse],
+      stats: makeStats({ flagged: 2 }),
+    };
+    const text = threatSentences(result, "address").join(" ");
+    expect(text).toContain("Flagged by AbuseIPDB, IPsum.");
+    expect(text).toContain("abuse-only-tag");
+    expect(text).not.toContain("ipsum-only-tag");
+  });
+
+  it("degrades to a bare 'flagged it.' when every category is format noise", () => {
+    const vt = makeSource({
+      name: "VirusTotal",
+      score: 100,
+      malicious: true,
+      categories: ["peexe", "zip", "attachment"],
+    });
+    const result: ResultLike = {
+      riskScore: 89,
+      verdict: "malicious",
+      checkedAt: "2026-06-13T00:00:00Z",
+      sources: [vt],
+      stats: makeStats({ flagged: 1 }),
+    };
+    const text = threatSentences(result, "file").join(" ");
+    expect(text).toContain("1 of 1 TI sources flagged it.");
+    expect(text).not.toContain("flagged it for");
+  });
+
+  it("drops generic script/type tags while real threat labels survive", () => {
+    const vt = makeSource({
+      name: "VirusTotal",
+      score: 100,
+      malicious: true,
+      categories: ["trojan.agent/gen", "powershell", "js"],
+    });
+    const result: ResultLike = {
+      riskScore: 89,
+      verdict: "malicious",
+      checkedAt: "2026-06-13T00:00:00Z",
+      sources: [vt],
+      stats: makeStats({ flagged: 1 }),
+    };
+    const text = threatSentences(result, "file").join(" ");
+    expect(text).toContain("flagged it for trojan.agent/gen.");
+    expect(text).not.toMatch(/flagged it for[^.]*\bpowershell\b/);
+    expect(text).not.toMatch(/flagged it for[^.]*\bjs\b/);
+  });
+
+  it("keeps a weaker feed's tag when a second source corroborates it", () => {
+    const a = makeSource({
+      name: "Feodo",
+      score: 100,
+      malicious: true,
+      categories: ["botnet_c2"],
+    });
+    const b = makeSource({
+      name: "ThreatFox",
+      score: 80,
+      categories: ["botnet_c2", "random-tag"],
+    });
+    const result: ResultLike = {
+      riskScore: 90,
+      verdict: "malicious",
+      checkedAt: "2026-06-13T00:00:00Z",
+      sources: [a, b],
+      stats: makeStats({ flagged: 2 }),
+    };
+    const text = threatSentences(result, "address").join(" ");
+    expect(text).toContain("botnet_c2");
+    // Single-source tag from the weaker feed stays out of the headline.
+    expect(text).not.toContain("random-tag");
+  });
+});
+
+describe("aggregateCategories — ranking (P1.3)", () => {
+  it("keeps the source's own ordering for count ties (no alphabetical resort)", () => {
+    const names = aggregateCategories([
+      makeSource({ name: "VirusTotal", score: 100, categories: ["malware", "c2"] }),
+    ]).map((c) => c.name);
+    // Alphabetical tiebreak would yield ["c2", "malware"] — insertion order
+    // must win so the strongest feed's first (most significant) tag leads.
+    expect(names).toEqual(["malware", "c2"]);
+  });
+
+  it("still ranks multi-source categories above earlier-inserted singletons", () => {
+    const names = aggregateCategories([
+      makeSource({ name: "A", score: 90, categories: ["solo-tag", "shared-tag"] }),
+      makeSource({ name: "B", score: 80, categories: ["shared-tag"] }),
+    ]).map((c) => c.name);
+    expect(names).toEqual(["shared-tag", "solo-tag"]);
+  });
+});
+
+describe("buildDomainNarrative — NXDOMAIN honesty (P1.2)", () => {
+  function mkDomain(over: Partial<DomainCheckResult>): DomainCheckResult {
+    return {
+      domain: "no-such-name.example",
+      checkedAt: "2026-06-13T00:00:00Z",
+      riskScore: 0,
+      verdict: "unknown",
+      sources: [makeSource({ name: "SURBL", score: 0 })],
+      stats: makeStats(),
+      ...over,
+    };
+  }
+
+  it("says NXDOMAIN/unregistered instead of the generic unknown headline", () => {
+    const text = buildDomainNarrative(
+      mkDomain({ context: { nxdomain: true, resolvedIps: [] } }),
+    ).join(" ");
+    expect(text).toContain("NXDOMAIN");
+    expect(text).toContain("unregistered");
+    // Sources DID respond here — the generic "no scoring TI source returned
+    // data" headline would be a false statement.
+    expect(text).not.toContain("no scoring TI source returned data");
+    expect(text).not.toContain("0/100");
+  });
+
+  it("keeps a flagged verdict but states the name is currently dead", () => {
+    const text = buildDomainNarrative(
+      mkDomain({
+        riskScore: 75,
+        verdict: "malicious",
+        context: { nxdomain: true, resolvedIps: [] },
+        sources: [makeSource({ name: "URLhaus", score: 90, malicious: true })],
+        stats: makeStats({ flagged: 1 }),
+      }),
+    ).join(" ");
+    expect(text).toContain("almost certainly malicious");
+    expect(text).toContain("NXDOMAIN");
+  });
+
+  it("keeps a low (sub-flag) verdict and still notes NXDOMAIN", () => {
+    // The assemble downgrade only converts clean→unknown; a weak scored
+    // signal keeps its verdict and gets the scored headline plus the
+    // name-is-dead sentence.
+    const text = buildDomainNarrative(
+      mkDomain({
+        riskScore: 20,
+        verdict: "low",
+        context: { nxdomain: true, resolvedIps: [] },
+        sources: [makeSource({ name: "URLhaus", score: 20 })],
+        stats: makeStats(),
+      }),
+    ).join(" ");
+    expect(text).toContain("scoring 20/100");
+    expect(text).toContain("NXDOMAIN");
+  });
+
+  it("does not mention NXDOMAIN for a resolving domain", () => {
+    const text = buildDomainNarrative(
+      mkDomain({
+        verdict: "clean",
+        context: { nxdomain: false, resolvedIps: ["93.184.216.34"] },
+      }),
+    ).join(" ");
+    expect(text).not.toContain("NXDOMAIN");
+    expect(text).toContain("It currently resolves to 93.184.216.34.");
   });
 });
 

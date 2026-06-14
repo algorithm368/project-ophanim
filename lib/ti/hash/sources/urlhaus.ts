@@ -61,7 +61,7 @@ export const urlhausHashSource: TiSource = {
     if (!field) {
       return {
         status: "skipped",
-        summary: "MD5/SHA-256 only — paste an MD5 or SHA-256 hash for URLhaus",
+        summary: "MD5/SHA-256 only, paste an MD5 or SHA-256 hash for URLhaus",
       };
     }
 

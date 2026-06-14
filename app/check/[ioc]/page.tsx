@@ -51,7 +51,7 @@ export async function generateMetadata({
     : undefined;
 
   const title = verdictLabel
-    ? `${decoded} — ${verdictLabel} | Project Ophanim`
+    ? `${decoded}, ${verdictLabel} | Project Ophanim`
     : `${decoded} | Project Ophanim`;
 
   return {

@@ -198,7 +198,7 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                         {geo!.asn && (
                                             <Field
                                                 label="ASN"
-                                                hint="Autonomous System Number — the network block this IP routes through"
+                                                hint="Autonomous System Number, the network block this IP routes through"
                                             >
                                                 <span className="font-mono text-[13px]">
                                                     {geo!.asn}
@@ -239,8 +239,8 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                                     <span
                                                         title={
                                                             geo!.fcrdns.verified
-                                                                ? "Forward-confirmed reverse DNS — the PTR host resolves back to this IP"
-                                                                : "PTR is not forward-confirmed — the hostname does not resolve back to this IP"
+                                                                ? "Forward-confirmed reverse DNS, the PTR host resolves back to this IP"
+                                                                : "PTR is not forward-confirmed, the hostname does not resolve back to this IP"
                                                         }
                                                         className={cn(
                                                             "ml-2 inline-flex items-center rounded-sm border px-1.5 py-0.5 align-middle text-[10px] font-semibold tracking-wide uppercase",
@@ -376,7 +376,7 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                     <Field
                                         label="CAA"
                                         wrap
-                                        hint="Certificate Authority Authorization — which CAs may issue TLS certs for this domain"
+                                        hint="Certificate Authority Authorization, which CAs may issue TLS certs for this domain"
                                     >
                                         <span className="font-mono text-[12px] break-all">
                                             {ctx.caa!.join(", ")}
@@ -402,7 +402,7 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                 {ctx.resolverAgreement === false && (
                                     <Field
                                         label="Resolvers"
-                                        hint="DoH resolvers returned different A records — GeoDNS, split-horizon, or possible poisoning"
+                                        hint="DoH resolvers returned different A records, GeoDNS, split-horizon, or possible poisoning"
                                         tone="text-red-600 dark:text-red-400"
                                     >
                                         Disagree
@@ -422,7 +422,7 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                     <Field
                                         label="SPF"
                                         wrap
-                                        hint="Sender Policy Framework — which servers may send mail for this domain"
+                                        hint="Sender Policy Framework, which servers may send mail for this domain"
                                     >
                                         <span className="font-mono text-[12px] break-all">
                                             {ctx.spf}
@@ -589,7 +589,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                     <Field
                                         label="Imphash"
                                         wrap
-                                        hint="Hash of the PE import table — clusters samples built from the same code"
+                                        hint="Hash of the PE import table, clusters samples built from the same code"
                                     >
                                         <span className="font-mono text-[13px] break-all">
                                             {ctx.imphash}
@@ -600,7 +600,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                     <Field
                                         label="ssdeep"
                                         wrap
-                                        hint="Fuzzy hash — matches files that are similar but not identical"
+                                        hint="Fuzzy hash, matches files that are similar but not identical"
                                     >
                                         <span className="font-mono text-[13px] break-all">
                                             {ctx.ssdeep}

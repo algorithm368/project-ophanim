@@ -59,17 +59,27 @@ export function assembleDomainResult(
   checkedAt: string,
 ): DomainCheckResult {
   const { riskScore, verdict } = aggregateRisk(results);
+  const context = mergeDomainContext(results);
+  const stats = computeStats(results);
+  // A name that returns NXDOMAIN doesn't exist in DNS, so every blocklist's
+  // "not listed" is vacuous — "clean" would read as vetted-good. Rate it
+  // unknown instead. A flagged NXDOMAIN (e.g. a taken-down C2 still on
+  // blocklists) keeps its scored verdict.
+  const finalVerdict =
+    context?.nxdomain && stats.flagged === 0 && verdict === "clean"
+      ? "unknown"
+      : verdict;
   return {
     domain,
     checkedAt,
     riskScore,
-    verdict,
-    context: mergeDomainContext(results),
+    verdict: finalVerdict,
+    context,
     certificates: collectCertificates(results),
     subdomains: collectSubdomains(results),
     passiveDns: collectPassiveDns(results),
     sources: results,
-    stats: computeStats(results),
+    stats,
   };
 }
 

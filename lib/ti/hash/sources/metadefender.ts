@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
+import { vtDefinitive } from "../../vt-verdict";
 
 interface FilescanReputation {
   sha256?: string;
@@ -52,7 +53,7 @@ export const metadefenderHashSource: TiSource = {
     if (hash.length !== 64) {
       return {
         status: "skipped",
-        summary: "SHA-256 only — paste a SHA-256 hash to query MetaDefender",
+        summary: "SHA-256 only, paste a SHA-256 hash to query MetaDefender",
       };
     }
     try {
@@ -85,7 +86,9 @@ export const metadefenderHashSource: TiSource = {
 
       return {
         status: "ok",
-        malicious: verdict === "malicious" || detected >= 3,
+        // MetaDefender's own verdict is curated; a bare engine tally needs the
+        // same definitive bar as VirusTotal before it can floor the aggregate.
+        malicious: verdict === "malicious" || vtDefinitive(detected, total),
         score,
         categories: verdict !== "unknown" ? [verdict] : [],
         lastSeen: md?.scan_time,

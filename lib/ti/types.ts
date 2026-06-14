@@ -58,6 +58,8 @@ export interface DomainContext {
   /** IPv4 addresses the apex resolves to. */
   resolvedIps?: string[];
   ipv6?: string[];
+  /** True when the resolver returned NXDOMAIN — the name does not exist in DNS. */
+  nxdomain?: boolean;
   mx?: string[];
   /** PTR hostnames for the resolved IPs. */
   reverse?: string[];

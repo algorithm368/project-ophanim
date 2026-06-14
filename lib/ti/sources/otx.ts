@@ -67,9 +67,12 @@ export const otxSource: TiSource = {
 
       const score = otxScore(pulseCount);
 
+      // No hard `malicious` flag: pulses are community-authored references,
+      // not a curated listing, so they must never trigger aggregateRisk()'s
+      // 75 floor on their own. The score still crosses FLAG_THRESHOLD at two
+      // pulses, so OTX keeps flagging — it just can't single-handedly floor.
       return {
         status: "ok",
-        malicious: pulseCount >= 3,
         score,
         categories: tags,
         summary:
