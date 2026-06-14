@@ -22,6 +22,7 @@ import {
     DomainProfileCard,
     HashProfileCard,
 } from "./profile";
+import { ResearchCard } from "./research";
 
 function Results({
     result,
@@ -38,6 +39,7 @@ function Results({
             <ExposedServicesCard result={result} />
             <PassiveDnsCard result={result} />
             <ConnectionsCard result={result} />
+            <ResearchCard result={result} />
             <SourceBreakdown
                 sources={result.sources}
                 indicator={result.ip}
@@ -62,6 +64,7 @@ function DomainResults({
             <CertificatesCard result={result} />
             <PassiveDnsCard result={result} />
             <ConnectionsCard result={result} />
+            <ResearchCard result={result} />
             <SourceBreakdown
                 sources={result.sources}
                 indicator={result.domain}
@@ -85,6 +88,7 @@ function HashResults({
             <HashProfileCard result={result} />
             <ConnectionsCard result={result} />
             <DistributionUrlsCard result={result} />
+            <ResearchCard result={result} />
             <SourceBreakdown
                 sources={result.sources}
                 indicator={result.hash}
