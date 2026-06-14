@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Confidence, GeoResolution, ResolvedField } from "@/lib/ti/types";
+import { ScoreRing } from "./primitives";
 
 const TONE: Record<Confidence, string> = {
   high: "border-emerald-600/40 text-emerald-700 dark:text-emerald-400",
@@ -32,23 +33,41 @@ export function ConfidenceChip({ confidence }: { confidence: Confidence }) {
   );
 }
 
-/** Larger chip summarizing overall geolocation confidence. */
-export function OverallConfidence({
-  confidence,
-}: {
-  confidence: Confidence;
-}) {
+/** Monochrome confidence indicator: filled disc (high), half disc (medium),
+ *  ring (low). Grayscale only, color stays reserved for the verdict. Always
+ *  shown next to the tier word so the level is never ambiguous. */
+export function ConfidenceDot({ confidence }: { confidence: Confidence }) {
   return (
-    <span
-      title={LABEL[confidence]}
+    <svg
+      viewBox="0 0 16 16"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
-        TONE[confidence],
+        "size-2.5 shrink-0",
+        confidence === "low" ? "text-muted-foreground" : "text-foreground",
       )}
+      aria-hidden
     >
-      <span className="size-1.5 rounded-full bg-current" aria-hidden />
-      Geo confidence: {confidence}
-    </span>
+      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      {confidence === "high" && <circle cx="8" cy="8" r="6" fill="currentColor" />}
+      {confidence === "medium" && <path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor" />}
+    </svg>
+  );
+}
+
+/** Compact radial gauge for the overall geo-confidence score (0-1 -> 0-100),
+ *  monochrome via the foreground stroke. */
+export function OverallGauge({
+  overall,
+}: {
+  overall: { score: number; confidence: Confidence };
+}) {
+  const pct = Math.round(overall.score * 100);
+  return (
+    <div className="relative size-12 shrink-0" title={LABEL[overall.confidence]}>
+      <ScoreRing value={pct} stroke="stroke-foreground" />
+      <span className="absolute inset-0 flex items-center justify-center font-mono text-sm font-semibold tabular-nums text-foreground">
+        {pct}
+      </span>
+    </div>
   );
 }
 
