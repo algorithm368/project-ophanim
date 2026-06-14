@@ -21,7 +21,7 @@ describe("researchLinks", () => {
             "https://www.google.com/search?q=%221.2.3.4%22",
         );
         // IP recon uses the per-host pages.
-        expect(links.censys).toBe("https://search.censys.io/hosts/1.2.3.4");
+        expect(links.censys).toBe("https://platform.censys.io/hosts/1.2.3.4");
         expect(links.shodan).toBe("https://www.shodan.io/host/1.2.3.4");
         expect(links.urlscan).toBe("https://urlscan.io/search/#1.2.3.4");
         expect(links.triage).toBe("https://tria.ge/s?q=1.2.3.4");
@@ -32,10 +32,12 @@ describe("researchLinks", () => {
         expect(links.urlscan).toBe("https://urlscan.io/domain/evil.com");
         expect(links.shodan).toBe("https://www.shodan.io/domain/evil.com");
         expect(links.censys).toBe(
-            "https://search.censys.io/search?resource=hosts&q=evil.com",
+            "https://platform.censys.io/search?q=evil.com",
         );
+        // Pulsedive base64-decodes its ioc param, so the value is base64 then
+        // URL-encoded ("evil.com" -> "ZXZpbC5jb20=").
         expect(links.pulsedive).toBe(
-            "https://pulsedive.com/indicator/?ioc=evil.com",
+            "https://pulsedive.com/indicator/?ioc=ZXZpbC5jb20%3D",
         );
     });
 
@@ -52,7 +54,7 @@ describe("researchLinks", () => {
             `https://www.google.com/search?q=%22${hash}%22`,
         );
         expect(links.pulsedive).toBe(
-            `https://pulsedive.com/indicator/?ioc=${hash}`,
+            "https://pulsedive.com/indicator/?ioc=Mjc1YTAyMWJiZmI2NDg5ZTU0ZDQ3MTg5OWY3ZGI5ZDE2NjNmYzY5NWVjMmZlMmEyYzQ1MzhhYWJmNjUxZmQwZg%3D%3D",
         );
         expect(links.joesandbox).toBe(
             `https://www.joesandbox.com/search?q=${hash}`,
@@ -63,7 +65,11 @@ describe("researchLinks", () => {
         // A value with characters that must be escaped in a query string.
         const links = linkMap("a b&c", "ip");
         expect(links.github).toContain("%22a%20b%26c%22");
-        expect(links.pulsedive).toContain("ioc=a%20b%26c");
+        // Pulsedive base64-encodes the raw value, so query-string escaping does
+        // not leak into its ioc param ("a b&c" -> base64 "YSBiJmM=").
+        expect(links.pulsedive).toBe(
+            "https://pulsedive.com/indicator/?ioc=YSBiJmM%3D",
+        );
         // The "reports" query keeps the OR operators readable after encoding.
         expect(links["google-reports"]).toContain(
             "malware%20OR%20threat%20OR%20abuse%20OR%20report",

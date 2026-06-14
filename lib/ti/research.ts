@@ -20,6 +20,17 @@ function google(query: string): string {
     return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
+/** Pulsedive's /indicator/ page base64-decodes its `ioc` query param, so the
+ *  raw indicator must be base64-encoded (then URL-encoded for the +, /, =
+ *  characters). Passing the bare value yields "Failed to decode base64 text".
+ *  UTF-8 safe so a punycode/unicode domain survives the round trip. */
+function pulsedive(value: string): string {
+    const bytes = new TextEncoder().encode(value);
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return `https://pulsedive.com/indicator/?ioc=${encodeURIComponent(btoa(bin))}`;
+}
+
 /**
  * Build the external "go research this indicator" link set for an IOC. Pure and
  * deterministic: it only assembles URLs (no network), so it is trivially
@@ -59,7 +70,11 @@ export function researchLinks(
     if (kind === "ip") {
         osint.push(
             { id: "urlscan", name: "URLScan", url: `https://urlscan.io/search/#${e}` },
-            { id: "censys", name: "Censys", url: `https://search.censys.io/hosts/${e}` },
+            {
+                id: "censys",
+                name: "Censys",
+                url: `https://platform.censys.io/hosts/${e}`,
+            },
             { id: "shodan", name: "Shodan", url: `https://www.shodan.io/host/${e}` },
         );
     } else if (kind === "domain") {
@@ -68,7 +83,7 @@ export function researchLinks(
             {
                 id: "censys",
                 name: "Censys",
-                url: `https://search.censys.io/search?resource=hosts&q=${e}`,
+                url: `https://platform.censys.io/search?q=${e}`,
             },
             { id: "shodan", name: "Shodan", url: `https://www.shodan.io/domain/${e}` },
         );
@@ -76,7 +91,7 @@ export function researchLinks(
     osint.push({
         id: "pulsedive",
         name: "Pulsedive",
-        url: `https://pulsedive.com/indicator/?ioc=${e}`,
+        url: pulsedive(v),
     });
 
     const sandboxes: ResearchLink[] = [
