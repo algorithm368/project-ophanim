@@ -35,7 +35,7 @@ import {
     SectionHeading,
     useCopied,
 } from "./primitives";
-import { Disagreement, OverallConfidence, geoConfidenceReason } from "./confidence";
+import { VotingCard } from "./voting";
 import { LocationMap } from "./location-map";
 import type { IconType } from "./types";
 
@@ -151,7 +151,6 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                     {geo.countryCode}
                                 </span>
                             )}
-                            {res?.country && <Disagreement field={res.country} />}
                         </div>
                         {cityRegion && (
                             <div className="truncate text-sm text-muted-foreground">
@@ -203,7 +202,6 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                                                 <span className="font-mono text-[13px]">
                                                     {geo!.asn}
                                                 </span>
-                                                {res?.asn && <Disagreement field={res.asn} />}
                                             </Field>
                                         )}
                                         {geo!.asnOrg && (
@@ -268,12 +266,7 @@ export function ProfileCard({ result }: { result: CheckResult }) {
                     </div>
                 )}
 
-                {res?.overall && (
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                        <OverallConfidence confidence={res.overall.confidence} />
-                        <span>{geoConfidenceReason(res)}</span>
-                    </div>
-                )}
+                {res && <VotingCard res={res} />}
             </CardContent>
         </Card>
     );
