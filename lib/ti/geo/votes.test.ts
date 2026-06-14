@@ -69,7 +69,7 @@ describe("buildVoteTable", () => {
     expect(coords.backers).toEqual([]);
   });
 
-  it("flags allocation authority for country (rdap-ip) and asn (ripestat)", () => {
+  it("flags allocation authority for asn (ripestat) but not country", () => {
     const table = buildVoteTable(
       res({
         country: rf("United States", { sources: ["ip-api", "rdap-ip"] }),
@@ -77,8 +77,9 @@ describe("buildVoteTable", () => {
       }),
     )!;
     const country = table.fields.find((f) => f.key === "country")!;
-    expect(country.authorityId).toBe("rdap-ip");
-    expect(country.cells["rdap-ip"]).toEqual({ status: "win", authority: true });
+    // RDAP is no longer authoritative for country — just a heavy weighted vote.
+    expect(country.authorityId).toBeUndefined();
+    expect(country.cells["rdap-ip"]).toEqual({ status: "win" });
     expect(country.cells["ip-api"]).toEqual({ status: "win" });
     const asn = table.fields.find((f) => f.key === "asn")!;
     expect(asn.authorityId).toBe("ripestat");
