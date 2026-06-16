@@ -20,9 +20,18 @@ export function getWeight(id: string, field: GeoField): number {
 }
 
 /** Provider that is allocation-authoritative for a field (forces high when it
- *  backs the winning value). Subsumes the old COUNTRY_AUTHORITY constant. */
+ *  backs the winning value).
+ *
+ *  `country` is deliberately NOT here: RDAP's country is the *allocation*
+ *  country (where the block holder registered), which legitimately differs from
+ *  the *geolocation* country for offshore-registered, elsewhere-hosted ranges
+ *  (e.g. 172.110.223.121 registers as HK but geolocates to Newark, US). Letting
+ *  a lone RDAP vote override the geo consensus produced a country that
+ *  contradicted the city/coords. RDAP still votes for country with the heaviest
+ *  single weight (1.0 below), so it dominates when geo data is sparse, but it no
+ *  longer overrides a strong majority. ASN has no such allocation/usage split,
+ *  so RIPEstat stays authoritative there. */
 const AUTHORITY: Partial<Record<GeoField, string>> = {
-  country: "rdap-ip",
   asn: "ripestat",
 };
 

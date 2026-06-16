@@ -1,11 +1,13 @@
 "use client";
 
+import { type ReactNode } from "react";
 import {
     Check,
     Copy,
     FileDigit,
     Globe,
     MapPin,
+    X,
 } from "lucide-react";
 import {
     type CheckResult,
@@ -27,17 +29,65 @@ import {
     hashTone,
 } from "./classify";
 import {
-    BentoCell,
     Field,
-    FieldGroup,
     Pivot,
     PivotList,
     SectionHeading,
     useCopied,
 } from "./primitives";
-import { Disagreement, OverallConfidence, geoConfidenceReason } from "./confidence";
-import { LocationMap } from "./location-map";
+import { VotingCard } from "./voting";
 import type { IconType } from "./types";
+
+/** A flat group of related fields: a small uppercase label over hairline-
+ *  separated rows. The minimal, borderless replacement for the old bento cell —
+ *  the profile reads as one document instead of a grid of boxes. */
+function Group({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <div className="space-y-1">
+            <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                {label}
+            </div>
+            <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+                {children}
+            </dl>
+        </div>
+    );
+}
+
+/** A hairline rule used to separate the identity line from the field groups. */
+function Rule() {
+    return <div className="h-px bg-foreground/10" />;
+}
+
+/** One label-value pair in the Origin spec grid: a fixed label column then the
+ *  value, so every fact lines up into the same regular columns. */
+function GridItem({
+    label,
+    hint,
+    children,
+}: {
+    label: string;
+    hint?: string;
+    children: ReactNode;
+}) {
+    return (
+        <div className="flex items-baseline gap-3 py-1">
+            <dt
+                title={hint}
+                className={cn(
+                    "w-28 shrink-0 text-[13px] leading-snug text-muted-foreground",
+                    hint &&
+                        "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
+                )}
+            >
+                {label}
+            </dt>
+            <dd className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                {children}
+            </dd>
+        </div>
+    );
+}
 
 /** Compact classification header for the domain / hash profile cards: a small
  *  tinted icon, the type label, and a one-line plain-language description. */
@@ -87,7 +137,6 @@ export function ProfileCard({ result }: { result: CheckResult }) {
     const geo = result.geo;
     const res = result.geoResolution;
     const type = classifyType(geo);
-    const TypeIcon = type.icon;
     const cityRegion = geo ? joinPlace([geo.city, geo.region]) : "";
     const flag = flagUrl(geo?.countryCode);
     const coords =
@@ -95,185 +144,117 @@ export function ProfileCard({ result }: { result: CheckResult }) {
             ? `${geo.lat.toFixed(4)}, ${geo.lon.toFixed(4)}`
             : undefined;
 
-    // Accent tint keyed to the dominant trait, for the type label/badge.
-    const accent = geo?.isProxy
-        ? "text-orange-600 dark:text-orange-400"
-        : geo?.isMobile
-            ? "text-sky-600 dark:text-sky-400"
-            : geo?.isHosting
-                ? "text-foreground/70"
-                : "text-emerald-600 dark:text-emerald-400";
-
-    const hasDetails = !!(
-        geo &&
-        (geo.asn || geo.asnOrg || geo.isp || geo.org || geo.reverse || coords)
-    );
-    const hasMap = typeof geo?.lat === "number" && typeof geo?.lon === "number";
-
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading
-                    icon={Globe}
-                    action={
-                        <code className="rounded-sm border border-foreground/15 bg-muted/60 px-2.5 py-1 font-mono text-xs font-semibold tracking-tight">
-                            {result.ip}
-                        </code>
-                    }
-                >
-                    Geolocation &amp; network
-                </SectionHeading>
+                <SectionHeading icon={Globe}>Origin</SectionHeading>
 
-                {/* Identity strip: flag, country, city, and one classification chip. */}
-                <div className="flex items-center gap-3">
-                    {flag ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
-                        <img
-                            src={flag}
-                            alt={`Flag of ${geo?.country ?? geo?.countryCode}`}
-                            width={64}
-                            height={48}
-                            loading="lazy"
-                            className="h-9 w-auto shrink-0 rounded-sm border border-foreground/20 object-cover shadow-sm"
-                        />
-                    ) : (
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-muted-foreground">
-                            <MapPin className="size-5" />
-                        </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="text-lg font-bold leading-tight tracking-tight">
-                                {geo?.country ?? "Unknown location"}
+                <div className="space-y-4">
+                    {/* Identity line: grayscale flag, country, city — one row. */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {flag ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
+                            <img
+                                src={flag}
+                                alt={`Flag of ${geo?.country ?? geo?.countryCode}`}
+                                width={64}
+                                height={48}
+                                loading="lazy"
+                                className="mr-1 h-7 w-auto shrink-0 rounded-sm border border-foreground/20 object-cover"
+                            />
+                        ) : (
+                            <span className="mr-1 flex size-7 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-muted-foreground">
+                                <MapPin className="size-4" />
                             </span>
-                            {geo?.countryCode && (
-                                <span className="font-mono text-sm text-muted-foreground">
-                                    {geo.countryCode}
-                                </span>
-                            )}
-                            {res?.country && <Disagreement field={res.country} />}
-                        </div>
+                        )}
+                        <span className="text-base font-semibold leading-tight tracking-tight">
+                            {geo?.country ?? "Unknown location"}
+                        </span>
+                        {geo?.countryCode && (
+                            <span className="font-mono text-xs text-muted-foreground">
+                                {geo.countryCode}
+                            </span>
+                        )}
                         {cityRegion && (
-                            <div className="truncate text-sm text-muted-foreground">
-                                {cityRegion}
-                            </div>
+                            <>
+                                <span className="text-muted-foreground/50">·</span>
+                                <span className="text-sm text-muted-foreground">
+                                    {cityRegion}
+                                </span>
+                            </>
                         )}
                     </div>
-                    <span
-                        className={cn(
-                            "inline-flex shrink-0 items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 py-1 text-sm font-medium",
-                            accent,
+
+                    <Rule />
+
+                    {/* Uniform spec grid: every fact is a regular label-value
+                        cell, aligned into two even columns. */}
+                    <dl className="grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2">
+                        <GridItem label="Type">
+                            <span title={type.desc}>{type.label}</span>
+                        </GridItem>
+                        {geo?.asn && (
+                            <GridItem
+                                label="ASN"
+                                hint="Autonomous System Number, the network block this IP routes through"
+                            >
+                                <span className="font-mono text-[13px]">
+                                    {geo.asn}
+                                </span>
+                            </GridItem>
                         )}
-                    >
-                        <TypeIcon className="size-4" />
-                        {type.label}
-                    </span>
+                        {geo?.asnOrg && (
+                            <GridItem label="Operator">{geo.asnOrg}</GridItem>
+                        )}
+                        {geo?.isp && <GridItem label="ISP">{geo.isp}</GridItem>}
+                        {geo?.org && (
+                            <GridItem label="Organization">{geo.org}</GridItem>
+                        )}
+                        {geo?.reverse && (
+                            <GridItem
+                                label="Reverse DNS"
+                                hint="The PTR hostname this IP maps back to"
+                            >
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <span className="min-w-0">
+                                        <Pivot value={geo.reverse} />
+                                    </span>
+                                    {geo.fcrdns && (
+                                        <span
+                                            title={
+                                                geo.fcrdns.verified
+                                                    ? "FCrDNS pass, the PTR host resolves back to this IP"
+                                                    : "FCrDNS fail, the PTR host does not resolve back to this IP"
+                                            }
+                                            className={cn(
+                                                "inline-flex shrink-0 items-center gap-0.5 text-[10px] font-semibold tracking-wide uppercase",
+                                                geo.fcrdns.verified
+                                                    ? "text-muted-foreground"
+                                                    : "text-foreground",
+                                            )}
+                                        >
+                                            {geo.fcrdns.verified ? (
+                                                <Check className="size-3" />
+                                            ) : (
+                                                <X className="size-3" />
+                                            )}
+                                            FCrDNS
+                                        </span>
+                                    )}
+                                </div>
+                            </GridItem>
+                        )}
+                        {coords && (
+                            <GridItem label="Coordinates">
+                                <span className="font-mono text-[13px]">
+                                    {coords}
+                                </span>
+                            </GridItem>
+                        )}
+                    </dl>
                 </div>
 
-                {/* Bento: map tile on the left, detail cells stacked on the right.
-                    items-stretch + a filling map keep both columns the same height. */}
-                {(hasMap || hasDetails) && (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-                        {hasMap && (
-                            <div className="w-full shrink-0 sm:w-72">
-                                <LocationMap
-                                    lat={geo!.lat!}
-                                    lon={geo!.lon!}
-                                    fill={hasDetails}
-                                    caption={
-                                        joinPlace([
-                                            geo!.city,
-                                            geo!.region,
-                                            geo!.country,
-                                        ]) || coords
-                                    }
-                                />
-                            </div>
-                        )}
-
-                        {hasDetails && (
-                            <div className="flex-1 space-y-3">
-                                {(geo!.asn || geo!.asnOrg || geo!.isp || geo!.org) && (
-                                    <FieldGroup label="Network">
-                                        {geo!.asn && (
-                                            <Field
-                                                label="ASN"
-                                                hint="Autonomous System Number, the network block this IP routes through"
-                                            >
-                                                <span className="font-mono text-[13px]">
-                                                    {geo!.asn}
-                                                </span>
-                                                {res?.asn && <Disagreement field={res.asn} />}
-                                            </Field>
-                                        )}
-                                        {geo!.asnOrg && (
-                                            <Field label="ASN operator">
-                                                {geo!.asnOrg}
-                                            </Field>
-                                        )}
-                                        {geo!.isp && (
-                                            <Field label="ISP">{geo!.isp}</Field>
-                                        )}
-                                        {geo!.org && (
-                                            <Field label="Organization">
-                                                {geo!.org}
-                                            </Field>
-                                        )}
-                                    </FieldGroup>
-                                )}
-
-                                {(geo!.reverse || coords) && (
-                                    <FieldGroup label="Host & location">
-                                        {geo!.reverse && (
-                                            <Field
-                                                label="Reverse DNS"
-                                                hint="The PTR hostname this IP maps back to"
-                                                tone={
-                                                    geo!.fcrdns && !geo!.fcrdns.verified
-                                                        ? "text-red-600 dark:text-red-400"
-                                                        : undefined
-                                                }
-                                            >
-                                                <Pivot value={geo!.reverse} />
-                                                {geo!.fcrdns && (
-                                                    <span
-                                                        title={
-                                                            geo!.fcrdns.verified
-                                                                ? "Forward-confirmed reverse DNS, the PTR host resolves back to this IP"
-                                                                : "PTR is not forward-confirmed, the hostname does not resolve back to this IP"
-                                                        }
-                                                        className={cn(
-                                                            "ml-2 inline-flex items-center rounded-sm border px-1.5 py-0.5 align-middle text-[10px] font-semibold tracking-wide uppercase",
-                                                            geo!.fcrdns.verified
-                                                                ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
-                                                                : "border-red-600/40 text-red-700 dark:text-red-400",
-                                                        )}
-                                                    >
-                                                        {geo!.fcrdns.verified
-                                                            ? "FCrDNS pass"
-                                                            : "FCrDNS fail"}
-                                                    </span>
-                                                )}
-                                            </Field>
-                                        )}
-                                        {coords && (
-                                            <Field label="Coordinates">
-                                                <span className="font-mono text-[13px]">{coords}</span>
-                                            </Field>
-                                        )}
-                                    </FieldGroup>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {res?.overall && (
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                        <OverallConfidence confidence={res.overall.confidence} />
-                        <span>{geoConfidenceReason(res)}</span>
-                    </div>
-                )}
+                {res && <VotingCard res={res} />}
             </CardContent>
         </Card>
     );
@@ -315,14 +296,15 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                 {/* Classification identity header (no icon, per design). */}
                 <IdentityHeader label={type.label} desc={type.desc} tone={tone} />
 
-                {/* Grouped details: registration, DNS records, email security. */}
                 {ctx ? (
-                    <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
+                    <div className="space-y-4">
+                        <Rule />
+
                         {(ctx.registrar ||
                             created ||
                             expires ||
                             (ctx.categories?.length ?? 0) > 0) && (
-                            <FieldGroup label="Registration">
+                            <Group label="Registration">
                                 {ctx.registrar && (
                                     <Field label="Registrar">{ctx.registrar}</Field>
                                 )}
@@ -339,15 +321,13 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                         {age ? ` · ${age} old` : ""}
                                     </Field>
                                 )}
-                                {expires && (
-                                    <Field label="Expires">{expires}</Field>
-                                )}
+                                {expires && <Field label="Expires">{expires}</Field>}
                                 {ctx.categories && ctx.categories.length > 0 && (
                                     <Field label="Category">
                                         {ctx.categories.slice(0, 3).join(", ")}
                                     </Field>
                                 )}
-                            </FieldGroup>
+                            </Group>
                         )}
 
                         {(ips.length > 0 ||
@@ -356,7 +336,7 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                             (ctx.caa?.length ?? 0) > 0 ||
                             (ctx.dnssec !== undefined && ctx.dnssec !== "unknown") ||
                             ctx.resolverAgreement === false) && (
-                            <FieldGroup label="DNS records">
+                            <Group label="DNS records">
                                 {ips.length > 0 && (
                                     <Field label="Resolves to" wrap>
                                         <PivotList values={ips} />
@@ -408,11 +388,11 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                         Disagree
                                     </Field>
                                 )}
-                            </FieldGroup>
+                            </Group>
                         )}
 
                         {(mx.length > 0 || ctx.spf || ctx.dmarc) && (
-                            <FieldGroup label="Email security" span>
+                            <Group label="Email security">
                                 {mx.length > 0 && (
                                     <Field label="Mail (MX)" wrap>
                                         <PivotList values={mx} />
@@ -440,7 +420,7 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                         </span>
                                     </Field>
                                 )}
-                            </FieldGroup>
+                            </Group>
                         )}
                     </div>
                 ) : (
@@ -522,15 +502,16 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                     tone={tone}
                 />
 
-                {/* Grouped details: classification, timeline, fingerprints. */}
                 {ctx ? (
-                    <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
+                    <div className="space-y-4">
+                        <Rule />
+
                         {(ctx.malwareFamily ||
                             ctx.threatLabel ||
                             ctx.fileName ||
                             ctx.fileType ||
                             size) && (
-                            <FieldGroup label="Classification">
+                            <Group label="Classification">
                                 {ctx.malwareFamily && (
                                     <Field
                                         label="Malware family"
@@ -558,22 +539,22 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                     <Field label="File type">{ctx.fileType}</Field>
                                 )}
                                 {size && <Field label="Size">{size}</Field>}
-                            </FieldGroup>
+                            </Group>
                         )}
 
                         {(firstSeen || lastSeen) && (
-                            <FieldGroup label="Timeline">
+                            <Group label="Timeline">
                                 {firstSeen && (
                                     <Field label="First seen">{firstSeen}</Field>
                                 )}
                                 {lastSeen && (
                                     <Field label="Last seen">{lastSeen}</Field>
                                 )}
-                            </FieldGroup>
+                            </Group>
                         )}
 
                         {(ctx.magic || ctx.imphash || ctx.ssdeep) && (
-                            <FieldGroup label="Fingerprints" span>
+                            <Group label="Fingerprints">
                                 {ctx.magic && (
                                     <Field
                                         label="Magic"
@@ -607,7 +588,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                         </span>
                                     </Field>
                                 )}
-                            </FieldGroup>
+                            </Group>
                         )}
                     </div>
                 ) : (
@@ -618,10 +599,16 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                     </p>
                 )}
 
-                <BentoCell label="Digests">
+                <div className="space-y-1.5">
+                    <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                        Digests
+                    </div>
                     <dl className="space-y-1.5">
                         {digests.map((d) => (
-                            <div key={d.label} className="flex items-center gap-2 text-xs">
+                            <div
+                                key={d.label}
+                                className="flex items-center gap-2 text-xs"
+                            >
                                 <span className="w-16 shrink-0 text-muted-foreground">
                                     {d.label}
                                 </span>
@@ -635,7 +622,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                             </div>
                         ))}
                     </dl>
-                </BentoCell>
+                </div>
 
                 {altNames.length > 0 && (
                     <div className="space-y-1.5">

@@ -16,7 +16,9 @@ describe("getWeight", () => {
 
 describe("authorityFor", () => {
   it("names the allocation-authoritative provider per field", () => {
-    expect(authorityFor("country")).toBe("rdap-ip");
+    // Country is decided by weighted plurality, not a forced authority: RDAP's
+    // allocation country can diverge from the geolocation consensus.
+    expect(authorityFor("country")).toBeUndefined();
     expect(authorityFor("asn")).toBe("ripestat");
     expect(authorityFor("city")).toBeUndefined();
   });

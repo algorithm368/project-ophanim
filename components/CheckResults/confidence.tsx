@@ -32,26 +32,6 @@ export function ConfidenceChip({ confidence }: { confidence: Confidence }) {
   );
 }
 
-/** Larger chip summarizing overall geolocation confidence. */
-export function OverallConfidence({
-  confidence,
-}: {
-  confidence: Confidence;
-}) {
-  return (
-    <span
-      title={LABEL[confidence]}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
-        TONE[confidence],
-      )}
-    >
-      <span className="size-1.5 rounded-full bg-current" aria-hidden />
-      Geo confidence: {confidence}
-    </span>
-  );
-}
-
 /** One-line, comma-separated explanation of the geo confidence (house style:
  *  commas, no dashes). */
 export function geoConfidenceReason(res: GeoResolution): string {

@@ -642,6 +642,8 @@ export default function Checker({
           Check an IP, domain, or file&nbsp;hash
         </h1>
 
+        {/* Plain and minimal: a flat input box and the Check button as separate
+            elements, with a little space between them. */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -649,8 +651,8 @@ export default function Checker({
           }}
           className="flex flex-col gap-3 sm:flex-row"
         >
-          <div className="relative flex-1 overflow-hidden rounded-lg border border-input bg-background transition-[border-color,box-shadow] focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/25">
-            <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="relative flex flex-1 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/50">
+            <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
             <Input
               ref={inputRef}
               value={query}
@@ -663,8 +665,8 @@ export default function Checker({
               aria-label="IOC to check"
               placeholder="IP, domain, or file hash"
               className={cn(
-                "h-12 rounded-none border-0 bg-transparent pl-10 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
-                query ? "pr-11" : "pr-3",
+                "h-11 rounded-none border-0 bg-transparent pl-9 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
+                query ? "pr-9" : "pr-3",
               )}
             />
             {query && (
@@ -676,7 +678,7 @@ export default function Checker({
                   inputRef.current?.focus();
                 }}
                 aria-label="Clear input"
-                className="absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="absolute right-2 flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
               >
                 <X className="size-4" />
               </button>
@@ -684,9 +686,8 @@ export default function Checker({
           </div>
           <Button
             type="submit"
-            size="lg"
             disabled={loading || !query.trim() || (!detected && !bulkPreview)}
-            className="h-12 min-w-[8.5rem] rounded-lg px-6 text-sm font-medium"
+            className="h-11 min-w-[7rem] shrink-0 rounded-md px-5 text-sm font-medium"
           >
             {loading ? (
               <>

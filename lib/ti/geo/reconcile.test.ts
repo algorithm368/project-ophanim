@@ -137,6 +137,29 @@ describe("reconcileGeo — country authority", () => {
     expect(res.country!.confidence).toBe("high");
     expect(res.countryCode).toBe("CA");
   });
+
+  // Regression: 172.110.223.121 — RDAP's allocation country (HK, where the
+  // block holder registered) must NOT override the geolocation consensus
+  // (US, where the IP is actually used). The displayed country is geolocation,
+  // not registration, so a lone RDAP vote cannot win against a strong majority.
+  it("geolocation consensus outweighs RDAP's lone allocation country", () => {
+    const res = reconcileGeo([
+      r("ip-api", { country: "United States", countryCode: "US" }),
+      r("ipinfo", { country: "United States", countryCode: "US" }),
+      r("ipgeolocation", { country: "United States", countryCode: "US" }),
+      r("ipwhois", { country: "United States", countryCode: "US" }),
+      r("freeipapi", { country: "United States", countryCode: "US" }),
+      r("abuseipdb", { country: "United States", countryCode: "US" }),
+      r("rdap-ip", { country: "HK", countryCode: "HK" }),
+    ])!;
+    expect(res.country!.value).toBe("United States");
+    expect(res.countryCode).toBe("US");
+    expect(res.country!.confidence).toBe("high");
+    // RDAP's allocation country is still surfaced, just not as the winner.
+    expect(res.country!.alternatives).toEqual([
+      { value: "HK", sources: ["rdap-ip"] },
+    ]);
+  });
 });
 
 describe("reconcileGeoInputs — refactor-safety", () => {

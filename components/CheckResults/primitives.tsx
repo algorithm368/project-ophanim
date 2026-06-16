@@ -72,43 +72,6 @@ export function PivotList({ values, max = 4 }: { values: string[]; max?: number 
     );
 }
 
-export function ScoreRing({ value, stroke }: { value: number; stroke: string }) {
-    const radius = 50;
-    const circumference = 2 * Math.PI * radius;
-    const clamped = Math.max(0, Math.min(100, value));
-    const offset = circumference - (clamped / 100) * circumference;
-    return (
-        <svg viewBox="0 0 120 120" className="size-full">
-            {/* smooth track */}
-            <circle
-                cx="60"
-                cy="60"
-                r={radius}
-                fill="none"
-                strokeWidth="10"
-                className="stroke-foreground/12"
-            />
-            {/* progress arc */}
-            <g transform="rotate(-90 60 60)">
-                <circle
-                    cx="60"
-                    cy="60"
-                    r={radius}
-                    fill="none"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={offset}
-                    className={cn(
-                        "transition-[stroke-dashoffset] duration-700 ease-out",
-                        stroke,
-                    )}
-                />
-            </g>
-        </svg>
-    );
-}
-
 /** Copy text to the clipboard, falling back for non-secure contexts (e.g.
  *  reaching the dev server over http://<LAN-IP>) where the async Clipboard API
  *  is unavailable. Returns whether the copy succeeded. */
