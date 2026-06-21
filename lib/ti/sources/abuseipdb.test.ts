@@ -50,9 +50,9 @@ describe("summarizeAbuse", () => {
     });
   });
 
-  it("uses 50% as the malicious threshold", () => {
-    expect(summarizeAbuse({ abuseConfidenceScore: 49 }).malicious).toBe(false);
-    expect(summarizeAbuse({ abuseConfidenceScore: 50 }).malicious).toBe(true);
+  it("uses 75% as the malicious threshold for a definitive listing", () => {
+    expect(summarizeAbuse({ abuseConfidenceScore: 74 }).malicious).toBe(false);
+    expect(summarizeAbuse({ abuseConfidenceScore: 75 }).malicious).toBe(true);
   });
 
   it("headlines the top report reasons and adds them to categories", () => {

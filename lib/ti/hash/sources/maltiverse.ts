@@ -20,11 +20,12 @@ interface MaltiverseSample {
 export function classificationScore(c: string | undefined): {
   score: number | undefined;
   malicious: boolean;
+  allowlisted: boolean;
 } {
-  if (c === "malicious") return { score: 85, malicious: true };
-  if (c === "suspicious") return { score: 50, malicious: false };
-  if (c === "whitelist") return { score: 0, malicious: false };
-  return { score: undefined, malicious: false };
+  if (c === "malicious") return { score: 85, malicious: true, allowlisted: false };
+  if (c === "suspicious") return { score: 50, malicious: false, allowlisted: false };
+  if (c === "whitelist") return { score: 0, malicious: false, allowlisted: true };
+  return { score: undefined, malicious: false, allowlisted: false };
 }
 
 /**
@@ -72,7 +73,9 @@ export const maltiverseSource: TiSource = {
         return { status: "error", error: data?.error ?? `HTTP ${status}` };
       }
 
-      const { score, malicious } = classificationScore(data.classification);
+      const { score, malicious, allowlisted } = classificationScore(
+        data.classification,
+      );
       // blacklist[].description is sometimes a single label, sometimes a
       // comma-joined set ("ransomware,wcry,..."); split into distinct chips.
       const detectionNames = [
@@ -107,6 +110,7 @@ export const maltiverseSource: TiSource = {
       return {
         status: "ok",
         malicious,
+        allowlisted,
         score,
         categories: detectionNames,
         summary: `Maltiverse classification: ${data.classification ?? "unknown"}`,
