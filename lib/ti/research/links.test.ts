@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { researchLinks } from "./research";
+import { researchLinks } from "./links";
 
 /** Flatten sections into an id -> url map for terse assertions. */
 function linkMap(indicator: string, kind: "ip" | "domain" | "hash") {
@@ -16,9 +16,10 @@ describe("researchLinks", () => {
         expect(sections.map((s) => s.id)).toEqual(["web", "osint", "sandbox"]);
 
         const links = linkMap("1.2.3.4", "ip");
-        // Web search quotes the indicator for an exact match.
+        // Exact search: verbatim mode (tbs=li:1) plus a defang-aware OR group so
+        // Google matches the IP literally and also finds `1[.]2[.]3[.]4`.
         expect(links.google).toBe(
-            "https://www.google.com/search?q=%221.2.3.4%22",
+            'https://www.google.com/search?q=%221.2.3.4%22%20OR%20%221%5B.%5D2%5B.%5D3%5B.%5D4%22&tbs=li:1',
         );
         // IP recon uses the per-host pages.
         expect(links.censys).toBe("https://platform.censys.io/hosts/1.2.3.4");
@@ -49,15 +50,36 @@ describe("researchLinks", () => {
         expect(links.censys).toBeUndefined();
         expect(links.shodan).toBeUndefined();
         expect(links.urlscan).toBeUndefined();
-        // Web search, the indicator-agnostic recon, and sandboxes remain.
+        // Web search, the indicator-agnostic recon, and sandboxes remain. A hash
+        // has no dots, so the defang group collapses to a single quoted term;
+        // verbatim mode still applies.
         expect(links.google).toBe(
-            `https://www.google.com/search?q=%22${hash}%22`,
+            `https://www.google.com/search?q=%22${hash}%22&tbs=li:1`,
         );
         expect(links.pulsedive).toBe(
             "https://pulsedive.com/indicator/?ioc=Mjc1YTAyMWJiZmI2NDg5ZTU0ZDQ3MTg5OWY3ZGI5ZDE2NjNmYzY5NWVjMmZlMmEyYzQ1MzhhYWJmNjUxZmQwZg%3D%3D",
         );
         expect(links.joesandbox).toBe(
             `https://www.joesandbox.com/search?q=${hash}`,
+        );
+    });
+
+    it("makes both Google queries defang-aware for a dotted indicator", () => {
+        const links = linkMap("evil.com", "domain");
+        // Decode for a readable assertion on the query the user actually runs.
+        const exact = decodeURIComponent(
+            new URL(links.google).searchParams.get("q") ?? "",
+        );
+        expect(exact).toBe('"evil.com" OR "evil[.]com"');
+        // Exact search is verbatim; discovery search is not.
+        expect(links.google).toContain("&tbs=li:1");
+        expect(links["google-reports"]).not.toContain("tbs=li:1");
+        // The reports query carries the same defang group ahead of the keywords.
+        const reports = decodeURIComponent(
+            new URL(links["google-reports"]).searchParams.get("q") ?? "",
+        );
+        expect(reports).toBe(
+            '"evil.com" OR "evil[.]com" malware OR threat OR abuse OR report',
         );
     });
 

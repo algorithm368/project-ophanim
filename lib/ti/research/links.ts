@@ -15,9 +15,29 @@ export interface ResearchSection {
     links: ResearchLink[];
 }
 
-/** Google search for an exact-match query (caller supplies the quoting). */
-function google(query: string): string {
-    return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+/** Google search for a query the caller has already assembled. `verbatim` adds
+ *  Google's literal mode (`tbs=li:1`), which stops it from dropping terms or
+ *  swapping in synonyms — without it Google quietly fuzzes an IOC (especially
+ *  IP octets) and the "exact match" isn't. */
+function google(query: string, verbatim = false): string {
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    return verbatim ? `${url}&tbs=li:1` : url;
+}
+
+/** The bracketed-dot defang analysts publish indicators in (`evil[.]com`,
+ *  `1[.]2[.]3[.]4`). `refangIOC` undoes this on input; here we re-apply it so a
+ *  search also catches report mentions that were defanged before publishing. */
+function defang(value: string): string {
+    return value.replace(/\./g, "[.]");
+}
+
+/** A quoted exact-match group that hits the indicator whether a source wrote it
+ *  plainly or defanged: `"evil.com" OR "evil[.]com"`. Collapses to one quoted
+ *  term when there is nothing to defang (a hash has no dots). */
+function exactGroup(value: string): string {
+    const fanged = `"${value}"`;
+    const defanged = defang(value);
+    return defanged === value ? fanged : `${fanged} OR "${defanged}"`;
 }
 
 /** Pulsedive's /indicator/ page base64-decodes its `ioc` query param, so the
@@ -45,12 +65,17 @@ export function researchLinks(
     const e = encodeURIComponent(v);
     const quoted = `"${v}"`;
 
+    const exact = exactGroup(v);
     const web: ResearchLink[] = [
-        { id: "google", name: "Google", url: google(quoted) },
+        // Exact lookup: verbatim mode + a defang-aware OR group so Google
+        // matches the IOC literally and finds it however a report wrote it.
+        { id: "google", name: "Google", url: google(exact, true) },
         {
+            // Discovery, not exact: left non-verbatim so Google's synonyms widen
+            // the net, but still defang-aware on the indicator itself.
             id: "google-reports",
             name: "Google (reports)",
-            url: google(`${quoted} malware OR threat OR abuse OR report`),
+            url: google(`${exact} malware OR threat OR abuse OR report`),
         },
         {
             id: "x",
