@@ -1,0 +1,18 @@
+{
+  "pkg": "project-ophanim",
+  "globalName": "Ophanim",
+  "projectId": "e6e84545-50a5-4a02-958d-33c88596414c",
+  "shape": "package",
+  "srcDir": "components/ui",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": ".design-sync/.cache/compiled.css",
+  "runtimeFontPrefixes": ["JetBrains Mono", "Cascadia Code", "SF Mono"],
+  "guidelinesGlob": [],
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "Badge": "components/ui/badge.tsx",
+    "Button": "components/ui/button.tsx",
+    "Card": "components/ui/card.tsx",
+    "Input": "components/ui/input.tsx"
+  }
+}

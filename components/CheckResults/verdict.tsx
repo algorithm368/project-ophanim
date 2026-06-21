@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import {
+    ChevronRight,
     Clock,
     Database,
     RefreshCw,
@@ -21,6 +23,7 @@ import {
     buildHashNarrative,
     buildNarrative,
     consensusBuckets,
+    scoreExplanation,
     type ResultLike,
 } from "@/lib/ti/narrative";
 import { cn } from "@/lib/utils";
@@ -111,46 +114,56 @@ function VerdictShell({
     const style = VERDICT_STYLE[result.verdict];
 
     return (
-        <Card className="sketch-shadow relative overflow-hidden rounded-lg border border-foreground/12 bg-card">
-            <CardContent className="relative z-10 space-y-4">
-                <div className="flex flex-row items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1 space-y-3">
-                        <div className="flex items-center gap-2.5">
-                            <span
-                                className={cn(
-                                    "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
-                                    style.text,
-                                )}
-                            >
-                                {style.headline}
-                            </span>
-                        </div>
-                        <CopyableSummary text={narrative} />
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 font-mono">
-                                <Clock className="size-3" />
-                                checked {new Date(result.checkedAt).toLocaleString()}
-                            </span>
-                            {result.cached && (
-                                <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 font-mono">
-                                    <Database className="size-3" />
-                                    cached
-                                </span>
-                            )}
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="xs"
-                                className="h-7 gap-1.5 rounded-md border border-foreground/15 bg-background px-2.5 font-mono text-xs"
-                                onClick={onRefresh}
-                            >
-                                <RefreshCw className="size-3" />
-                                {result.cached ? "fetch fresh" : "re-check"}
-                            </Button>
-                        </div>
-                    </div>
+        <Card className="sketch-shadow rounded-lg border border-foreground/12">
+            <CardContent className="space-y-4">
+                {/* Verdict + risk score. The verdict word is the only color; the
+                    score stays monochrome so the accent reads at a glance. */}
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <span
+                        className={cn(
+                            "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
+                            style.text,
+                        )}
+                    >
+                        {style.headline}
+                    </span>
+                    <span className="font-mono text-xl font-semibold tabular-nums text-foreground sm:text-2xl">
+                        {Math.round(result.riskScore)}
+                        <span className="text-sm font-medium text-muted-foreground">
+                            {" "}
+                            / 100
+                        </span>
+                    </span>
+                </div>
 
-                    <ConsensusMini result={result} style={style} />
+                <CopyableSummary text={narrative} />
+
+                <ConsensusLine result={result} />
+
+                <ScoreRationale result={result} />
+
+                {/* Meta: plain muted line, no bordered chips. */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5 font-mono">
+                        <Clock className="size-3" />
+                        checked {new Date(result.checkedAt).toLocaleString()}
+                    </span>
+                    {result.cached && (
+                        <span className="inline-flex items-center gap-1.5 font-mono">
+                            <Database className="size-3" />
+                            cached
+                        </span>
+                    )}
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        className="ml-auto gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
+                        onClick={onRefresh}
+                    >
+                        <RefreshCw className="size-3" />
+                        {result.cached ? "fetch fresh" : "re-check"}
+                    </Button>
                 </div>
             </CardContent>
         </Card>
@@ -178,54 +191,70 @@ export function VerdictHero({
     );
 }
 
-function ConsensusMini({
-    result,
-    style,
-}: {
-    result: ResultLike;
-    style: VerdictStyle;
-}) {
+function ConsensusLine({ result }: { result: ResultLike }) {
     // Only scoring feeds (weight > 0) are detectors; context-only sources like
-    // geolocation (weight 0) can't flag, so excluding them keeps this strip
+    // geolocation (weight 0) can't flag, so excluding them keeps this line
     // consistent with the narrative's "of N TI sources" (issue #8). The tally
     // logic is the unit-tested consensusBuckets() — the single source of truth.
     const c = consensusBuckets(result);
-    const total = c.total || 1;
 
     const buckets = [
-        { key: "flagged", count: c.flagged, color: "bg-red-500", label: "flagged" },
-        { key: "clean", count: c.clean, color: "bg-emerald-500", label: "clean" },
-        { key: "errored", count: c.errored, color: "bg-orange-400", label: "error" },
-        { key: "rate", count: c.rateLimited, color: "bg-amber-400", label: "rate limited" },
-        { key: "skipped", count: c.skipped, color: "bg-muted-foreground/30", label: "no key" },
+        { key: "flagged", count: c.flagged, label: "flagged" },
+        { key: "clean", count: c.clean, label: "clean" },
+        { key: "errored", count: c.errored, label: "errors" },
+        { key: "rate", count: c.rateLimited, label: "rate limited" },
+        { key: "skipped", count: c.skipped, label: "no key" },
     ];
     const segments = buckets.filter((b) => b.count > 0);
-    // Full breakdown lives on hover so the corner stays minimal.
-    const title = segments.map((s) => `${s.count} ${s.label}`).join(" · ");
 
+    // A plain monochrome breakdown reads more clearly than a tiny color bar and
+    // keeps color reserved for the verdict word.
     return (
-        <div
-            className="flex shrink-0 flex-col items-end gap-1.5"
-            title={`Detector consensus, ${title}`}
-        >
-            <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-muted-foreground">
+            <span className="font-medium tracking-wider uppercase">
                 <span className="text-foreground">{c.responded}</span>/{c.total}{" "}
                 detectors
             </span>
-            <div
-                className={cn(
-                    "flex h-2 w-24 overflow-hidden rounded-sm border bg-muted",
-                    style.border,
-                )}
+            {segments.map((s) => (
+                <span key={s.key}>
+                    · {s.count} {s.label}
+                </span>
+            ))}
+        </div>
+    );
+}
+
+function ScoreRationale({ result }: { result: ResultLike }) {
+    const [open, setOpen] = useState(false);
+    // scoreExplanation reads the unit-tested scoreBreakdown; it returns [] when
+    // there's nothing to say (no scored sources), so the disclosure never shows
+    // on a no-data result. Color stays reserved for the verdict word.
+    const lines = scoreExplanation(result);
+    if (lines.length === 0) return null;
+
+    return (
+        <div className="font-mono text-[11px]">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                className="flex items-center gap-1 uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
             >
-                {segments.map((s) => (
-                    <div
-                        key={s.key}
-                        className={cn("h-full transition-all", s.color)}
-                        style={{ width: `${(s.count / total) * 100}%` }}
-                    />
-                ))}
-            </div>
+                <ChevronRight
+                    className={cn(
+                        "size-3 transition-transform",
+                        open && "rotate-90",
+                    )}
+                />
+                why this score
+            </button>
+            {open && (
+                <div className="mt-2 space-y-1.5 border-l border-foreground/15 pl-3 text-xs leading-relaxed text-muted-foreground">
+                    {lines.map((line, i) => (
+                        <p key={i}>{line}</p>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

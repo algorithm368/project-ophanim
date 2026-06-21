@@ -82,8 +82,9 @@ export function summarizeAbuse(d: AbuseData): {
   const base = `${score}% abuse confidence from ${d.totalReports ?? 0} report(s)`;
   return {
     score,
-    // AbuseIPDB's own confidence ≥50% is the community "this is abusive" line.
-    malicious: score >= 50,
+    // AbuseIPDB's own confidence >=75% is the bar for a definitive listing;
+    // 50-74% still scores but must not trip the aggregate's hard floor.
+    malicious: score >= 75,
     categories: [...new Set(categories)].slice(0, 12),
     summary: reasons.length ? `${base} for ${reasons.join(", ")}` : base,
   };
@@ -138,6 +139,7 @@ export const abuseIpdbSource: TiSource = {
       return {
         status: "ok",
         malicious,
+        allowlisted: Boolean(d.isWhitelisted),
         score,
         lastSeen: d.lastReportedAt,
         summary,

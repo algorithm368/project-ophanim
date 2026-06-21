@@ -126,6 +126,7 @@ export const hybridAnalysisSource: TiSource = {
       return {
         status: "ok",
         malicious: verdict === "malicious",
+        allowlisted: Boolean(data.whitelisted) || verdict === "whitelisted",
         score,
         categories: family ? [family] : [],
         lastSeen: data.analysis_start_time ?? undefined,

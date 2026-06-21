@@ -6,13 +6,14 @@
  * the card must never describe something the data doesn't support.
  */
 import { HASH_ALGO_LABEL } from "@/lib/hash";
-import { FLAG_THRESHOLD } from "./aggregate";
+import { FLAG_THRESHOLD, MALICIOUS_FLOOR } from "./aggregate";
 import type {
   CheckResult,
   CheckStats,
   DomainCheckResult,
   HashCheckResult,
   HistorySnapshot,
+  ScoreBreakdown,
   SourceResult,
   Verdict,
 } from "./types";
@@ -26,6 +27,7 @@ export type ResultLike = {
   sources: SourceResult[];
   stats: CheckStats;
   history?: HistorySnapshot[];
+  scoreBreakdown?: ScoreBreakdown;
 };
 
 export function aggregateCategories(
@@ -228,7 +230,64 @@ function isMeaningfulCategory(name: string): boolean {
 }
 
 /** Shared "what the TI sources say" sentences, used by every narrative. */
-export function threatSentences(result: ResultLike, noun: string): string[] {
+/** The IP's announced BGP prefix, from the RIPEstat routing source. */
+function bgpPrefix(result: ResultLike): string | undefined {
+  const ripe = result.sources.find(
+    (s) => s.source.id === "ripestat" && s.status === "ok",
+  );
+  const prefix = (ripe?.details as { prefix?: string } | undefined)?.prefix;
+  return typeof prefix === "string" && prefix.length > 0 ? prefix : undefined;
+}
+
+/** AbuseIPDB confidence below this is treated as noise — stale or disputed
+ *  reports. A clean IP can carry hundreds of reports at ~0% confidence, so the
+ *  raw count alone is not a sound signal; we gate on the confidence score. */
+const ABUSE_SIGNIFICANT = 25;
+
+/** A faithful "historical activity" clause built from signals we actually
+ *  assess: AbuseIPDB report volume (gated by confidence) and prior reputation
+ *  snapshots. Passive DNS is deliberately excluded — it records which hostnames
+ *  resolved on the IP, not whether they were malicious, so claiming "no
+ *  malicious pDNS" would overstate what we check. Returns "" when neither signal
+ *  is available. */
+function abuseHistoryClause(result: ResultLike): string {
+  const parts: string[] = [];
+
+  const abuse = result.sources.find(
+    (s) => s.source.id === "abuseipdb" && s.status === "ok",
+  );
+  if (abuse) {
+    const reports = (abuse.details as { totalReports?: number } | undefined)
+      ?.totalReports;
+    // AbuseIPDB's confidence rides on the source's score (0-100).
+    const confidence = abuse.score ?? 0;
+    if (typeof reports === "number") {
+      parts.push(
+        reports > 0 && confidence >= ABUSE_SIGNIFICANT
+          ? `${reports} AbuseIPDB report${reports === 1 ? "" : "s"} at ${confidence}% confidence`
+          : "no significant AbuseIPDB reports",
+      );
+    }
+  }
+
+  const history = result.history ?? [];
+  if (history.length > 0) {
+    const priorBad = history.some(
+      (h) => h.verdict === "malicious" || h.verdict === "suspicious",
+    );
+    parts.push(
+      priorBad ? "prior malicious history" : "no prior malicious history",
+    );
+  }
+
+  return parts.length ? `${parts.join(" and ")} on record` : "";
+}
+
+export function threatSentences(
+  result: ResultLike,
+  noun: string,
+  historyClause = "",
+): string[] {
   // Only scoring (weighted) feeds count as "TI sources" here: context-only
   // sources like geolocation/RDAP respond "ok" but can never flag, so counting
   // them would inflate the denominator (issue #5).
@@ -268,7 +327,11 @@ export function threatSentences(result: ResultLike, noun: string): string[] {
     const flaggedBy = byStrength.map((x) => x.source.name).slice(0, 4);
     out.push(`Flagged by ${flaggedBy.join(", ")}.`);
   } else if (responded > 0) {
-    out.push(`None of the ${responded} TI sources flagged this ${noun}.`);
+    out.push(
+      `None of the ${responded} TI sources flagged this ${noun}${
+        historyClause ? `, with ${historyClause}` : ""
+      }.`,
+    );
   }
 
   return out;
@@ -308,7 +371,16 @@ export function buildNarrative(result: CheckResult): string[] {
     // ip-api's ASN field bundles the org name; keep just the AS number here.
     const asnNum = geo.asn ? (geo.asn.match(/^AS\d+/)?.[0] ?? geo.asn) : "";
     const asn = asnNum ? ` (${asnNum})` : "";
-    sentences.push(`It is ${typePhrase}${op}${asn}${tail}.`.replace(/\.\.$/, "."));
+    const prefix = bgpPrefix(result);
+    const prefixClause = prefix
+      ? ` with an active BGP prefix of ${prefix}`
+      : "";
+    sentences.push(
+      `It is ${typePhrase}${op}${asn}${prefixClause}${tail}.`.replace(
+        /\.\.$/,
+        ".",
+      ),
+    );
   }
 
   // Where it is, plus its reverse-DNS identity.
@@ -323,7 +395,10 @@ export function buildNarrative(result: CheckResult): string[] {
     sentences.push(`Its reverse DNS is ${geo.reverse}.`);
   }
 
-  return [...sentences, ...threatSentences(result, "address")];
+  return [
+    ...sentences,
+    ...threatSentences(result, "address", abuseHistoryClause(result)),
+  ];
 }
 
 export function buildDomainNarrative(result: DomainCheckResult): string[] {
@@ -462,11 +537,20 @@ export function buildHashNarrative(result: HashCheckResult): string[] {
 }
 
 /**
- * Plain-language account of how the aggregate score was reached, mirroring
- * aggregateRisk(): a weighted blend that leans on the strongest trusted signal,
- * with a floor when a source reports a definitive malicious listing.
+ * Plain-language account of how the aggregate score was reached. Reads the
+ * intermediates aggregateRisk() recorded in `result.scoreBreakdown` rather than
+ * re-deriving them, so the explanation can never drift from the score.
  */
 export function scoreExplanation(result: ResultLike): string[] {
+  const bd = result.scoreBreakdown;
+
+  // A forced-benign override (e.g. EICAR) supersedes the blend entirely.
+  if (bd?.benignOverride === "eicar-test-file") {
+    return [
+      "Forced clean, this is the EICAR standard anti-malware test file, a benign artifact used to verify scanners. Vendor detections are expected and do not make it harmful.",
+    ];
+  }
+
   const scored = result.sources.filter(
     (s) =>
       s.status === "ok" &&
@@ -475,24 +559,40 @@ export function scoreExplanation(result: ResultLike): string[] {
   );
   if (scored.length === 0) return [];
 
-  const dominant = scored.reduce((a, b) => {
-    const effA = (a.score ?? 0) * (a.source.weight ?? 1);
-    const effB = (b.score ?? 0) * (b.source.weight ?? 1);
-    return effB > effA ? b : a;
-  });
+  const dominant = bd?.dominantSourceId
+    ? result.sources.find((s) => s.source.id === bd.dominantSourceId)
+    : undefined;
+  const dominantName = dominant?.source.name ?? "the strongest source";
+  const dominantScore = dominant?.score ?? 0;
 
   const out = [
-    `The ${result.riskScore}/100 is weighted most heavily toward ${dominant.source.name} (which rated it ${dominant.score ?? 0}), blended with the weighted average across ${scored.length} scoring source${scored.length === 1 ? "" : "s"}. More authoritative feeds count for more, so the dominant source isn't always the highest raw score.`,
+    `The ${result.riskScore}/100 is weighted most heavily toward ${dominantName} (which rated it ${dominantScore}), blended with the weighted average across ${scored.length} scoring source${scored.length === 1 ? "" : "s"}. More authoritative feeds count for more, so the dominant source isn't always the highest raw score.`,
   ];
 
-  const hardMalicious = result.sources.find(
-    (s) => s.status === "ok" && s.malicious === true,
-  );
-  if (hardMalicious) {
+  if (bd?.floorApplied && bd.floorValue) {
+    const by = bd.flooredBy
+      ? result.sources.find((s) => s.source.id === bd.flooredBy)?.source.name
+      : undefined;
+    const byText = by ? ` by ${by}` : "";
     out.push(
-      `${hardMalicious.source.name} has it on a definitive malicious listing, which holds the score at 75 or above.`,
+      bd.floorValue >= MALICIOUS_FLOOR
+        ? `It has a definitive malicious listing${byText}, which holds the score at ${bd.floorValue} or above.`
+        : `Two or more agreeing listings${byText} raised the score to a floor of ${bd.floorValue}.`,
     );
   }
+
+  if (bd?.allowlistSuppressed) {
+    out.push(
+      "An allowlist source vouches for this indicator, so a weak listing did not raise the floor.",
+    );
+  }
+
+  if (bd?.borderline) {
+    out.push(
+      "This score sits within five points of a verdict boundary, so treat the label as borderline.",
+    );
+  }
+
   return out;
 }
 

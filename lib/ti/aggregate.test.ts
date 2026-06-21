@@ -8,6 +8,7 @@ function src(opts: {
   malicious?: boolean;
   weight?: number;
   id?: string;
+  allowlisted?: boolean;
 }): SourceResult {
   return {
     source: {
@@ -23,6 +24,7 @@ function src(opts: {
     status: opts.status,
     score: opts.score,
     malicious: opts.malicious,
+    allowlisted: opts.allowlisted,
   };
 }
 
@@ -48,14 +50,14 @@ describe("verdictFor", () => {
 describe("aggregateRisk", () => {
   it("returns unknown when no source produced a numeric score", () => {
     const r = aggregateRisk([src({ status: "ok" }), src({ status: "skipped" })]);
-    expect(r).toEqual({ riskScore: 0, verdict: "unknown" });
+    expect(r.riskScore).toBe(0);
+    expect(r.verdict).toBe("unknown");
   });
 
   it("scores a single strong, trusted hit as malicious", () => {
-    expect(aggregateRisk([src({ status: "ok", score: 80 })])).toEqual({
-      riskScore: 80,
-      verdict: "malicious",
-    });
+    const r = aggregateRisk([src({ status: "ok", score: 80 })]);
+    expect(r.riskScore).toBe(80);
+    expect(r.verdict).toBe("malicious");
   });
 
   it("lets the strongest signal lead the weighted average", () => {
@@ -117,5 +119,88 @@ describe("computeStats", () => {
     // A quota hit is neither a genuine error nor a successful query.
     expect(stats.errored).toBe(1);
     expect(stats.queried).toBe(2);
+  });
+});
+
+describe("aggregateRisk — gated two-tier floor (B1)", () => {
+  it("pins a single high-weight malicious listing to a 75 floor", () => {
+    // Blend already below 75: malicious source carries no score of its own.
+    const r = aggregateRisk([
+      src({ status: "ok", score: 10, id: "weak", weight: 1 }),
+      src({ status: "ok", malicious: true, score: 60, id: "vt", weight: 1 }),
+    ]);
+    expect(r.riskScore).toBe(75);
+    expect(r.verdict).toBe("malicious");
+    expect(r.breakdown.floorApplied).toBe(true);
+    expect(r.breakdown.flooredBy).toBe("vt");
+    expect(r.breakdown.floorValue).toBe(75);
+  });
+
+  it("does NOT floor a single low-weight malicious listing", () => {
+    const r = aggregateRisk([
+      src({ status: "ok", score: 30, malicious: true, id: "tor", weight: 0.4 }),
+    ]);
+    expect(r.breakdown.floorApplied).toBe(false);
+    expect(r.verdict).toBe("low"); // stands on the weighted blend, not 75
+  });
+
+  it("raises two agreeing weak listings to a 50 quorum floor", () => {
+    const r = aggregateRisk([
+      src({ status: "ok", score: 30, malicious: true, id: "tor", weight: 0.4 }),
+      src({ status: "ok", score: 40, malicious: true, id: "dnsbl", weight: 0.5 }),
+    ]);
+    expect(r.riskScore).toBe(50);
+    expect(r.verdict).toBe("suspicious");
+    expect(r.breakdown.floorValue).toBe(50);
+    expect(r.breakdown.flooredBy).toBe("dnsbl"); // strongest of the weak set
+  });
+
+  it("lets an allowlist suppress a quorum floor", () => {
+    const r = aggregateRisk([
+      src({ status: "ok", score: 30, malicious: true, id: "tor", weight: 0.4 }),
+      src({ status: "ok", score: 40, malicious: true, id: "dnsbl", weight: 0.5 }),
+      src({ status: "ok", score: 0, allowlisted: true, id: "maltiverse", weight: 0.7 }),
+    ]);
+    expect(r.breakdown.allowlistSuppressed).toBe(true);
+    expect(r.breakdown.floorApplied).toBe(false);
+    expect(r.verdict).toBe("low"); // 50 floor withheld
+  });
+
+  it("lets a high-weight detection beat the allowlist", () => {
+    const r = aggregateRisk([
+      src({ status: "ok", score: 60, malicious: true, id: "vt", weight: 1 }),
+      src({ status: "ok", score: 0, allowlisted: true, id: "maltiverse", weight: 0.7 }),
+    ]);
+    expect(r.breakdown.allowlistSuppressed).toBe(false);
+    expect(r.breakdown.floorApplied).toBe(true);
+    expect(r.breakdown.floorValue).toBe(75);
+    expect(r.verdict).toBe("malicious");
+  });
+
+  it("flags a score near a cutoff as borderline", () => {
+    // 0.6*90 + 0.4*45 = 72, two points above the 70 cutoff.
+    const near = aggregateRisk([
+      src({ status: "ok", score: 90, id: "a" }),
+      src({ status: "ok", score: 0, id: "b" }),
+    ]);
+    expect(near.riskScore).toBe(72);
+    expect(near.breakdown.borderline).toBe(true);
+    // 0.6*60 + 0.4*60 = 60, ten points from the nearest cutoff.
+    const far = aggregateRisk([
+      src({ status: "ok", score: 60, id: "a" }),
+      src({ status: "ok", score: 60, id: "b" }),
+    ]);
+    expect(far.riskScore).toBe(60);
+    expect(far.breakdown.borderline).toBe(false);
+  });
+
+  it("populates the breakdown intermediates", () => {
+    const r = aggregateRisk([
+      src({ status: "ok", score: 80, id: "vt", weight: 1 }),
+      src({ status: "ok", score: 90, id: "ipsum", weight: 0.3 }),
+    ]);
+    // vt effective 80 beats ipsum effective 27 -> vt dominant.
+    expect(r.breakdown.dominantSourceId).toBe("vt");
+    expect(r.breakdown.effectiveMax).toBe(80);
   });
 });

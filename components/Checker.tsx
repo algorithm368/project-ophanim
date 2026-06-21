@@ -32,8 +32,9 @@ import {
 import { parseIPv4, type ParsedIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
 import { parseHash } from "@/lib/hash";
-import { detectIOC, refangIOC, extractIps, iocFromPath } from "@/lib/ioc";
+import { detectIOC, refangIOC, extractIps, iocFromPath, type IOCType } from "@/lib/ioc";
 import type { GeoRow } from "@/lib/ti/geo";
+import { useResearchStream } from "@/components/CheckResults/use-research";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -465,7 +466,10 @@ export default function Checker({
     }
 
     setLoading(true);
-    setPending(value);
+    // Track the canonical target (not the raw input) so the live-research key is
+    // identical during the check and once the result renders — the stream that
+    // starts now keeps feeding the card without a refetch on that transition.
+    setPending(canonical);
     setProgress(null);
     setError(null);
     setResult(null);
@@ -624,6 +628,30 @@ export default function Checker({
     runCheck(indicator, { refresh: true });
   }
 
+  // The indicator the live-research lane should fetch: the displayed result's
+  // IOC, or — while a check is still running — the canonical value being looked
+  // up (so research streams concurrently with the main TI fan-out, not after).
+  // Bulk geo lookups have no single indicator, so the lane stays idle there.
+  const activeIndicator: string | null = result
+    ? isHashResult(result)
+      ? result.hash
+      : isDomainResult(result)
+        ? result.domain
+        : result.ip
+    : loading && !isBulk && pending
+      ? pending
+      : null;
+  const activeKind: IOCType | null = result
+    ? isHashResult(result)
+      ? "hash"
+      : isDomainResult(result)
+        ? "domain"
+        : "ip"
+    : activeIndicator
+      ? detectIOC(activeIndicator)
+      : null;
+  const research = useResearchStream(activeIndicator, activeKind);
+
   // Follow a related indicator from a result: jump to the top and run a fresh
   // check.
   function pivot(value: string) {
@@ -779,7 +807,12 @@ export default function Checker({
       {!loading && bulkRows && <BulkGeoResults rows={bulkRows} />}
 
       {!loading && result && (
-        <CheckResults result={result} onRefresh={refresh} onPivot={pivot} />
+        <CheckResults
+          result={result}
+          onRefresh={refresh}
+          onPivot={pivot}
+          research={research}
+        />
       )}
     </div>
   );

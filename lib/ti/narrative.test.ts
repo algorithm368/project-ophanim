@@ -6,6 +6,7 @@ import {
   buildNarrative,
   consensusBuckets,
   type ResultLike,
+  scoreExplanation,
   threatSentences,
 } from "./narrative";
 import type {
@@ -684,5 +685,215 @@ describe("buildHashNarrative — file description soundness (HN-2/3/4)", () => {
     ).join(" ");
     expect(text).toContain('seen as "invoice.exe"');
     expect(text).not.toContain('first seen as');
+  });
+});
+
+describe("buildNarrative — BGP prefix + historical activity clause", () => {
+  function makeResult(over: Partial<CheckResult> = {}): CheckResult {
+    return {
+      ip: "171.96.190.33",
+      checkedAt: "2026-06-15T00:00:00Z",
+      riskScore: 7,
+      verdict: "clean",
+      geo: {
+        country: "Thailand",
+        city: "Bangkok",
+        asn: "AS17552",
+        asnOrg: "True Internet Corporation Co. Ltd.",
+        isp: "True Internet Corporation Co. Ltd.",
+        reverse: "ppp-171-96-190-33.revip8.asianet.co.th",
+      },
+      sources: [],
+      stats: makeStats(),
+      ...over,
+    };
+  }
+
+  it("weaves the announced BGP prefix into the type sentence", () => {
+    const ripe = makeSource({
+      name: "RIPEstat",
+      weight: 0,
+      details: { prefix: "171.96.190.0/24" },
+    });
+    const text = buildNarrative(makeResult({ sources: [ripe] })).join(" ");
+    expect(text).toContain("with an active BGP prefix of 171.96.190.0/24");
+  });
+
+  it("appends a faithful abuse + history clause to the clean line", () => {
+    const abuse = makeSource({
+      name: "AbuseIPDB",
+      score: 0,
+      details: { totalReports: 0 },
+    });
+    const text = buildNarrative(
+      makeResult({
+        sources: [abuse],
+        history: [
+          { checkedAt: "2026-01-01T00:00:00Z", riskScore: 5, verdict: "clean" },
+        ],
+      }),
+    ).join(" ");
+    expect(text).toContain(
+      "None of the 1 TI sources flagged this address, with no significant AbuseIPDB reports and no prior malicious history on record.",
+    );
+  });
+
+  it("treats stale low-confidence reports as not significant", () => {
+    // Hundreds of reports but ~0% confidence (e.g. 8.8.8.8) must not read as
+    // abusive on a clean IP.
+    const abuse = makeSource({
+      name: "AbuseIPDB",
+      score: 5,
+      details: { totalReports: 135 },
+    });
+    const text = buildNarrative(makeResult({ sources: [abuse] })).join(" ");
+    expect(text).toContain("no significant AbuseIPDB reports");
+    expect(text).not.toContain("135");
+  });
+
+  it("reports the AbuseIPDB count with confidence when it is significant", () => {
+    // Below FLAG_THRESHOLD (40) so the IP stays clean, but above the
+    // significance floor (25) so the count is surfaced.
+    const abuse = makeSource({
+      name: "AbuseIPDB",
+      score: 30,
+      details: { totalReports: 14 },
+    });
+    const text = buildNarrative(makeResult({ sources: [abuse] })).join(" ");
+    expect(text).toContain("14 AbuseIPDB reports at 30% confidence on record");
+  });
+
+  it("omits the clause when neither abuse nor history is available", () => {
+    const feodo = makeSource({ name: "Feodo", score: 0 });
+    const text = buildNarrative(makeResult({ sources: [feodo] })).join(" ");
+    expect(text).toContain("None of the 1 TI sources flagged this address.");
+    expect(text).not.toContain("on record");
+  });
+});
+
+describe("scoreExplanation — reads the breakdown (B5)", () => {
+  const base = (over: Partial<ResultLike>): ResultLike => ({
+    riskScore: 50,
+    verdict: "suspicious",
+    checkedAt: "2026-06-21T00:00:00Z",
+    sources: [],
+    stats: makeStats(),
+    ...over,
+  });
+
+  it("returns the EICAR note for a benign override", () => {
+    const text = scoreExplanation(
+      base({
+        riskScore: 0,
+        verdict: "clean",
+        sources: [makeSource({ name: "VirusTotal", score: 90, malicious: true })],
+        scoreBreakdown: {
+          effectiveMax: 90,
+          weightedAvg: 90,
+          floorApplied: false,
+          borderline: false,
+          allowlistSuppressed: false,
+          benignOverride: "eicar-test-file",
+        },
+      }),
+    ).join(" ");
+    expect(text).toContain("EICAR");
+    expect(text).toContain("benign");
+  });
+
+  it("names the dominant source from the breakdown field, not a re-derivation", () => {
+    const vt = makeSource({ name: "VirusTotal", score: 80, weight: 1 }); // eff 80
+    const ipsum = makeSource({ name: "IPsum", score: 90, weight: 0.3 }); // eff 27
+    // Breakdown deliberately points at IPsum; a re-derivation would pick VT.
+    const text = scoreExplanation(
+      base({
+        riskScore: 60,
+        sources: [vt, ipsum],
+        scoreBreakdown: {
+          effectiveMax: 27,
+          weightedAvg: 60,
+          dominantSourceId: "ipsum",
+          floorApplied: false,
+          borderline: false,
+          allowlistSuppressed: false,
+        },
+      }),
+    ).join(" ");
+    expect(text).toContain("IPsum (which rated it 90)");
+  });
+
+  it("explains a definitive high-weight floor and a borderline score", () => {
+    const text = scoreExplanation(
+      base({
+        riskScore: 75,
+        verdict: "malicious",
+        sources: [makeSource({ name: "AbuseIPDB", score: 60, malicious: true })],
+        scoreBreakdown: {
+          effectiveMax: 60,
+          weightedAvg: 60,
+          dominantSourceId: "abuseipdb",
+          floorApplied: true,
+          flooredBy: "abuseipdb",
+          floorValue: 75,
+          borderline: true,
+          allowlistSuppressed: false,
+        },
+      }),
+    ).join(" ");
+    expect(text).toContain("AbuseIPDB");
+    expect(text).toContain("75");
+    expect(text).toMatch(/borderline/i);
+  });
+
+  it("explains a quorum floor distinctly from a definitive one", () => {
+    const text = scoreExplanation(
+      base({
+        riskScore: 50,
+        verdict: "suspicious",
+        sources: [
+          makeSource({ name: "Tor", score: 30, weight: 0.4, malicious: true }),
+          makeSource({ name: "DNSBL", score: 40, weight: 0.5, malicious: true }),
+        ],
+        scoreBreakdown: {
+          effectiveMax: 20,
+          weightedAvg: 36,
+          dominantSourceId: "dnsbl",
+          floorApplied: true,
+          flooredBy: "dnsbl",
+          floorValue: 50,
+          borderline: false,
+          allowlistSuppressed: false,
+        },
+      }),
+    ).join(" ");
+    expect(text).toContain("agreeing");
+    expect(text).toContain("50");
+  });
+
+  it("notes when an allowlist suppressed the floor", () => {
+    const text = scoreExplanation(
+      base({
+        riskScore: 20,
+        verdict: "low",
+        sources: [
+          makeSource({ name: "Maltiverse", score: 0, weight: 0.7, allowlisted: true }),
+        ],
+        scoreBreakdown: {
+          effectiveMax: 0,
+          weightedAvg: 20,
+          dominantSourceId: "maltiverse",
+          floorApplied: false,
+          borderline: false,
+          allowlistSuppressed: true,
+        },
+      }),
+    ).join(" ");
+    expect(text).toMatch(/allowlist/i);
+  });
+
+  it("returns nothing when no scoring source settled", () => {
+    expect(
+      scoreExplanation(base({ sources: [], scoreBreakdown: undefined })),
+    ).toEqual([]);
   });
 });

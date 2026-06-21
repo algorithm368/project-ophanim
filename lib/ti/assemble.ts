@@ -11,6 +11,7 @@ import { aggregateRisk, computeStats } from "./aggregate";
 import { mergeFields } from "./orchestrate";
 import { collectCertificates, collectPassiveDns, collectSubdomains } from "./deep";
 import { overlayResolution, reconcileGeo } from "./geo/reconcile";
+import { isKnownBenignHash } from "./benign";
 
 /**
  * Pure result assembly from a set of settled `SourceResult`s. This is the single
@@ -25,7 +26,7 @@ export function assembleIpResult(
   results: SourceResult[],
   checkedAt: string,
 ): CheckResult {
-  const { riskScore, verdict } = aggregateRisk(results);
+  const { riskScore, verdict, breakdown } = aggregateRisk(results);
   const geoResolution = reconcileGeo(results);
   const reverse = results.find((r) => r.geo?.reverse)?.geo?.reverse;
   const fcrdns = results.find((r) => r.geo?.fcrdns)?.geo?.fcrdns;
@@ -42,6 +43,7 @@ export function assembleIpResult(
     passiveDns: collectPassiveDns(results),
     sources: results,
     stats: computeStats(results),
+    scoreBreakdown: breakdown,
   };
 }
 
@@ -58,7 +60,7 @@ export function assembleDomainResult(
   results: SourceResult[],
   checkedAt: string,
 ): DomainCheckResult {
-  const { riskScore, verdict } = aggregateRisk(results);
+  const { riskScore, verdict, breakdown } = aggregateRisk(results);
   const context = mergeDomainContext(results);
   const stats = computeStats(results);
   // A name that returns NXDOMAIN doesn't exist in DNS, so every blocklist's
@@ -80,6 +82,7 @@ export function assembleDomainResult(
     passiveDns: collectPassiveDns(results),
     sources: results,
     stats,
+    scoreBreakdown: breakdown,
   };
 }
 
@@ -97,15 +100,21 @@ export function assembleHashResult(
   results: SourceResult[],
   checkedAt: string,
 ): HashCheckResult {
-  const { riskScore, verdict } = aggregateRisk(results);
+  const { riskScore, verdict, breakdown } = aggregateRisk(results);
+  // EICAR and other known-benign artifacts are benign by definition; the source
+  // rows still show every detection, but the aggregate verdict is corrected.
+  const benignOverride = isKnownBenignHash(hash);
   return {
     hash,
     algorithm,
     checkedAt,
-    riskScore,
-    verdict,
+    riskScore: benignOverride ? 0 : riskScore,
+    verdict: benignOverride ? "clean" : verdict,
     context: mergeHashContext(results),
     sources: results,
     stats: computeStats(results),
+    scoreBreakdown: benignOverride
+      ? { ...breakdown, benignOverride, floorApplied: false }
+      : breakdown,
   };
 }
