@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { assembleDomainResult, assembleIpResult } from "./assemble";
+import {
+  assembleDomainResult,
+  assembleHashResult,
+  assembleIpResult,
+} from "./assemble";
 import type { SourceMeta, SourceResult } from "./types";
 
 function meta(id: string, weight: number): SourceMeta {
@@ -112,5 +116,49 @@ describe("assembleDomainResult — NXDOMAIN verdict (P1.2)", () => {
       "t",
     );
     expect(r.verdict).toBe("clean");
+  });
+});
+
+describe("assembleIpResult — breakdown wiring", () => {
+  it("attaches the score breakdown", () => {
+    const r = assembleIpResult(
+      "1.2.3.4",
+      [ok("feodo", 1, 60, { malicious: true })],
+      "t",
+    );
+    expect(r.scoreBreakdown).toBeDefined();
+    expect(r.scoreBreakdown?.floorApplied).toBe(true);
+    expect(r.scoreBreakdown?.floorValue).toBe(75);
+  });
+});
+
+describe("assembleHashResult — benign override (B2)", () => {
+  it("forces EICAR clean despite vendor detections, keeping the rows", () => {
+    const r = assembleHashResult(
+      "44d88612fea8a8f36de82e1278abb02f",
+      "md5",
+      [
+        ok("vt", 1, 90, { malicious: true }),
+        ok("kaspersky", 0.9, 90, { malicious: true }),
+      ],
+      "t",
+    );
+    expect(r.verdict).toBe("clean");
+    expect(r.riskScore).toBe(0);
+    expect(r.scoreBreakdown?.benignOverride).toBe("eicar-test-file");
+    expect(r.scoreBreakdown?.floorApplied).toBe(false);
+    // The AV detections stay visible on the source rows.
+    expect(r.sources.filter((s) => s.malicious).length).toBe(2);
+  });
+
+  it("scores a non-benign hash normally", () => {
+    const r = assembleHashResult(
+      "a".repeat(64),
+      "sha256",
+      [ok("vt", 1, 90, { malicious: true })],
+      "t",
+    );
+    expect(r.verdict).toBe("malicious");
+    expect(r.scoreBreakdown?.benignOverride).toBeUndefined();
   });
 });
