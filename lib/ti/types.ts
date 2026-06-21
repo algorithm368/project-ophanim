@@ -221,6 +221,10 @@ export interface SourceFinding {
   score?: number;
   /** 0-100 confidence in the score. */
   confidence?: number;
+  /** An authoritative allowlist explicitly vouches for this indicator
+   *  (e.g. Maltiverse "whitelist", Hybrid-Analysis whitelisted, AbuseIPDB
+   *  isWhitelisted). Read by aggregateRisk() to suppress a weak floor. */
+  allowlisted?: boolean;
   categories?: string[];
   lastSeen?: string;
   /** Human-readable one-liner. */
@@ -273,6 +277,29 @@ export interface HistorySnapshot {
   verdict: Verdict;
 }
 
+/** The intermediates aggregateRisk() used to reach a score, so the narrative
+ *  and UI can explain the verdict without re-deriving them. */
+export interface ScoreBreakdown {
+  /** Strongest weighted single signal (score * weight), rounded. */
+  effectiveMax: number;
+  /** Weighted consensus across scoring sources, rounded. */
+  weightedAvg: number;
+  /** Source id behind effectiveMax. */
+  dominantSourceId?: string;
+  /** A hard-listing floor actually raised the score above the blend. */
+  floorApplied: boolean;
+  /** Source id whose listing set the floor (only when floorApplied). */
+  flooredBy?: string;
+  /** The floor value applied (e.g. 75 or 50). */
+  floorValue?: number;
+  /** riskScore sits within BORDERLINE_BAND of a verdict cutoff. */
+  borderline: boolean;
+  /** A floor was withheld because an allowlist vouched for the indicator. */
+  allowlistSuppressed: boolean;
+  /** A forced-benign override fired (e.g. "eicar-test-file"). */
+  benignOverride?: string;
+}
+
 export interface CheckResult {
   ip: string;
   checkedAt: string;
@@ -289,6 +316,8 @@ export interface CheckResult {
   history?: HistorySnapshot[];
   /** True when this response was served from the cache rather than freshly computed. */
   cached?: boolean;
+  /** How the aggregate score was reached, for the narrative + verdict UI. */
+  scoreBreakdown?: ScoreBreakdown;
 }
 
 export interface DomainCheckResult {
@@ -309,6 +338,8 @@ export interface DomainCheckResult {
   history?: HistorySnapshot[];
   /** True when this response was served from the cache rather than freshly computed. */
   cached?: boolean;
+  /** How the aggregate score was reached, for the narrative + verdict UI. */
+  scoreBreakdown?: ScoreBreakdown;
 }
 
 export interface HashCheckResult {
@@ -324,6 +355,8 @@ export interface HashCheckResult {
   history?: HistorySnapshot[];
   /** True when this response was served from the cache rather than freshly computed. */
   cached?: boolean;
+  /** How the aggregate score was reached, for the narrative + verdict UI. */
+  scoreBreakdown?: ScoreBreakdown;
 }
 
 /** Narrow a result union by the indicator field unique to each type. */

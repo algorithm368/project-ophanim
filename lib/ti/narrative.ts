@@ -13,6 +13,7 @@ import type {
   DomainCheckResult,
   HashCheckResult,
   HistorySnapshot,
+  ScoreBreakdown,
   SourceResult,
   Verdict,
 } from "./types";
@@ -26,6 +27,7 @@ export type ResultLike = {
   sources: SourceResult[];
   stats: CheckStats;
   history?: HistorySnapshot[];
+  scoreBreakdown?: ScoreBreakdown;
 };
 
 export function aggregateCategories(

@@ -1,12 +1,31 @@
-import type { CheckStats, SourceResult, Verdict } from "./types";
+import type { CheckStats, ScoreBreakdown, SourceResult, Verdict } from "./types";
 
 export const FLAG_THRESHOLD = 40;
 
+// Verdict cutoffs (inclusive lower bounds).
+export const MALICIOUS_AT = 70;
+export const SUSPICIOUS_AT = 40;
+export const LOW_AT = 15;
+
+// Blend: lean on the strongest weighted signal, leavened by the consensus.
+export const MAX_SIGNAL_WEIGHT = 0.6;
+export const CONSENSUS_WEIGHT = 0.4;
+
+// Hard-listing floors and the gate that admits them.
+export const MALICIOUS_FLOOR = 75; // one high-weight definitive listing
+export const QUORUM_FLOOR = 50; // two or more weak listings agreeing
+export const FLOOR_MIN_WEIGHT = 0.7; // authoritative enough to pin alone
+
+// How close to a cutoff still counts as borderline.
+export const BORDERLINE_BAND = 5;
+
+const CUTOFFS = [LOW_AT, SUSPICIOUS_AT, MALICIOUS_AT];
+
 export function verdictFor(score: number, hasData: boolean): Verdict {
   if (!hasData) return "unknown";
-  if (score >= 70) return "malicious";
-  if (score >= 40) return "suspicious";
-  if (score >= 15) return "low";
+  if (score >= MALICIOUS_AT) return "malicious";
+  if (score >= SUSPICIOUS_AT) return "suspicious";
+  if (score >= LOW_AT) return "low";
   return "clean";
 }
 
