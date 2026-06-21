@@ -228,7 +228,64 @@ function isMeaningfulCategory(name: string): boolean {
 }
 
 /** Shared "what the TI sources say" sentences, used by every narrative. */
-export function threatSentences(result: ResultLike, noun: string): string[] {
+/** The IP's announced BGP prefix, from the RIPEstat routing source. */
+function bgpPrefix(result: ResultLike): string | undefined {
+  const ripe = result.sources.find(
+    (s) => s.source.id === "ripestat" && s.status === "ok",
+  );
+  const prefix = (ripe?.details as { prefix?: string } | undefined)?.prefix;
+  return typeof prefix === "string" && prefix.length > 0 ? prefix : undefined;
+}
+
+/** AbuseIPDB confidence below this is treated as noise — stale or disputed
+ *  reports. A clean IP can carry hundreds of reports at ~0% confidence, so the
+ *  raw count alone is not a sound signal; we gate on the confidence score. */
+const ABUSE_SIGNIFICANT = 25;
+
+/** A faithful "historical activity" clause built from signals we actually
+ *  assess: AbuseIPDB report volume (gated by confidence) and prior reputation
+ *  snapshots. Passive DNS is deliberately excluded — it records which hostnames
+ *  resolved on the IP, not whether they were malicious, so claiming "no
+ *  malicious pDNS" would overstate what we check. Returns "" when neither signal
+ *  is available. */
+function abuseHistoryClause(result: ResultLike): string {
+  const parts: string[] = [];
+
+  const abuse = result.sources.find(
+    (s) => s.source.id === "abuseipdb" && s.status === "ok",
+  );
+  if (abuse) {
+    const reports = (abuse.details as { totalReports?: number } | undefined)
+      ?.totalReports;
+    // AbuseIPDB's confidence rides on the source's score (0-100).
+    const confidence = abuse.score ?? 0;
+    if (typeof reports === "number") {
+      parts.push(
+        reports > 0 && confidence >= ABUSE_SIGNIFICANT
+          ? `${reports} AbuseIPDB report${reports === 1 ? "" : "s"} at ${confidence}% confidence`
+          : "no significant AbuseIPDB reports",
+      );
+    }
+  }
+
+  const history = result.history ?? [];
+  if (history.length > 0) {
+    const priorBad = history.some(
+      (h) => h.verdict === "malicious" || h.verdict === "suspicious",
+    );
+    parts.push(
+      priorBad ? "prior malicious history" : "no prior malicious history",
+    );
+  }
+
+  return parts.length ? `${parts.join(" and ")} on record` : "";
+}
+
+export function threatSentences(
+  result: ResultLike,
+  noun: string,
+  historyClause = "",
+): string[] {
   // Only scoring (weighted) feeds count as "TI sources" here: context-only
   // sources like geolocation/RDAP respond "ok" but can never flag, so counting
   // them would inflate the denominator (issue #5).
@@ -268,7 +325,11 @@ export function threatSentences(result: ResultLike, noun: string): string[] {
     const flaggedBy = byStrength.map((x) => x.source.name).slice(0, 4);
     out.push(`Flagged by ${flaggedBy.join(", ")}.`);
   } else if (responded > 0) {
-    out.push(`None of the ${responded} TI sources flagged this ${noun}.`);
+    out.push(
+      `None of the ${responded} TI sources flagged this ${noun}${
+        historyClause ? `, with ${historyClause}` : ""
+      }.`,
+    );
   }
 
   return out;
@@ -308,7 +369,16 @@ export function buildNarrative(result: CheckResult): string[] {
     // ip-api's ASN field bundles the org name; keep just the AS number here.
     const asnNum = geo.asn ? (geo.asn.match(/^AS\d+/)?.[0] ?? geo.asn) : "";
     const asn = asnNum ? ` (${asnNum})` : "";
-    sentences.push(`It is ${typePhrase}${op}${asn}${tail}.`.replace(/\.\.$/, "."));
+    const prefix = bgpPrefix(result);
+    const prefixClause = prefix
+      ? ` with an active BGP prefix of ${prefix}`
+      : "";
+    sentences.push(
+      `It is ${typePhrase}${op}${asn}${prefixClause}${tail}.`.replace(
+        /\.\.$/,
+        ".",
+      ),
+    );
   }
 
   // Where it is, plus its reverse-DNS identity.
@@ -323,7 +393,10 @@ export function buildNarrative(result: CheckResult): string[] {
     sentences.push(`Its reverse DNS is ${geo.reverse}.`);
   }
 
-  return [...sentences, ...threatSentences(result, "address")];
+  return [
+    ...sentences,
+    ...threatSentences(result, "address", abuseHistoryClause(result)),
+  ];
 }
 
 export function buildDomainNarrative(result: DomainCheckResult): string[] {

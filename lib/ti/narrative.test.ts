@@ -686,3 +686,86 @@ describe("buildHashNarrative — file description soundness (HN-2/3/4)", () => {
     expect(text).not.toContain('first seen as');
   });
 });
+
+describe("buildNarrative — BGP prefix + historical activity clause", () => {
+  function makeResult(over: Partial<CheckResult> = {}): CheckResult {
+    return {
+      ip: "171.96.190.33",
+      checkedAt: "2026-06-15T00:00:00Z",
+      riskScore: 7,
+      verdict: "clean",
+      geo: {
+        country: "Thailand",
+        city: "Bangkok",
+        asn: "AS17552",
+        asnOrg: "True Internet Corporation Co. Ltd.",
+        isp: "True Internet Corporation Co. Ltd.",
+        reverse: "ppp-171-96-190-33.revip8.asianet.co.th",
+      },
+      sources: [],
+      stats: makeStats(),
+      ...over,
+    };
+  }
+
+  it("weaves the announced BGP prefix into the type sentence", () => {
+    const ripe = makeSource({
+      name: "RIPEstat",
+      weight: 0,
+      details: { prefix: "171.96.190.0/24" },
+    });
+    const text = buildNarrative(makeResult({ sources: [ripe] })).join(" ");
+    expect(text).toContain("with an active BGP prefix of 171.96.190.0/24");
+  });
+
+  it("appends a faithful abuse + history clause to the clean line", () => {
+    const abuse = makeSource({
+      name: "AbuseIPDB",
+      score: 0,
+      details: { totalReports: 0 },
+    });
+    const text = buildNarrative(
+      makeResult({
+        sources: [abuse],
+        history: [
+          { checkedAt: "2026-01-01T00:00:00Z", riskScore: 5, verdict: "clean" },
+        ],
+      }),
+    ).join(" ");
+    expect(text).toContain(
+      "None of the 1 TI sources flagged this address, with no significant AbuseIPDB reports and no prior malicious history on record.",
+    );
+  });
+
+  it("treats stale low-confidence reports as not significant", () => {
+    // Hundreds of reports but ~0% confidence (e.g. 8.8.8.8) must not read as
+    // abusive on a clean IP.
+    const abuse = makeSource({
+      name: "AbuseIPDB",
+      score: 5,
+      details: { totalReports: 135 },
+    });
+    const text = buildNarrative(makeResult({ sources: [abuse] })).join(" ");
+    expect(text).toContain("no significant AbuseIPDB reports");
+    expect(text).not.toContain("135");
+  });
+
+  it("reports the AbuseIPDB count with confidence when it is significant", () => {
+    // Below FLAG_THRESHOLD (40) so the IP stays clean, but above the
+    // significance floor (25) so the count is surfaced.
+    const abuse = makeSource({
+      name: "AbuseIPDB",
+      score: 30,
+      details: { totalReports: 14 },
+    });
+    const text = buildNarrative(makeResult({ sources: [abuse] })).join(" ");
+    expect(text).toContain("14 AbuseIPDB reports at 30% confidence on record");
+  });
+
+  it("omits the clause when neither abuse nor history is available", () => {
+    const feodo = makeSource({ name: "Feodo", score: 0 });
+    const text = buildNarrative(makeResult({ sources: [feodo] })).join(" ");
+    expect(text).toContain("None of the 1 TI sources flagged this address.");
+    expect(text).not.toContain("on record");
+  });
+});
