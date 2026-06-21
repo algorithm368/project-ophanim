@@ -10,9 +10,16 @@ import type {
 import { Card, CardContent } from "@/components/ui/card";
 import { Pivot, PivotList, SectionHeading } from "./primitives";
 
+/** A source returns the epoch (1970) as a sentinel when it has no real
+ *  first/last-seen date. Treat anything before 1990 (and missing values) as no
+ *  date, so those rows show "—" rather than a misleading 1970-01-01. */
+function isRealDate(iso?: string): boolean {
+    return !!iso && Number(iso.slice(0, 4)) > 1990;
+}
+
 /** ISO timestamp → YYYY-MM-DD (deterministic, locale-independent). */
 function fmtDay(iso?: string): string {
-    return iso ? iso.slice(0, 10) : "—";
+    return isRealDate(iso) ? iso!.slice(0, 10) : "—";
 }
 
 const COLS = "grid grid-cols-[1fr_5.25rem_5.25rem_2.75rem] items-baseline gap-3";
@@ -104,7 +111,11 @@ export function CertificatesCard({ result }: { result: DomainCheckResult }) {
 
 const PDNS_PREVIEW = 8;
 
-/** Passive-DNS resolution history (IP + domain results). */
+/** Passive-DNS resolution history (IP + domain results). When the source gives
+ *  real first/last-seen dates the timeline is worth a table; when it doesn't
+ *  (common — the dates come back as the epoch) the records are just pivotable
+ *  indicators, so a compact chip grid reads far easier than a tall table of
+ *  "—" columns. */
 export function PassiveDnsCard({
     result,
 }: {
@@ -114,9 +125,17 @@ export function PassiveDnsCard({
     const [expanded, setExpanded] = useState(false);
     if (records.length === 0) return null;
 
-    const shown = expanded ? records : records.slice(0, PDNS_PREVIEW);
+    // Records are IP addresses when a domain's resolution history is shown, and
+    // hostnames when an IP's is. Pluralize the two-word noun by hand.
     const isIp = records[0].type === "ip";
+    const nounPlural = isIp ? "IP addresses" : "hostnames";
     const noun = isIp ? "IP address" : "hostname";
+    const subject = isIp
+        ? "IP addresses this domain has resolved to over time"
+        : "Hostnames seen resolving to this IP over time";
+    const hasDates = records.some(
+        (r) => isRealDate(r.firstSeen) || isRealDate(r.lastSeen),
+    );
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -125,8 +144,8 @@ export function PassiveDnsCard({
                     icon={Network}
                     action={
                         <span className="font-mono text-xs text-muted-foreground">
-                            {records.length} record
-                            {records.length === 1 ? "" : "s"}
+                            {records.length}{" "}
+                            {records.length === 1 ? noun : nounPlural}
                         </span>
                     }
                 >
@@ -134,48 +153,76 @@ export function PassiveDnsCard({
                 </SectionHeading>
 
                 <p className="text-sm text-muted-foreground">
-                    {records.length} distinct {noun}
-                    {records.length === 1 ? "" : "s"} observed in passive-DNS
-                    history, most recent first.
+                    {subject}
+                    {hasDates ? ", most recent first." : "."}
                 </p>
 
-                <div className="space-y-1.5">
-                    <div
-                        className={`${COLS} border-b border-border pb-1.5 font-mono text-[10px] tracking-wider text-muted-foreground uppercase`}
-                    >
-                        <span>{isIp ? "IP address" : "Hostname"}</span>
-                        <span>First seen</span>
-                        <span>Last seen</span>
-                        <span className="text-right">Type</span>
-                    </div>
-                    {shown.map((r, i) => (
-                        <div key={`${r.type}-${r.value}-${i}`} className={`${COLS} text-[13px]`}>
-                            <span className="min-w-0 truncate">
-                                <Pivot value={r.value} />
-                            </span>
-                            <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                                {fmtDay(r.firstSeen)}
-                            </span>
-                            <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                                {fmtDay(r.lastSeen)}
-                            </span>
-                            <span className="text-right font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
-                                {r.recordType ?? "—"}
-                            </span>
-                        </div>
-                    ))}
-                </div>
-
-                {records.length > PDNS_PREVIEW && (
-                    <button
-                        type="button"
-                        onClick={() => setExpanded((v) => !v)}
-                        className={EXPANDER}
-                    >
-                        {expanded ? "show less" : `show all ${records.length}`}
-                    </button>
+                {hasDates ? (
+                    <PassiveDnsTable
+                        records={records}
+                        isIp={isIp}
+                        expanded={expanded}
+                        onToggle={() => setExpanded((v) => !v)}
+                    />
+                ) : (
+                    <PivotList
+                        values={records.map((r) => r.value)}
+                        max={PDNS_PREVIEW}
+                    />
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+/** The dated form: a resolution timeline ordered most-recent-first, previewed
+ *  to PDNS_PREVIEW rows with a show-all toggle. */
+function PassiveDnsTable({
+    records,
+    isIp,
+    expanded,
+    onToggle,
+}: {
+    records: NonNullable<CheckResult["passiveDns"]>;
+    isIp: boolean;
+    expanded: boolean;
+    onToggle: () => void;
+}) {
+    const shown = expanded ? records : records.slice(0, PDNS_PREVIEW);
+    return (
+        <div className="space-y-1.5">
+            <div
+                className={`${COLS} border-b border-border pb-1.5 font-mono text-[10px] tracking-wider text-muted-foreground uppercase`}
+            >
+                <span>{isIp ? "IP address" : "Hostname"}</span>
+                <span>First seen</span>
+                <span>Last seen</span>
+                <span className="text-right">Type</span>
+            </div>
+            {shown.map((r, i) => (
+                <div
+                    key={`${r.type}-${r.value}-${i}`}
+                    className={`${COLS} text-[13px]`}
+                >
+                    <span className="min-w-0 truncate">
+                        <Pivot value={r.value} />
+                    </span>
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                        {fmtDay(r.firstSeen)}
+                    </span>
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                        {fmtDay(r.lastSeen)}
+                    </span>
+                    <span className="text-right font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
+                        {r.recordType ?? "—"}
+                    </span>
+                </div>
+            ))}
+            {records.length > PDNS_PREVIEW && (
+                <button type="button" onClick={onToggle} className={EXPANDER}>
+                    {expanded ? "show less" : `show all ${records.length}`}
+                </button>
+            )}
+        </div>
     );
 }
