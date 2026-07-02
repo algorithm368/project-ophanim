@@ -196,7 +196,9 @@ const SLOW_THRESHOLD_S = 5;
 const NAV_ABORT = "nav-abort";
 
 const loadCheckResults = () => import("./CheckResults");
-const CheckResults = dynamic(loadCheckResults, { ssr: false });
+// SSR enabled so a cached permalink paints its verdict in the initial HTML;
+// still code-split via dynamic() so the home page pays nothing for it.
+const CheckResults = dynamic(loadCheckResults);
 const loadBulkGeo = () => import("./BulkGeoResults");
 const BulkGeoResults = dynamic(loadBulkGeo, { ssr: false });
 
