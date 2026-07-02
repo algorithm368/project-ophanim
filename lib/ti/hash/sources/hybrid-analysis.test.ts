@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { haRelatedHashes, hybridAnalysisScore } from "./hybrid-analysis";
+import { describe, expect, it, beforeEach, vi } from "vitest";
+import { haRelatedHashes, hybridAnalysisScore, hybridAnalysisSource } from "./hybrid-analysis";
+import * as http from "../../http";
 
 describe("haRelatedHashes", () => {
   it("maps parents to 'parent' and children to 'drops', excluding self + dups", () => {
@@ -35,5 +36,21 @@ describe("hybridAnalysisScore", () => {
   it("passes the raw threat score through for other verdicts", () => {
     expect(hybridAnalysisScore("unknown", 33, false)).toBe(33);
     expect(hybridAnalysisScore("unknown", undefined, null)).toBe(0);
+  });
+});
+
+describe("hybridAnalysisSource.check", () => {
+  beforeEach(() => {
+    process.env.HYBRID_ANALYSIS_API_KEY = "test-key";
+  });
+
+  it("emits fileNames from last_file_name", async () => {
+    vi.spyOn(http, "getJson").mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { verdict: "malicious", last_file_name: "dropper.exe", sha256: "f".repeat(64) },
+    } as never);
+    const finding = await hybridAnalysisSource.check("f".repeat(64), new AbortController().signal);
+    expect(finding.hashContext?.fileNames).toEqual(["dropper.exe"]);
   });
 });
