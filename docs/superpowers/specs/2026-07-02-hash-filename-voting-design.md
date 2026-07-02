@@ -53,11 +53,20 @@ resolveFileName(
 - **Junk filter — drop a name when it is:**
   - equal to the md5/sha1/sha256, or a hash + extension
   - a bare hex string of length 32/40/64 (± a file extension)
-  - a generic placeholder from a small denylist: `file`, `sample`,
-    `sample.bin`, `unknown`, `malware`, `tmp`, `temp`, `a.out`, `output`,
-    empty/whitespace
+  - a generic placeholder from a denylist (below), empty/whitespace
+  - pure-numeric (`1`, `123`), a single character, or extension-only (`.exe`)
   - comparison is case-insensitive; the denylist matches the full name (with or
     without extension), not substrings
+
+  **Denylist:**
+  - base: `file`, `sample`, `sample.bin`, `unknown`, `malware`, `tmp`, `temp`,
+    `a.out`, `output`
+  - generic binaries: `virus`, `trojan`, `payload`, `dropper`, `dump`, `bin`,
+    `data`, `file.exe`, `sample.exe`, `malware.exe`
+  - sandbox/scanner auto-names: `sample.dll`, `sample.doc`, `target`,
+    `artifact`, `run.exe`, `test.exe`, `vti-rescan`
+  - OS placeholders: `desktop.ini`, `thumbs.db`, `new folder`, `document`,
+    `untitled`, `download`, `setup.exe`, `install.exe`
 - **Rank survivors:**
   1. count of **distinct sources** reporting the name (descending)
   2. source **name-trust order** (submitted-name sources — MalwareBazaar,
