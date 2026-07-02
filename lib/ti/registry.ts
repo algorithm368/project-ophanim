@@ -17,7 +17,6 @@ import { etOpenSource } from "./sources/et-open";
 import { torSource } from "./sources/tor";
 import { virusTotalSource } from "./sources/virustotal";
 import { abuseIpdbSource } from "./sources/abuseipdb";
-import { otxSource } from "./sources/otx";
 import { pdnsSource } from "./sources/pdns";
 import { greyNoiseSource } from "./sources/greynoise";
 import { threatFoxSource } from "./sources/threatfox";
@@ -43,7 +42,6 @@ export const sources: TiSource[] = [
   torSource,
   virusTotalSource,
   abuseIpdbSource,
-  otxSource,
   pdnsSource,
   greyNoiseSource,
   threatFoxSource,

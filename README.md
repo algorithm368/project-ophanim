@@ -39,7 +39,6 @@ Enabled only when an API key is set (free signup):
 | ipgeolocation.io | `IPGEOLOCATION_API_KEY` (extra geo vote) |
 | VirusTotal     | `VIRUSTOTAL_API_KEY`                 |
 | AbuseIPDB      | `ABUSEIPDB_API_KEY`                  |
-| AlienVault OTX | `OTX_API_KEY`                        |
 | GreyNoise      | `GREYNOISE_API_KEY`                  |
 | ThreatFox      | `THREATFOX_API_KEY`                  |
 | Criminal IP    | `CRIMINALIP_API_KEY`                 |
@@ -67,7 +66,6 @@ Enabled only when an API key is set:
 | URLhaus               | `THREATFOX_API_KEY` (abuse.ch key)   |
 | Google Safe Browsing  | `GOOGLE_SAFE_BROWSING_API_KEY`       |
 | VirusTotal            | `VIRUSTOTAL_API_KEY`                 |
-| AlienVault OTX        | `OTX_API_KEY`                        |
 | ThreatFox             | `THREATFOX_API_KEY`                  |
 
 > The DNS blocklists (DBL/SURBL) are most accurate when not queried through a
@@ -96,7 +94,6 @@ Enabled only when an API key is set:
 | ThreatFox      | `THREATFOX_API_KEY`                  | IOC intel, malware family (abuse.ch)   |
 | URLhaus        | `THREATFOX_API_KEY`                  | Hashes seen as malware payloads        |
 | Hybrid Analysis| `HYBRID_ANALYSIS_API_KEY`            | Sandbox detonation verdict             |
-| AlienVault OTX | `OTX_API_KEY`                        | Mentions in community threat pulses    |
 
 > A single abuse.ch Auth-Key (`THREATFOX_API_KEY`) enables ThreatFox,
 > MalwareBazaar, and URLhaus across all modes.

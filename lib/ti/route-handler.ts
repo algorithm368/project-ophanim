@@ -35,6 +35,13 @@ const STREAM_HEADERS = {
   "X-Accel-Buffering": "no",
 };
 
+const CACHE_HEADERS = {
+  // A cached result is deterministic for the TTL window, so let the edge serve
+  // repeat lookups. Embedded history can be at most s-maxage stale (acceptable
+  // for an append-only timeline). Fresh and error responses stay uncached.
+  "Cache-Control": "public, s-maxage=300, stale-while-revalidate=86400",
+};
+
 function isTruthy(value: string | null): boolean {
   return value === "1" || value === "true";
 }
@@ -56,18 +63,28 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
   async function jsonResult(value: V, refresh: boolean): Promise<Response> {
     const histKey = String(value);
     if (!refresh) {
-      const cached = await config.getCached(value);
+      // Speculatively read cache + history together; discard history on a miss.
+      const [cached, history] = await Promise.all([
+        config.getCached(value),
+        getHistory(config.label, histKey),
+      ]);
       if (cached) {
-        const history = await getHistory(config.label, histKey);
-        return Response.json({ ...cached, cached: true, history });
+        return Response.json(
+          { ...cached, cached: true, history },
+          { headers: CACHE_HEADERS },
+        );
       }
     }
 
     try {
       const result = await config.run(value);
-      await config.setCached(value, result);
-      await recordHistory(config.label, histKey, snapshotOf(result));
-      const history = await getHistory(config.label, histKey);
+      // setCached is independent of the history write/read; overlap them.
+      const [, history] = await Promise.all([
+        config.setCached(value, result),
+        recordHistory(config.label, histKey, snapshotOf(result)).then(() =>
+          getHistory(config.label, histKey),
+        ),
+      ]);
       return Response.json({ ...result, cached: false, history });
     } catch (err) {
       console.error(`[ti] ${config.label} check failed:`, err);
@@ -85,9 +102,11 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
 
         try {
           if (!refresh) {
-            const cached = await config.getCached(value);
+            const [cached, history] = await Promise.all([
+              config.getCached(value),
+              getHistory(config.label, histKey),
+            ]);
             if (cached) {
-              const history = await getHistory(config.label, histKey);
               send({
                 type: "done",
                 result: { ...cached, cached: true, history },
@@ -104,9 +123,13 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
             done += 1;
             send({ type: "source", result: r, done, total });
           });
-          await config.setCached(value, result);
-          await recordHistory(config.label, histKey, snapshotOf(result));
-          const history = await getHistory(config.label, histKey);
+          // setCached is independent of the history write/read; overlap them.
+          const [, history] = await Promise.all([
+            config.setCached(value, result),
+            recordHistory(config.label, histKey, snapshotOf(result)).then(() =>
+              getHistory(config.label, histKey),
+            ),
+          ]);
           send({ type: "done", result: { ...result, cached: false, history } });
         } catch (err) {
           console.error(`[ti] ${config.label} check failed:`, err);

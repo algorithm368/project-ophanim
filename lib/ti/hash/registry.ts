@@ -6,7 +6,6 @@ import { threatFoxHashSource } from "./sources/threatfox";
 import { urlhausHashSource } from "./sources/urlhaus";
 import { hybridAnalysisSource } from "./sources/hybrid-analysis";
 import { cymruMhrSource } from "./sources/cymru-mhr";
-import { otxHashSource } from "./sources/otx";
 import { hashlookupSource } from "./sources/hashlookup";
 import { pulsediveSource } from "./sources/pulsedive";
 import { kasperskyOpenTipSource } from "./sources/kaspersky-opentip";
@@ -30,5 +29,4 @@ export const hashSources: TiSource[] = [
   hybridAnalysisSource,
   cymruMhrSource,
   hashlookupSource,
-  otxHashSource,
 ];
