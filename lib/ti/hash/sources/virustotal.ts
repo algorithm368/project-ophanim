@@ -142,7 +142,7 @@ export const virusTotalHashSource: TiSource = {
           sha1: attr.sha1,
           sha256: attr.sha256,
           fileName: names[0],
-          fileNames: names.slice(0, 6),
+          fileNames: names.slice(0, 12),
           fileType: attr.type_description,
           mimeType: attr.type_tag,
           fileSize: attr.size,
