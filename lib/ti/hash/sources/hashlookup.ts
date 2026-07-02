@@ -69,6 +69,7 @@ export const hashlookupSource: TiSource = {
         sha1: data["SHA-1"]?.toLowerCase(),
         sha256: data["SHA-256"]?.toLowerCase(),
         fileName,
+        fileNames: fileName ? [fileName] : undefined,
         fileSize,
       };
       const details = {

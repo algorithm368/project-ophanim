@@ -100,9 +100,15 @@ export const maltiverseSource: TiSource = {
         if (relations.length >= 10) break;
       }
 
-      const name = Array.isArray(data.filename)
-        ? data.filename[0]
-        : data.filename;
+      const rawNames = Array.isArray(data.filename)
+        ? data.filename
+        : data.filename
+          ? [data.filename]
+          : [];
+      const fileNames = [
+        ...new Set(rawNames.filter((n): n is string => Boolean(n && n.trim()))),
+      ];
+      const name = fileNames[0];
       const tags = [
         ...new Set((data.tag ?? []).filter((t): t is string => Boolean(t))),
       ].slice(0, 15);
@@ -117,6 +123,7 @@ export const maltiverseSource: TiSource = {
         hashContext: {
           sha256: hash,
           fileName: name,
+          fileNames: fileNames.length ? fileNames : undefined,
           fileType: data.filetype,
           fileSize: data.size,
           detectionNames: detectionNames.length ? detectionNames : undefined,

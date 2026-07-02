@@ -12,6 +12,7 @@ import { mergeFields } from "./orchestrate";
 import { collectCertificates, collectPassiveDns, collectSubdomains } from "./deep";
 import { overlayResolution, reconcileGeo } from "./geo/reconcile";
 import { isKnownBenignHash } from "./benign";
+import { resolveFileName } from "./hash/resolve-name";
 
 /**
  * Pure result assembly from a set of settled `SourceResult`s. This is the single
@@ -86,12 +87,28 @@ export function assembleDomainResult(
   };
 }
 
-function mergeHashContext(results: SourceResult[]): HashContext | undefined {
-  return mergeFields(
+function mergeHashContext(
+  results: SourceResult[],
+  hash: string,
+  algorithm: HashAlgorithm,
+): HashContext | undefined {
+  const merged = mergeFields(
     results
       .filter((r) => r.status === "ok" && r.hashContext)
       .map((r) => r.hashContext as HashContext),
   );
+  if (!merged) return undefined;
+  const hashes = {
+    md5: merged.md5 ?? (algorithm === "md5" ? hash : undefined),
+    sha1: merged.sha1 ?? (algorithm === "sha1" ? hash : undefined),
+    sha256: merged.sha256 ?? (algorithm === "sha256" ? hash : undefined),
+  };
+  const resolved = resolveFileName(results, hashes);
+  return {
+    ...merged,
+    fileName: resolved.fileName,
+    fileNames: resolved.fileNames,
+  };
 }
 
 export function assembleHashResult(
@@ -110,7 +127,7 @@ export function assembleHashResult(
     checkedAt,
     riskScore: benignOverride ? 0 : riskScore,
     verdict: benignOverride ? "clean" : verdict,
-    context: mergeHashContext(results),
+    context: mergeHashContext(results, hash, algorithm),
     sources: results,
     stats: computeStats(results),
     scoreBreakdown: benignOverride

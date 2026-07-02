@@ -115,6 +115,7 @@ export const hybridAnalysisSource: TiSource = {
       const fileType =
         data.type?.trim() ||
         (data.type_short?.length ? data.type_short.join(", ") : undefined);
+      const lastFileName = data.last_file_name ?? undefined;
 
       const score = hybridAnalysisScore(verdict, threatScore, data.whitelisted);
       const relations = haRelatedHashes(
@@ -135,7 +136,8 @@ export const hybridAnalysisSource: TiSource = {
         }`,
         hashContext: {
           sha256: data.sha256?.toLowerCase(),
-          fileName: data.last_file_name ?? undefined,
+          fileName: lastFileName,
+          fileNames: lastFileName ? [lastFileName] : undefined,
           fileType,
           fileSize: data.size ?? undefined,
           malwareFamily: family,
