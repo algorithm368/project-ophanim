@@ -53,6 +53,14 @@ describe("resolveFileName", () => {
     expect(out.fileNames).toEqual(["invoice.exe"]);
   });
 
+  it("drops URLs (URL-detonation sample targets), keeping real filenames", () => {
+    const out = resolveFileName(
+      [src("s1", { fileNames: ["http://evil.com/x", "https://evil.com/y.bin", "real.exe"] })],
+      NO_HASHES,
+    );
+    expect(out.fileNames).toEqual(["real.exe"]);
+  });
+
   it("drops pure-numeric, single-char, and extension-only names", () => {
     const out = resolveFileName(
       [src("s1", { fileNames: ["123", "a", ".exe", "real.dll"] })],

@@ -57,6 +57,9 @@ function isJunk(name: string, hashes: Set<string>): boolean {
   if (HEX_RE.test(base) && HASH_LENGTHS.has(base.length)) return true;
   // Generic placeholder (matched against the full name and the extension-less stem).
   if (DENYLIST.has(n) || DENYLIST.has(base)) return true;
+  // A URL, not a filename (URL-detonation sandboxes report the analyzed URL
+  // as the sample "target").
+  if (n.includes("://")) return true;
   // Pure numeric, single character, or extension-only (".exe").
   if (/^\d+$/.test(base)) return true;
   if (base.length <= 1) return true;
