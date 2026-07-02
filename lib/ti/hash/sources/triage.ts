@@ -10,6 +10,7 @@ interface TriageOverview {
   sample?: { id?: string; target?: string; size?: number };
   analysis?: { score?: number; family?: string[] };
   targets?: {
+    target?: string;
     score?: number;
     family?: string[];
     tags?: string[];
@@ -153,6 +154,15 @@ export const triageSource: TiSource = {
 
       const relations = extractTriageRelations(data);
 
+      const fileNames = [
+        ...new Set(
+          [
+            data.sample?.target,
+            ...(data.targets ?? []).map((t) => t.target),
+          ].filter((n): n is string => Boolean(n && n.trim())),
+        ),
+      ];
+
       return {
         status: "ok",
         malicious: score >= 80,
@@ -164,6 +174,7 @@ export const triageSource: TiSource = {
         hashContext: {
           malwareFamily: families[0],
           fileName: data.sample?.target,
+          fileNames: fileNames.length ? fileNames : undefined,
           fileSize: data.sample?.size,
         },
         relations: relations.length ? relations : undefined,

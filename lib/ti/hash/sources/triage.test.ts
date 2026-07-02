@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { bareHost, extractTriageRelations } from "./triage";
+import { describe, expect, it, vi } from "vitest";
+import { bareHost, extractTriageRelations, triageSource } from "./triage";
+import * as http from "../../http";
 
 describe("extractTriageRelations", () => {
   it("merges extracted config C2 with target IOCs, typed and deduped", () => {
@@ -56,5 +57,30 @@ describe("bareHost", () => {
 
   it("leaves an unbracketed IPv6 (multiple colons) intact", () => {
     expect(bareHost("2001:db8::1")).toBe("2001:db8::1");
+  });
+});
+
+describe("triageSource.check", () => {
+  it("emits fileNames from sample.target and targets[].target, deduped", async () => {
+    vi.stubEnv("TRIAGE_API_KEY", "test-key");
+    vi.spyOn(http, "getJson")
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { data: [{ id: "sample-123", status: "done" }] },
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          sample: { target: "invoice.doc" },
+          targets: [
+            { target: "invoice.doc" },
+            { target: "stage2.exe" },
+          ],
+        },
+      } as never);
+    const finding = await triageSource.check("aabbccdd" + "00112233" + "44556677" + "8899aabb", new AbortController().signal);
+    expect(finding.hashContext?.fileNames).toEqual(["invoice.doc", "stage2.exe"]);
   });
 });
