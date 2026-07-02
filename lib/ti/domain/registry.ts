@@ -9,7 +9,6 @@ import { openPhishSource } from "./sources/openphish";
 import { urlhausSource } from "./sources/urlhaus";
 import { safeBrowsingSource } from "./sources/safebrowsing";
 import { virusTotalDomainSource } from "./sources/virustotal";
-import { otxDomainSource } from "./sources/otx";
 import { pdnsDomainSource } from "./sources/pdns";
 import { threatFoxDomainSource } from "./sources/threatfox";
 
@@ -25,7 +24,6 @@ export const domainSources: TiSource[] = [
   urlhausSource,
   safeBrowsingSource,
   virusTotalDomainSource,
-  otxDomainSource,
   pdnsDomainSource,
   threatFoxDomainSource,
 ];
