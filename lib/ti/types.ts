@@ -42,6 +42,29 @@ export interface SourceMeta {
   timeoutMs?: number;
 }
 
+/**
+ * Consensus over the unfiltered DoH resolver pool for a domain's A record.
+ * Context-only: describes how strongly resolvers agree on the resolved IP set,
+ * never a malicious verdict. A resolver that times out is a non-vote (excluded
+ * from `respondingResolvers`), not a disagreement.
+ */
+export interface ResolverConsensus {
+  /** Resolvers that returned an answer set (empty set counts; timeout does not). */
+  respondingResolvers: number;
+  /** Resolvers queried. */
+  totalResolvers: number;
+  /** The A-record IP set returned by the plurality of responders. */
+  consensusIps: string[];
+  /** How many responders returned the consensus set. */
+  agreeCount: number;
+  /** agreeCount / respondingResolvers, 0..1. */
+  confidence: number;
+  /** high = all responders agree, medium = strict majority, low = otherwise. */
+  bucket: "high" | "medium" | "low";
+  /** Distinct answer sets with counts, most common first. */
+  variants: { ips: string[]; count: number }[];
+}
+
 /** Registration + DNS context for a domain (contributed by RDAP/DNS sources). */
 export interface DomainContext {
   /** Content categories - what the domain is, e.g. "Search engines" (from VirusTotal). */
