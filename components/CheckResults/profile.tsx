@@ -335,7 +335,7 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                             (ctx.reverse?.length ?? 0) > 0 ||
                             (ctx.caa?.length ?? 0) > 0 ||
                             (ctx.dnssec !== undefined && ctx.dnssec !== "unknown") ||
-                            ctx.resolverAgreement === false) && (
+                            (ctx.resolverConsensus?.respondingResolvers ?? 0) > 1) && (
                             <Group label="DNS records">
                                 {ips.length > 0 && (
                                     <Field label="Resolves to" wrap>
@@ -379,15 +379,24 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
                                                 : "Unsigned"}
                                         </Field>
                                     )}
-                                {ctx.resolverAgreement === false && (
-                                    <Field
-                                        label="Resolvers"
-                                        hint="DoH resolvers returned different A records, GeoDNS, split-horizon, or possible poisoning"
-                                        tone="text-red-600 dark:text-red-400"
-                                    >
-                                        Disagree
-                                    </Field>
-                                )}
+                                {ctx.resolverConsensus &&
+                                    ctx.resolverConsensus.respondingResolvers > 1 && (
+                                        <Field
+                                            label="Resolvers"
+                                            hint="Unfiltered DoH resolvers queried for the A record, and how many agree on the resolved IP. A low count suggests GeoDNS, split-horizon, or possible poisoning."
+                                            tone={
+                                                ctx.resolverConsensus.bucket === "low"
+                                                    ? "text-red-600 dark:text-red-400"
+                                                    : undefined
+                                            }
+                                        >
+                                            {ctx.resolverConsensus.agreeCount}/
+                                            {ctx.resolverConsensus.respondingResolvers}
+                                            {ctx.resolverConsensus.bucket === "low"
+                                                ? " split"
+                                                : " agree"}
+                                        </Field>
+                                    )}
                             </Group>
                         )}
 
