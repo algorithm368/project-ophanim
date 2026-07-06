@@ -33,6 +33,26 @@ export const RESOLVERS: Record<string, string> = {
   google: "https://dns.google/resolve",
 };
 
+/**
+ * Unfiltered JSON-DoH resolvers for A-record consensus. These do NOT run a
+ * malicious-domain blocklist, so disagreement here means GeoDNS / CDN rotation
+ * / split-horizon / poisoning, not "a security resolver refused to answer."
+ * Membership is verified server-side (must return valid application/dns-json
+ * and not hang); endpoints that fail verification are dropped with a note.
+ *
+ * Verified 2026-07-06 (server-side probe, GET ?name=…&type=A):
+ * - cloudflare, google, adguard(unfiltered): return application/dns-json.
+ * - dns0.eu: dropped — no JSON endpoint at the apex (wireformat only), request
+ *   hangs to timeout.
+ * - quad9 unsecured (9.9.9.10:5053): dropped — JSON endpoint hangs, same as the
+ *   secured :5053 note above.
+ */
+export const UNFILTERED_RESOLVERS: Record<string, string> = {
+  cloudflare: "https://cloudflare-dns.com/dns-query",
+  google: "https://dns.google/resolve",
+  adguard: "https://dns-unfiltered.adguard.com/resolve",
+};
+
 /** Query one resolver. `dnssec: true` sets the DO bit so the AD flag is meaningful. */
 export async function dohQuery(
   resolver: string,

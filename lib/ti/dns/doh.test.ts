@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answers, type DohResponse } from "./doh";
+import { answers, UNFILTERED_RESOLVERS, type DohResponse } from "./doh";
 
 describe("answers", () => {
   it("returns the answer data values, trailing dot stripped", () => {
@@ -26,5 +26,18 @@ describe("answers", () => {
   it("handles null / empty responses", () => {
     expect(answers(null)).toEqual([]);
     expect(answers({})).toEqual([]);
+  });
+});
+
+describe("UNFILTERED_RESOLVERS", () => {
+  it("includes the two known-good anchors", () => {
+    expect(UNFILTERED_RESOLVERS.cloudflare).toContain("cloudflare-dns.com");
+    expect(UNFILTERED_RESOLVERS.google).toContain("dns.google");
+  });
+
+  it("lists at least two https endpoints and no bare-http", () => {
+    const urls = Object.values(UNFILTERED_RESOLVERS);
+    expect(urls.length).toBeGreaterThanOrEqual(2);
+    for (const url of urls) expect(url.startsWith("https://")).toBe(true);
   });
 });
