@@ -3,7 +3,6 @@ import {
   extractDmarc,
   extractSpf,
   normalizeMxHosts,
-  resolversAgree,
   dnssecStatus,
   decodeCaa,
 } from "./parse";
@@ -32,18 +31,6 @@ describe("normalizeMxHosts", () => {
   it("strips the priority prefix and keeps the host", () => {
     expect(normalizeMxHosts(["10 mail.example.com", "20 alt.example.com"]))
       .toEqual(["mail.example.com", "alt.example.com"]);
-  });
-});
-
-describe("resolversAgree", () => {
-  it("is true when answer sets match regardless of order", () => {
-    expect(resolversAgree([["1.1.1.1", "2.2.2.2"], ["2.2.2.2", "1.1.1.1"]])).toBe(true);
-  });
-  it("is false when answer sets differ", () => {
-    expect(resolversAgree([["1.1.1.1"], ["9.9.9.9"]])).toBe(false);
-  });
-  it("ignores resolvers that returned nothing", () => {
-    expect(resolversAgree([["1.1.1.1"], []])).toBe(true);
   });
 });
 

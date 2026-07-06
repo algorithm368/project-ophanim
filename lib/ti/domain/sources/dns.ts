@@ -1,13 +1,19 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout } from "../../http";
-import { RESOLVERS, answers, dohQuery, type DohResponse } from "../../dns/doh";
+import {
+  RESOLVERS,
+  UNFILTERED_RESOLVERS,
+  answers,
+  dohQuery,
+  type DohResponse,
+} from "../../dns/doh";
+import { ipConsensus, type ResolverVote } from "../../dns/consensus";
 import {
   decodeCaa,
   dnssecStatus,
   extractDmarc,
   extractSpf,
   normalizeMxHosts,
-  resolversAgree,
 } from "../../dns/parse";
 
 const CF = RESOLVERS.cloudflare;
@@ -38,13 +44,22 @@ export const dnsSource: TiSource = {
   isEnabled: () => true,
   async check(domain, signal): Promise<SourceFinding> {
     try {
-      // Resolve every record set concurrently in a single batch (one round of
-      // parallel DoH queries, not two). A records are queried at two resolvers
-      // (DNSSEC DO bit set) for an agreement check; the rest go to Cloudflare.
-      const [aCf, aGoogle, aaaa, mx, ns, txt, soa, cname, caa, dmarcTxt] =
+      // Resolve every record set concurrently in a single batch. The A record
+      // is queried at every unfiltered resolver (DNSSEC DO bit set) for a
+      // consensus vote; each per-resolver query is caught so one slow resolver
+      // yields a non-vote rather than failing the batch. The rest go to
+      // Cloudflare.
+      const [aByResolver, aaaa, mx, ns, txt, soa, cname, caa, dmarcTxt] =
         await Promise.all([
-          dohQuery(CF, domain, "A", signal, true),
-          dohQuery(RESOLVERS.google, domain, "A", signal, true),
+          Promise.all(
+            Object.entries(UNFILTERED_RESOLVERS).map(async ([id, url]) => {
+              try {
+                return { id, res: await dohQuery(url, domain, "A", signal, true) };
+              } catch {
+                return { id, res: null as DohResponse | null };
+              }
+            }),
+          ),
           dohQuery(CF, domain, "AAAA", signal),
           dohQuery(CF, domain, "MX", signal),
           dohQuery(CF, domain, "NS", signal),
@@ -55,7 +70,17 @@ export const dnsSource: TiSource = {
           dohQuery(CF, `_dmarc.${domain}`, "TXT", signal),
         ]);
 
-      const resolvedIps = answers(aCf);
+      // Consensus over the unfiltered pool. A null response is a non-vote.
+      const votes: ResolverVote[] = aByResolver.map(({ id, res }) => ({
+        resolver: id,
+        ips: res === null ? null : answers(res),
+      }));
+      const consensus = ipConsensus(votes);
+      const resolvedIps = consensus.consensusIps;
+
+      // Pull the two anchor responses back out for NXDOMAIN + DNSSEC.
+      const aCf = aByResolver.find((r) => r.id === "cloudflare")?.res ?? null;
+      const aGoogle = aByResolver.find((r) => r.id === "google")?.res ?? null;
       const ipv6 = answers(aaaa);
       const mxHosts = normalizeMxHosts(answers(mx));
       const nsHosts = answers(ns);
@@ -68,8 +93,6 @@ export const dnsSource: TiSource = {
       const caaRecords = answers(caa).map(decodeCaa);
       const reverse = await ptrAll(resolvedIps, signal);
 
-      const aSets = [answers(aCf), answers(aGoogle)];
-      const resolverAgreement = resolversAgree(aSets);
       const dnssec = dnssecStatus([aCf, aGoogle] as (DohResponse | null)[]);
 
       const resolves = resolvedIps.length > 0 || ipv6.length > 0;
@@ -87,7 +110,10 @@ export const dnsSource: TiSource = {
           mxHosts.length > 0
             ? ` Mail routed via ${mxHosts[0]}.`
             : " No MX present; not mail-bearing.";
-        const disagree = resolverAgreement ? "" : " Resolvers disagree on the A record.";
+        const disagree =
+          consensus.bucket === "low"
+            ? ` Resolvers split on the A record, ${consensus.agreeCount} of ${consensus.respondingResolvers} agree.`
+            : "";
         summary = `Live infrastructure at check time. Apex resolves to ${first}${extra}.${mail}${disagree}`;
       } else if (nxdomain) {
         summary =
@@ -110,7 +136,7 @@ export const dnsSource: TiSource = {
           dmarc,
           caa: caaRecords,
           dnssec,
-          resolverAgreement,
+          resolverConsensus: consensus,
           nxdomain,
         },
         domainContext: {
@@ -127,7 +153,7 @@ export const dnsSource: TiSource = {
           soa: answers(soa)[0],
           cname: answers(cname),
           dnssec,
-          resolverAgreement,
+          resolverConsensus: consensus,
         },
         raw: { aCf, aGoogle, aaaa, mx, ns, txt, soa, cname, caa, dmarcTxt },
       };

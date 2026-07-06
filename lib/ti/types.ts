@@ -96,8 +96,8 @@ export interface DomainContext {
   caa?: string[];
   soa?: string;
   cname?: string[];
-  /** false when DoH resolvers returned differing A answer sets. */
-  resolverAgreement?: boolean;
+  /** Consensus over the unfiltered DoH resolver pool for the A record. */
+  resolverConsensus?: ResolverConsensus;
 }
 
 /** File identity + malware metadata for a hash (contributed by file sources). */

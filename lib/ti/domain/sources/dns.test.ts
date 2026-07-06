@@ -42,3 +42,39 @@ describe("dnsSource.check — nxdomain propagation (P1.2)", () => {
     expect(f.domainContext?.resolvedIps).toEqual(["93.184.216.34"]);
   });
 });
+
+describe("dnsSource.check — resolver consensus", () => {
+  afterEach(() => {
+    vi.mocked(dohQuery).mockReset();
+  });
+
+  it("emits a high-confidence consensus when resolvers agree", async () => {
+    vi.mocked(dohQuery).mockImplementation(async (_resolver, _name, type) =>
+      type === "A"
+        ? { Status: 0, Answer: [{ type: 1, data: "93.184.216.34" }] }
+        : { Status: 0 },
+    );
+    const f = await dnsSource.check("example.com", new AbortController().signal);
+    const c = f.domainContext?.resolverConsensus;
+    expect(c?.bucket).toBe("high");
+    expect(c?.respondingResolvers).toBe(3);
+    expect(f.domainContext?.resolvedIps).toEqual(["93.184.216.34"]);
+  });
+
+  it("does not lower confidence when a resolver times out", async () => {
+    vi.mocked(dohQuery).mockImplementation(async (resolver, _name, type) => {
+      if (type === "A" && String(resolver).includes("adguard")) {
+        throw new Error("timeout");
+      }
+      return type === "A"
+        ? { Status: 0, Answer: [{ type: 1, data: "93.184.216.34" }] }
+        : { Status: 0 };
+    });
+    const f = await dnsSource.check("example.com", new AbortController().signal);
+    const c = f.domainContext?.resolverConsensus;
+    expect(c?.bucket).toBe("high");
+    expect(c?.respondingResolvers).toBe(2);
+    expect(c?.totalResolvers).toBe(3);
+    expect(c?.respondingResolvers).toBeLessThan(c?.totalResolvers ?? 0);
+  });
+});

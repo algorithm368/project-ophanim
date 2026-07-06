@@ -18,15 +18,6 @@ export function normalizeMxHosts(mx: string[]): string[] {
   return mx.map((m) => m.split(/\s+/).pop() ?? m);
 }
 
-/** True when every non-empty answer set is identical (order-insensitive). */
-export function resolversAgree(answerSets: string[][]): boolean {
-  const nonEmpty = answerSets.filter((s) => s.length > 0);
-  if (nonEmpty.length < 2) return true;
-  const canon = (s: string[]) => [...s].sort().join(",");
-  const first = canon(nonEmpty[0]);
-  return nonEmpty.every((s) => canon(s) === first);
-}
-
 /**
  * Decode a CAA record into "<tag> <value>" form (e.g. "issue pki.goog").
  * Cloudflare's JSON DoH returns CAA as RFC 3597 generic data ("\# <len> <hex>");
