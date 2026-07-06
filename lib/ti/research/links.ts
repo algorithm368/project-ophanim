@@ -119,10 +119,20 @@ export function researchLinks(
         url: pulsedive(v),
     });
 
+    // ANY.RUN's public submissions search is a JS SPA with no stable
+    // query-string. For a host (ip/domain) its /safe/<url> route deep-links
+    // straight into an interactive scan primed on that host, so we build
+    // http://<host>/ verbatim (the path is the URL to visit — encoding the
+    // scheme/slashes would break the route; hosts are already URL-safe and
+    // validated at the boundary). A bare hash has no URL to detonate, so it
+    // falls back to the plain submissions search UI.
+    const anyRun =
+        kind === "hash"
+            ? "https://app.any.run/submissions/"
+            : `https://app.any.run/safe/http://${v}/`;
+
     const sandboxes: ResearchLink[] = [
-        // ANY.RUN's public submissions search is a JS SPA with no stable
-        // query-string, so this opens the search UI rather than pre-filling it.
-        { id: "anyrun", name: "ANY.RUN", url: "https://app.any.run/submissions/" },
+        { id: "anyrun", name: "ANY.RUN", url: anyRun },
         {
             id: "joesandbox",
             name: "Joe Sandbox",

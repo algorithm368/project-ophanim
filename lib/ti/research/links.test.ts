@@ -26,6 +26,8 @@ describe("researchLinks", () => {
         expect(links.shodan).toBe("https://www.shodan.io/host/1.2.3.4");
         expect(links.urlscan).toBe("https://urlscan.io/search/#1.2.3.4");
         expect(links.triage).toBe("https://tria.ge/s?q=1.2.3.4");
+        // ANY.RUN deep-links into an interactive scan of the host via /safe/.
+        expect(links.anyrun).toBe("https://app.any.run/safe/http://1.2.3.4/");
     });
 
     it("uses domain-specific recon pages for a domain", () => {
@@ -40,6 +42,8 @@ describe("researchLinks", () => {
         expect(links.pulsedive).toBe(
             "https://pulsedive.com/indicator/?ioc=ZXZpbC5jb20%3D",
         );
+        // A domain is a website too, so it gets the same /safe/ deep-link.
+        expect(links.anyrun).toBe("https://app.any.run/safe/http://evil.com/");
     });
 
     it("drops host/infra recon for a bare hash, keeping web + sandboxes + pulsedive", () => {
@@ -62,6 +66,9 @@ describe("researchLinks", () => {
         expect(links.joesandbox).toBe(
             `https://www.joesandbox.com/search?q=${hash}`,
         );
+        // A bare hash has no URL to detonate, so ANY.RUN stays the plain
+        // submissions search rather than the /safe/ deep-link.
+        expect(links.anyrun).toBe("https://app.any.run/submissions/");
     });
 
     it("makes both Google queries defang-aware for a dotted indicator", () => {
