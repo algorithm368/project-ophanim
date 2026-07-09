@@ -8,29 +8,31 @@ import { useCopied } from "@/components/CheckResults/primitives";
 import { flagUrl } from "@/lib/flag";
 import { ConfidenceChip } from "@/components/CheckResults/confidence";
 import {
-  copyBlock,
   sameCountrySentence,
   sameCountryText,
   summarizeCountries,
 } from "@/lib/ti/geo/summary";
+import { analystNote, analystNotes } from "@/lib/ti/geo/note";
 
-/** A selectable, monospace block of the per-address summary with a copy button. */
-function CopyableList({ rows }: { rows: GeoRow[] }) {
-  const block = copyBlock(rows);
+/** A selectable analyst note, one paragraph per address, with a copy button.
+ *  The paragraphs rendered here and the text copied are the same strings. */
+function AnalystNote({ rows }: { rows: GeoRow[] }) {
+  const paragraphs = analystNotes(rows);
   const [copied, copy] = useCopied();
+  if (!paragraphs.length) return null;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <span className="font-hand text-sm font-semibold text-muted-foreground">
-          Copy-friendly summary
+          Analyst note
         </span>
         <Button
           type="button"
           variant="ghost"
           size="xs"
-          aria-label="Copy summary"
+          aria-label="Copy analyst note"
           className="font-hand -mr-1.5 gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          onClick={() => copy(block)}
+          onClick={() => copy(analystNote(rows))}
         >
           {copied ? (
             <>
@@ -45,10 +47,16 @@ function CopyableList({ rows }: { rows: GeoRow[] }) {
           )}
         </Button>
       </div>
-      {/* whitespace-pre, not pre-wrap: wrapping would break the column alignment. */}
-      <pre className="max-h-48 overflow-auto rounded-md border-2 border-foreground/20 bg-background/60 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre select-all">
-        {block}
-      </pre>
+      <div className="max-h-64 space-y-2 overflow-auto rounded-md border-2 border-foreground/20 bg-background/60 px-3 py-2 select-all">
+        {paragraphs.map((text, i) => (
+          <p
+            key={rows[i].ip}
+            className="font-sans text-sm leading-relaxed text-foreground/90"
+          >
+            {text}
+          </p>
+        ))}
+      </div>
     </div>
   );
 }
@@ -114,7 +122,7 @@ export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
           Geolocation, {rows.length} {rows.length === 1 ? "address" : "addresses"}
         </h2>
 
-        <CopyableList rows={rows} />
+        <AnalystNote rows={rows} />
         <SameCountryCallout rows={rows} />
 
         <div className="overflow-x-auto">

@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GeoRow } from "../geo";
-import type { Confidence } from "../types";
 import type { CountrySummary } from "./summary";
 import {
-  copyBlock,
   countryCodeOf,
   sameCountrySentence,
   sameCountryText,
@@ -205,106 +203,5 @@ describe("sameCountrySentence", () => {
     const t = sameCountryText(s);
     expect(`${t.lead} ${t.place}${t.tail}`).toBe(sameCountrySentence(s));
     expect(t.place).toBe("United States (US)");
-  });
-});
-
-/** A row with independent per-field confidences. */
-function netRow(
-  ip: string,
-  opts: {
-    country?: [string, Confidence];
-    asn?: [string, Confidence];
-    isp?: [string, Confidence];
-    asnOrg?: [string, Confidence];
-  },
-): GeoRow {
-  const field = (v?: [string, Confidence]) =>
-    v ? { value: v[0], confidence: v[1], score: 1, agreement: 1, sources: ["ip-api"] } : undefined;
-  return {
-    ip,
-    version: 4,
-    status: "ok",
-    geo: {},
-    resolution: {
-      country: field(opts.country),
-      countryCode: opts.country?.[0],
-      asn: field(opts.asn),
-      asnOrg: field(opts.asnOrg),
-      isp: field(opts.isp),
-      flags: { isHosting: false, isProxy: false, isMobile: false, sources: {} },
-      providerCount: 2,
-    },
-  };
-}
-
-describe("copyBlock", () => {
-  it("aligns columns to the widest value and clips nothing", () => {
-    const block = copyBlock([
-      netRow("1.1.1.1", { country: ["US", "high"], asn: ["AS13335", "high"], isp: ["Cloudflare, Inc.", "high"] }),
-      netRow("203.0.113.254", { country: ["US", "high"], asn: ["AS15169", "high"], isp: ["Google LLC", "high"] }),
-    ]);
-    expect(block).toBe(
-      "1.1.1.1        US  AS13335  Cloudflare, Inc.\n" +
-        "203.0.113.254  US  AS15169  Google LLC",
-    );
-  });
-
-  it("omits the legend when every field is high confidence", () => {
-    const block = copyBlock([netRow("1.1.1.1", { country: ["US", "high"], asn: ["AS13335", "high"], isp: ["Cloudflare, Inc.", "high"] })]);
-    expect(block).not.toContain("no data");
-    expect(block).not.toContain("contested");
-  });
-
-  it("suffixes fields below high confidence, per field", () => {
-    const block = copyBlock([netRow("9.9.9.9", { country: ["US", "high"], asn: ["AS19281", "medium"], isp: ["Quad9", "high"] })]);
-    expect(block).toContain("9.9.9.9  US  AS19281?  Quad9");
-    expect(block).toContain("value?  contested or single provider");
-  });
-
-  it("prints the canonical AS number, dropping the org tail the vote kept", () => {
-    const block = copyBlock([
-      netRow("1.1.1.1", { asn: ["AS13335 Cloudflare, Inc.", "high"], isp: ["Cloudflare", "high"] }),
-    ]);
-    expect(block).toContain("AS13335  Cloudflare");
-    expect(block).not.toContain("AS13335 Cloudflare, Inc.  Cloudflare");
-  });
-
-  it("prints a bare ? and its legend for an error row", () => {
-    const rows: GeoRow[] = [
-      netRow("1.1.1.1", { country: ["US", "high"], asn: ["AS13335", "high"], isp: ["Cloudflare, Inc.", "high"] }),
-      { ip: "203.0.113.7", version: 4, status: "error", error: "Lookup failed" },
-    ];
-    const block = copyBlock(rows);
-    expect(block).toContain("203.0.113.7  ?   ?        ?");
-    expect(block).toContain("?       no data");
-  });
-
-  it("walks the ISP ladder: isp, then asnOrg, then a bare ?", () => {
-    expect(copyBlock([netRow("1.1.1.1", { asnOrg: ["Cloudflare", "high"] })])).toContain("Cloudflare");
-    expect(copyBlock([netRow("1.1.1.1", {})])).toContain("1.1.1.1  ?  ?  ?");
-  });
-
-  it("never promotes the unreconciled org field into the confidence-marked column", () => {
-    const r: GeoRow = {
-      ip: "1.1.1.1",
-      version: 4,
-      status: "ok",
-      geo: { org: "Some Org" },
-      resolution: {
-        flags: { isHosting: false, isProxy: false, isMobile: false, sources: {} },
-        providerCount: 1,
-      },
-    };
-    expect(copyBlock([r])).not.toContain("Some Org");
-  });
-
-  it("suffixes raw geo values when nothing reconciled at all", () => {
-    const r: GeoRow = {
-      ip: "1.1.1.1",
-      version: 4,
-      status: "ok",
-      geo: { countryCode: "US", asn: "AS13335", org: "Cloudflare" },
-    };
-    expect(copyBlock([r])).toContain("1.1.1.1  US?  AS13335?  Cloudflare?");
   });
 });

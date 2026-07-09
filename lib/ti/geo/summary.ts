@@ -6,9 +6,8 @@
  * honest, the summary must never describe something the data doesn't support.
  * Every claim here is traceable to a reconciled field.
  */
-import type { Confidence, ResolvedField } from "../types";
+import type { Confidence } from "../types";
 import type { GeoRow } from "../geo";
-import { canonicalAsn } from "./geokit";
 
 /** Provider ids as users should read them. Unlisted ids pass through, so a new
  *  provider degrades to a readable id rather than vanishing from attribution. */
@@ -130,72 +129,4 @@ export function sameCountryText(s: CountrySummary): SameCountryText {
 export function sameCountrySentence(s: CountrySummary): string {
   const { lead, place, tail } = sameCountryText(s);
   return `${lead} ${place}${tail}`;
-}
-
-/** A resolved value, suffixed with "?" unless providers agreed on it. */
-function marked(field: ResolvedField<string>): string {
-  return field.confidence === "high" ? field.value : `${field.value}?`;
-}
-
-function countryCell(row: GeoRow): string {
-  const code = countryCodeOf(row);
-  if (!code) return "?";
-  const field = row.resolution?.country;
-  if (!field) return `${code}?`;
-  return field.confidence === "high" ? code : `${code}?`;
-}
-
-/** `tally` groups ASN votes by canonicalAsn but stores the raw winning string,
- *  which carries an org tail ("AS13335 Cloudflare, Inc."). Strip it: the org
- *  already has its own column, and the tail wrecks the alignment. */
-function asnCell(row: GeoRow): string {
-  const res = row.resolution;
-  if (res) {
-    if (!res.asn) return "?";
-    const num = canonicalAsn(res.asn.value) || res.asn.value;
-    return res.asn.confidence === "high" ? num : `${num}?`;
-  }
-  const raw = row.geo?.asn;
-  if (!raw) return "?";
-  return `${canonicalAsn(raw) || raw}?`;
-}
-
-/** isp, then asnOrg, then a bare ?. `geo.org` never enters this column: it is a
- *  raw provider field that never went through reconciliation, and this column's
- *  legend promises confidence marking. */
-function ispCell(row: GeoRow): string {
-  const res = row.resolution;
-  if (res) {
-    if (res.isp) return marked(res.isp);
-    if (res.asnOrg) return marked(res.asnOrg);
-    return "?";
-  }
-  const raw = row.geo?.isp ?? row.geo?.org;
-  return raw ? `${raw}?` : "?";
-}
-
-/**
- * Aligned monospace columns: IP, country, ASN, ISP. Columns rather than a
- * comma-separated line because ISP names contain commas ("Cloudflare, Inc.").
- * Widths size to content, so nothing is ever clipped into a different name.
- */
-export function copyBlock(rows: GeoRow[]): string {
-  if (rows.length === 0) return "";
-  const cells = rows.map((r) => [r.ip, countryCell(r), asnCell(r), ispCell(r)]);
-  const widths = [0, 1, 2].map((col) =>
-    Math.max(...cells.map((row) => row[col].length)),
-  );
-  const lines = cells.map((row) =>
-    `${row[0].padEnd(widths[0])}  ${row[1].padEnd(widths[1])}  ${row[2].padEnd(widths[2])}  ${row[3]}`.trimEnd(),
-  );
-
-  // A placeholder key, not an example cell: the first suffixed cell is often a
-  // long org name, and the two markers must read as distinct rules.
-  const hasSuffixed = cells.flat().some((c) => c.length > 1 && c.endsWith("?"));
-  const hasBare = cells.flat().some((c) => c === "?");
-  const legend: string[] = [];
-  if (hasSuffixed) legend.push("value?  contested or single provider");
-  if (hasBare) legend.push("?       no data");
-
-  return legend.length ? `${lines.join("\n")}\n\n${legend.join("\n")}` : lines.join("\n");
 }

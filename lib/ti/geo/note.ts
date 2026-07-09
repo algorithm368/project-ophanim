@@ -70,7 +70,11 @@ function networkClause(row: GeoRow): string | undefined {
 }
 
 /** `PTR is dns.google, per ip-api.com.` Attributed, never asserted: `geo.reverse`
- *  comes from ip-api alone and never went through a vote. */
+ *  comes from ip-api alone and never went through a vote.
+ *
+ *  Dormant on the bulk path today: ip-api's /batch endpoint silently omits
+ *  `reverse` even when `IP_API_FIELDS` asks for it (the single-lookup endpoint
+ *  honors it). The clause fires as soon as any provider populates `geo.reverse`. */
 function ptrClause(row: GeoRow): string | undefined {
   const reverse = row.geo?.reverse;
   if (!reverse) return undefined;
