@@ -2,7 +2,7 @@ import type { GeoContext } from "../types";
 import { getJson, isTimeout } from "../http";
 import { type RdapIpResponse, rdapIpToGeo } from "../sources/rdap-ip";
 import { type FreeIpApiResponse, freeIpApiToGeo } from "../sources/freeipapi";
-import { normalizeKey } from "./geokit";
+import { countryKeyIndex, countryVoteKey } from "./geokit";
 import type { GeoInput } from "./reconcile";
 
 /** A provider's geo answers keyed by IP, ready to transpose. */
@@ -29,12 +29,6 @@ export function transposeByIp(
   return perIp;
 }
 
-/** Normalized country key for an input: ISO code preferred, else country name.
- *  Returns "" (falsy sentinel) when the input carries no country data. */
-function countryKey(geo: GeoContext): string {
-  return geo.countryCode?.trim().toUpperCase() || normalizeKey(geo.country);
-}
-
 /** IPs whose country is uncertain: fewer than 2 reporting voters, or voters
  *  disagree on the code. Disagreements are prioritized, then capped to `max`. */
 export function selectUncertainIps(
@@ -46,8 +40,13 @@ export function selectUncertainIps(
   for (const [ip, inputs] of perIp) {
     let reporting = 0;
     const codes = new Set<string>();
+    // Per-IP index, so a name-only vote resolves onto a coded vote for the same
+    // country rather than reading as a disagreement (and burning an RDAP call).
+    const index = countryKeyIndex(
+      inputs.map(({ geo }) => ({ code: geo.countryCode, name: geo.country })),
+    );
     for (const inp of inputs) {
-      const key = countryKey(inp.geo);
+      const key = countryVoteKey(inp.geo, index);
       if (key) {
         reporting++;
         codes.add(key);

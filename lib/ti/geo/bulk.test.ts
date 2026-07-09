@@ -48,6 +48,19 @@ describe("selectUncertainIps", () => {
     ]);
     expect(selectUncertainIps(perIp, 2)).toHaveLength(2);
   });
+
+  it("does not flag a code-only and name-only vote for the same country", () => {
+    const perIp = new Map([
+      [
+        "a",
+        [
+          { id: "rdap-ip", geo: { countryCode: "US" } },
+          { id: "freeipapi", geo: { country: "United States" } },
+        ],
+      ],
+    ]);
+    expect(selectUncertainIps(perIp, Infinity)).not.toContain("a");
+  });
 });
 
 describe("fetchRdapCountries", () => {
