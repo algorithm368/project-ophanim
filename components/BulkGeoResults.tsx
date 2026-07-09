@@ -12,14 +12,14 @@ import {
   sameCountryText,
   summarizeCountries,
 } from "@/lib/ti/geo/summary";
-import { analystNote, analystNotes } from "@/lib/ti/geo/note";
+import { analystNote, analystNoteLines } from "@/lib/ti/geo/note";
 
-/** A selectable analyst note, one paragraph per address, with a copy button.
- *  The paragraphs rendered here and the text copied are the same strings. */
+/** A selectable analyst note, one bulleted line per address, with a copy button.
+ *  The lines rendered here and the text copied are the same strings. */
 function AnalystNote({ rows }: { rows: GeoRow[] }) {
-  const paragraphs = analystNotes(rows);
+  const lines = analystNoteLines(rows);
   const [copied, copy] = useCopied();
-  if (!paragraphs.length) return null;
+  if (!lines.length) return null;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -48,10 +48,11 @@ function AnalystNote({ rows }: { rows: GeoRow[] }) {
         </Button>
       </div>
       <div className="max-h-64 space-y-2 overflow-auto rounded-md border-2 border-foreground/20 bg-background/60 px-3 py-2 select-all">
-        {paragraphs.map((text, i) => (
+        {lines.map((text, i) => (
+          // -indent-4 + pl-4 hangs wrapped text under the first word, not the bullet.
           <p
             key={rows[i].ip}
-            className="font-sans text-sm leading-relaxed text-foreground/90"
+            className="-indent-4 pl-4 font-sans text-sm leading-relaxed text-foreground/90"
           >
             {text}
           </p>

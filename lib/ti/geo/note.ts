@@ -130,7 +130,13 @@ export function analystNotes(rows: GeoRow[]): string[] {
   });
 }
 
-/** The full note, paragraphs joined by a blank line. What the Copy button sends. */
+/** The bulleted lines, one per address. The single source the component renders
+ *  and the Copy button sends, so the two can never assert different things. */
+export function analystNoteLines(rows: GeoRow[]): string[] {
+  return analystNotes(rows).map((note) => `- ${note}`);
+}
+
+/** The full note, one bulleted line per address. What the Copy button sends. */
 export function analystNote(rows: GeoRow[]): string {
-  return analystNotes(rows).join("\n\n");
+  return analystNoteLines(rows).join("\n");
 }

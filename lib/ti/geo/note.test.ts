@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GeoRow } from "../geo";
 import type { Confidence, GeoResolution } from "../types";
-import { analystNote, analystNotes } from "./note";
+import { analystNote, analystNoteLines, analystNotes } from "./note";
 
 const noFlags = { isHosting: false, isProxy: false, isMobile: false, sources: {} };
 
@@ -137,21 +137,48 @@ describe("analystNotes unlocated rows", () => {
   });
 });
 
+describe("analystNoteLines", () => {
+  it("prefixes each address with a bullet", () => {
+    const rows = [
+      okRow("8.8.8.8", { country: country("United States", "high", ["ip-api"]), countryCode: "US" }),
+    ];
+    expect(analystNoteLines(rows)).toEqual([
+      "- 8.8.8.8 resolves to United States (US), per ip-api.com.",
+    ]);
+  });
+
+  it("bullets an unlocated address too, so the list has no gaps", () => {
+    const rows: GeoRow[] = [{ ip: "203.0.113.7", version: 4, status: "error" }];
+    expect(analystNoteLines(rows)).toEqual([
+      "- 203.0.113.7 could not be geolocated: Lookup failed.",
+    ]);
+  });
+});
+
 describe("analystNote", () => {
-  it("emits one paragraph per row, blank-line joined", () => {
+  it("emits one bulleted line per row, newline joined", () => {
     const rows: GeoRow[] = [
       okRow("8.8.8.8", { country: country("United States", "high", ["ip-api"]), countryCode: "US" }),
       { ip: "203.0.113.7", version: 4, status: "error", error: "Lookup failed" },
     ];
     expect(analystNotes(rows)).toHaveLength(2);
     expect(analystNote(rows)).toBe(
-      "8.8.8.8 resolves to United States (US), per ip-api.com.\n\n" +
-        "203.0.113.7 could not be geolocated: Lookup failed.",
+      "- 8.8.8.8 resolves to United States (US), per ip-api.com.\n" +
+        "- 203.0.113.7 could not be geolocated: Lookup failed.",
     );
+  });
+
+  it("is exactly the rendered lines, joined", () => {
+    const rows = [
+      okRow("8.8.8.8", { country: country("United States", "high", ["ip-api"]), countryCode: "US" }),
+      okRow("1.1.1.1", { country: country("Australia", "high", ["ip-api"]), countryCode: "AU" }),
+    ];
+    expect(analystNote(rows)).toBe(analystNoteLines(rows).join("\n"));
   });
 
   it("returns nothing for an empty batch", () => {
     expect(analystNotes([])).toEqual([]);
+    expect(analystNoteLines([])).toEqual([]);
     expect(analystNote([])).toBe("");
   });
 });
