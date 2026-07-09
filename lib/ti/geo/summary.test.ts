@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { GeoRow } from "../geo";
-import { countryCodeOf, summarizeCountries } from "./summary";
+import type { CountrySummary } from "./summary";
+import {
+  countryCodeOf,
+  sameCountrySentence,
+  sameCountryText,
+  summarizeCountries,
+} from "./summary";
 
 /** A located row whose country resolved with the given sources/confidence. */
 function row(
@@ -128,5 +134,74 @@ describe("summarizeCountries", () => {
     expect(s?.located).toBe(2);
     expect(s?.total).toBe(3);
     expect(s?.ips).toEqual(["1.1.1.1", "8.8.8.8"]);
+  });
+});
+
+/** Build a summary directly, so sentence tests don't depend on row plumbing. */
+function summary(over: Partial<CountrySummary> = {}): CountrySummary {
+  return {
+    country: "United States",
+    code: "US",
+    ips: ["1.1.1.1", "8.8.8.8"],
+    located: 2,
+    total: 2,
+    confidence: "high",
+    agreedBy: ["ip-api.com", "IPinfo"],
+    contested: 0,
+    ...over,
+  };
+}
+
+describe("sameCountrySentence", () => {
+  it("states coverage, the country, and multi-provider agreement", () => {
+    expect(sameCountrySentence(summary())).toBe(
+      "2 of 2 addresses resolved to a country. All 2 are located in the same country, " +
+        "United States (US), agreed by ip-api.com and IPinfo on all 2 addresses.",
+    );
+  });
+
+  it("hedges the verb below high confidence", () => {
+    expect(sameCountrySentence(summary({ confidence: "medium" }))).toContain(
+      "All 2 are likely located in the same country",
+    );
+  });
+
+  it("says reported, not agreed, for a lone provider", () => {
+    const s = summary({ agreedBy: ["ip-api.com"] });
+    expect(sameCountrySentence(s)).toContain("as reported by ip-api.com on all 2 addresses.");
+    expect(sameCountrySentence(s)).not.toContain("agreed by");
+  });
+
+  it("names no provider when none backed every address", () => {
+    expect(sameCountrySentence(summary({ agreedBy: [] }))).toContain(
+      "backed by different providers per address.",
+    );
+  });
+
+  it("appends the disagreement clause, pluralized", () => {
+    expect(sameCountrySentence(summary({ contested: 1 }))).toContain(
+      ", providers disagreed on 1 address.",
+    );
+    expect(sameCountrySentence(summary({ contested: 2 }))).toContain(
+      ", providers disagreed on 2 addresses.",
+    );
+  });
+
+  it("reports partial coverage against the full batch", () => {
+    expect(sameCountrySentence(summary({ located: 2, total: 6 }))).toContain(
+      "2 of 6 addresses resolved to a country.",
+    );
+  });
+
+  it("joins three or more providers with commas and a trailing and", () => {
+    const s = summary({ agreedBy: ["ip-api.com", "IPinfo", "RDAP"] });
+    expect(sameCountrySentence(s)).toContain("agreed by ip-api.com, IPinfo and RDAP");
+  });
+
+  it("concatenates back to the rendered parts exactly", () => {
+    const s = summary({ contested: 1 });
+    const t = sameCountryText(s);
+    expect(`${t.lead} ${t.place}${t.tail}`).toBe(sameCountrySentence(s));
+    expect(t.place).toBe("United States (US)");
   });
 });

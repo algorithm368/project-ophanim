@@ -88,3 +88,45 @@ export function summarizeCountries(rows: GeoRow[]): CountrySummary | null {
     contested,
   };
 }
+
+/** Join with commas and a trailing "and": `a, b and c` (or `a and b`). */
+function joinAnd(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** How the winning country was backed, phrased so a lone provider never "agrees". */
+function attribution(s: CountrySummary): string {
+  if (s.agreedBy.length === 0) return "backed by different providers per address";
+  const verb = s.agreedBy.length >= 2 ? "agreed by" : "as reported by";
+  return `${verb} ${joinAnd(s.agreedBy)} on all ${s.located} addresses`;
+}
+
+/** The sentence split at the point where the rendered version inserts a chip. */
+export interface SameCountryText {
+  lead: string;
+  place: string;
+  tail: string;
+}
+
+export function sameCountryText(s: CountrySummary): SameCountryText {
+  const verb = s.confidence === "high" ? "are located in" : "are likely located in";
+  const contested =
+    s.contested > 0
+      ? `, providers disagreed on ${s.contested} ${s.contested === 1 ? "address" : "addresses"}`
+      : "";
+  return {
+    lead:
+      `${s.located} of ${s.total} addresses resolved to a country. ` +
+      `All ${s.located} ${verb} the same country,`,
+    place: `${s.country} (${s.code})`,
+    tail: `, ${attribution(s)}${contested}.`,
+  };
+}
+
+/** Plain-text form, used by the Copy button. Identical wording to the render. */
+export function sameCountrySentence(s: CountrySummary): string {
+  const { lead, place, tail } = sameCountryText(s);
+  return `${lead} ${place}${tail}`;
+}
