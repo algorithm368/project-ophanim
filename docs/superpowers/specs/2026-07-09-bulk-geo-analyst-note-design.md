@@ -106,7 +106,7 @@ else; `asn.confidence` governs the network clause and nothing else.
 | Network | `Announced by AS15169 (Google LLC).` AS number canonicalized via `canonicalAsn`, because `tally` stores the raw winner with an org tail. Org is `asnOrg ?? isp`, never `geo.org`. When `asn.confidence === "low"`, append `, single-sourced` |
 | PTR | `PTR is dns.google, per ip-api.com.` Always attributed, never asserted flatly, because `geo.reverse` never went through a vote. Omitted when absent |
 | Coordinates | `Providers place it near 39.04, -77.49.` Two decimals (~1.1 km). Omitted when `coordinates.confidence === "low"`, since low means the points were over `COORD_MEDIUM_KM` (75 km) apart and their centroid is meaningless |
-| Flags | `Flagged as hosting infrastructure, a proxy or VPN exit, and a mobile network.` Only the true ones, comma-and joined. Omitted when none |
+| Flags | `Flagged as hosting infrastructure, a proxy or VPN exit and a mobile network.` Only the true ones, comma-and joined via the same `joinAnd` the provider list uses, so no Oxford comma. Omitted when none |
 | Unlocated | `{ip} could not be geolocated: {error}.` for `status === "error"`; `{ip} returned no country data.` for an ok row with no resolved country |
 
 Full-precision coordinates are deliberately not printed. `reconcileCoordinates`
