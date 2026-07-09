@@ -9,6 +9,8 @@
  * sharing its sentence.
  */
 import type { GeoRow } from "../geo";
+import type { GeoFlags } from "../types";
+import { canonicalAsn } from "./geokit";
 import { countryCodeOf, providerLabel } from "./summary";
 
 /** Join with commas and a trailing "and": `a, b and c` (or `a and b`). */
@@ -52,6 +54,57 @@ function dissentClause(row: GeoRow): string | undefined {
   return `${labelled(first.sources)} places it in ${first.value} instead.`;
 }
 
+/** `Announced by AS13335 (Cloudflare, Inc.).`
+ *
+ *  `tally` groups ASN votes by canonicalAsn but stores the raw winning string,
+ *  which carries an org tail. Strip it: the org has its own parenthetical.
+ *  `geo.org` is never used, it never went through reconciliation. */
+function networkClause(row: GeoRow): string | undefined {
+  const res = row.resolution;
+  if (!res?.asn) return undefined;
+  const number = canonicalAsn(res.asn.value) || res.asn.value;
+  const org = res.asnOrg?.value ?? res.isp?.value;
+  const named = org ? `${number} (${org})` : number;
+  const hedge = res.asn.confidence === "low" ? ", single-sourced" : "";
+  return `Announced by ${named}${hedge}.`;
+}
+
+/** `PTR is dns.google, per ip-api.com.` Attributed, never asserted: `geo.reverse`
+ *  comes from ip-api alone and never went through a vote. */
+function ptrClause(row: GeoRow): string | undefined {
+  const reverse = row.geo?.reverse;
+  if (!reverse) return undefined;
+  return `PTR is ${reverse}, per ${providerLabel("ip-api")}.`;
+}
+
+/** `Providers place it near 39.04, -77.49.`
+ *
+ *  Two decimals (~1.1 km): the centroid averages city-level guesses, so more
+ *  precision would assert knowledge we don't have. Omitted at low confidence,
+ *  where the provider points were over COORD_MEDIUM_KM apart. */
+function coordinatesClause(row: GeoRow): string | undefined {
+  const coords = row.resolution?.coordinates;
+  if (!coords || coords.confidence === "low") return undefined;
+  const { lat, lon } = coords.value;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return undefined;
+  return `Providers place it near ${lat.toFixed(2)}, ${lon.toFixed(2)}.`;
+}
+
+const FLAG_LABEL: [keyof Pick<GeoFlags, "isHosting" | "isProxy" | "isMobile">, string][] = [
+  ["isHosting", "hosting infrastructure"],
+  ["isProxy", "a proxy or VPN exit"],
+  ["isMobile", "a mobile network"],
+];
+
+/** `Flagged as hosting infrastructure, a proxy or VPN exit and a mobile network.` */
+function flagsClause(row: GeoRow): string | undefined {
+  const flags = row.resolution?.flags;
+  if (!flags) return undefined;
+  const set = FLAG_LABEL.filter(([key]) => flags[key]).map(([, label]) => label);
+  if (!set.length) return undefined;
+  return `Flagged as ${joinAnd(set)}.`;
+}
+
 /** One paragraph per address, in row order. */
 export function analystNotes(rows: GeoRow[]): string[] {
   return rows.map((row) => {
@@ -60,7 +113,16 @@ export function analystNotes(rows: GeoRow[]): string[] {
     }
     const location = locationClause(row);
     if (!location) return `${row.ip} returned no country data.`;
-    return [location, dissentClause(row)].filter(Boolean).join(" ");
+    return [
+      location,
+      dissentClause(row),
+      networkClause(row),
+      ptrClause(row),
+      coordinatesClause(row),
+      flagsClause(row),
+    ]
+      .filter(Boolean)
+      .join(" ");
   });
 }
 

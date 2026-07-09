@@ -155,3 +155,177 @@ describe("analystNote", () => {
     expect(analystNote([])).toBe("");
   });
 });
+
+describe("analystNotes network clause", () => {
+  it("canonicalizes the AS number, so the org appears exactly once", () => {
+    const rows = [
+      okRow("1.1.1.1", {
+        country: country("Australia", "high", ["ip-api"]),
+        countryCode: "AU",
+        asn: field("AS13335 Cloudflare, Inc.", "high"),
+        asnOrg: field("Cloudflare, Inc.", "high"),
+      }),
+    ];
+    expect(analystNotes(rows)[0]).toContain("Announced by AS13335 (Cloudflare, Inc.).");
+    expect(analystNotes(rows)[0]).not.toContain("AS13335 Cloudflare, Inc. (");
+  });
+
+  it("falls back from asnOrg to isp", () => {
+    const rows = [
+      okRow("9.9.9.9", {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        asn: field("AS19281", "high"),
+        isp: field("Quad9", "high"),
+      }),
+    ];
+    expect(analystNotes(rows)[0]).toContain("Announced by AS19281 (Quad9).");
+  });
+
+  it("never prints the unreconciled org field", () => {
+    const row: GeoRow = {
+      ip: "1.1.1.1",
+      version: 4,
+      status: "ok",
+      geo: { org: "Some Org" },
+      resolution: {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        asn: field("AS13335", "high"),
+        flags: noFlags,
+        providerCount: 1,
+      },
+    };
+    expect(analystNotes([row])[0]).not.toContain("Some Org");
+  });
+
+  it("marks a single-sourced ASN", () => {
+    const rows = [
+      okRow("9.9.9.9", {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        asn: field("AS19281", "low"),
+        isp: field("Quad9", "high"),
+      }),
+    ];
+    expect(analystNotes(rows)[0]).toContain("Announced by AS19281 (Quad9), single-sourced.");
+  });
+
+  it("omits the clause with no ASN", () => {
+    const rows = [
+      okRow("9.9.9.9", { country: country("United States", "high", ["ip-api"]), countryCode: "US" }),
+    ];
+    expect(analystNotes(rows)[0]).not.toContain("Announced by");
+  });
+});
+
+describe("analystNotes PTR clause", () => {
+  it("always attributes the PTR, because it never went through a vote", () => {
+    const row: GeoRow = {
+      ip: "8.8.8.8",
+      version: 4,
+      status: "ok",
+      geo: { reverse: "dns.google" },
+      resolution: {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        flags: noFlags,
+        providerCount: 1,
+      },
+    };
+    expect(analystNotes([row])[0]).toContain("PTR is dns.google, per ip-api.com.");
+  });
+
+  it("omits the clause when there is no PTR", () => {
+    const rows = [
+      okRow("8.8.8.8", { country: country("United States", "high", ["ip-api"]), countryCode: "US" }),
+    ];
+    expect(analystNotes(rows)[0]).not.toContain("PTR");
+  });
+});
+
+describe("analystNotes coordinates clause", () => {
+  it("rounds to two decimals and hedges the verb", () => {
+    const rows = [
+      okRow("8.8.8.8", {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        coordinates: {
+          value: { lat: 39.0438, lon: -77.4874 },
+          confidence: "high",
+          score: 1,
+          agreement: 1,
+          sources: ["ip-api"],
+        },
+      }),
+    ];
+    expect(analystNotes(rows)[0]).toContain("Providers place it near 39.04, -77.49.");
+  });
+
+  it("omits the clause at low confidence, where the centroid is meaningless", () => {
+    const rows = [
+      okRow("8.8.8.8", {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        coordinates: {
+          value: { lat: 39.0438, lon: -77.4874 },
+          confidence: "low",
+          score: 0.2,
+          agreement: 0.2,
+          sources: ["ip-api", "ipinfo"],
+        },
+      }),
+    ];
+    expect(analystNotes(rows)[0]).not.toContain("place it near");
+  });
+
+  it("omits the clause for a non-finite centroid", () => {
+    const rows = [
+      okRow("8.8.8.8", {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        coordinates: {
+          value: { lat: Number.NaN, lon: 0 },
+          confidence: "high",
+          score: 1,
+          agreement: 1,
+          sources: ["ip-api"],
+        },
+      }),
+    ];
+    expect(analystNotes(rows)[0]).not.toContain("place it near");
+  });
+});
+
+describe("analystNotes flags clause", () => {
+  it("names one flag", () => {
+    const rows = [
+      okRow("8.8.8.8", {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        flags: { isHosting: true, isProxy: false, isMobile: false, sources: {} },
+      }),
+    ];
+    expect(analystNotes(rows)[0]).toContain("Flagged as hosting infrastructure.");
+  });
+
+  it("joins three flags with commas and a trailing and", () => {
+    const rows = [
+      okRow("8.8.8.8", {
+        country: country("United States", "high", ["ip-api"]),
+        countryCode: "US",
+        flags: { isHosting: true, isProxy: true, isMobile: true, sources: {} },
+      }),
+    ];
+    expect(analystNotes(rows)[0]).toContain(
+      "Flagged as hosting infrastructure, a proxy or VPN exit and a mobile network.",
+    );
+  });
+
+  it("omits the clause when no flag is set", () => {
+    const rows = [
+      okRow("8.8.8.8", { country: country("United States", "high", ["ip-api"]), countryCode: "US" }),
+    ];
+    expect(analystNotes(rows)[0]).not.toContain("Flagged");
+  });
+});
