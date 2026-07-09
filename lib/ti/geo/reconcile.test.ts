@@ -301,3 +301,25 @@ describe("reconcileGeo — overall confidence", () => {
     expect(res.overall).toBeUndefined();
   });
 });
+
+describe("reconcileCountry vote keys", () => {
+  it("tallies a code-only and a name-only vote for one country as a single vote", () => {
+    const res = reconcileGeoInputs([
+      { id: "rdap-ip", geo: { countryCode: "US" } },
+      { id: "freeipapi", geo: { country: "United States" } },
+    ]);
+    expect(res?.countryCode).toBe("US");
+    expect(res?.country?.value).toBe("United States");
+    expect(res?.country?.sources).toEqual(["rdap-ip", "freeipapi"]);
+    expect(res?.country?.alternatives).toBeUndefined();
+    expect(res?.country?.confidence).toBe("high");
+  });
+
+  it("keeps genuinely different countries as separate candidates", () => {
+    const res = reconcileGeoInputs([
+      { id: "rdap-ip", geo: { countryCode: "US" } },
+      { id: "freeipapi", geo: { country: "Australia" } },
+    ]);
+    expect(res?.country?.alternatives).toHaveLength(1);
+  });
+});

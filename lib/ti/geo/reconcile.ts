@@ -5,7 +5,13 @@ import type {
   ResolvedField,
   SourceResult,
 } from "../types";
-import { canonicalAsn, haversineKm, normalizeKey } from "./geokit";
+import {
+  canonicalAsn,
+  countryKeyIndex,
+  countryVoteKey,
+  haversineKm,
+  normalizeKey,
+} from "./geokit";
 import {
   authorityFor,
   CITY_CLUSTER_KM,
@@ -278,14 +284,21 @@ function reconcileCountry(inputs: GeoInput[]): {
   let reporting = 0;
   let reportingWeight = 0;
 
+  // Keyed through a batch-derived index so a code-only provider (RDAP: "US")
+  // and a name-only provider ("United States") join one vote instead of
+  // splitting into a false disagreement.
+  const index = countryKeyIndex(
+    inputs.map(({ geo }) => ({ code: geo.countryCode, name: geo.country })),
+  );
+
   for (const { id, geo } of inputs) {
     const code = geo.countryCode?.trim().toUpperCase() ?? "";
     const name = geo.country?.trim() ?? "";
-    if (!code && !name) continue;
+    const key = countryVoteKey(geo, index);
+    if (!key) continue;
     const w = getWeight(id, "country");
     reporting++;
     reportingWeight += w;
-    const key = code || normalizeKey(name);
     const existing = votes.get(key);
     if (existing) {
       existing.ids.push(id);
