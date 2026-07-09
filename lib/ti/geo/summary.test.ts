@@ -258,7 +258,15 @@ describe("copyBlock", () => {
   it("suffixes fields below high confidence, per field", () => {
     const block = copyBlock([netRow("9.9.9.9", { country: ["US", "high"], asn: ["AS19281", "medium"], isp: ["Quad9", "high"] })]);
     expect(block).toContain("9.9.9.9  US  AS19281?  Quad9");
-    expect(block).toContain("AS19281?  contested or single provider");
+    expect(block).toContain("value?  contested or single provider");
+  });
+
+  it("prints the canonical AS number, dropping the org tail the vote kept", () => {
+    const block = copyBlock([
+      netRow("1.1.1.1", { asn: ["AS13335 Cloudflare, Inc.", "high"], isp: ["Cloudflare", "high"] }),
+    ]);
+    expect(block).toContain("AS13335  Cloudflare");
+    expect(block).not.toContain("AS13335 Cloudflare, Inc.  Cloudflare");
   });
 
   it("prints a bare ? and its legend for an error row", () => {
@@ -268,7 +276,7 @@ describe("copyBlock", () => {
     ];
     const block = copyBlock(rows);
     expect(block).toContain("203.0.113.7  ?   ?        ?");
-    expect(block).toContain("?    no data");
+    expect(block).toContain("?       no data");
   });
 
   it("walks the ISP ladder: isp, then asnOrg, then a bare ?", () => {

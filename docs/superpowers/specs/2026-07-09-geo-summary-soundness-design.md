@@ -159,8 +159,8 @@ comma-in-ISP-name problem (`Cloudflare, Inc.`) that a CSV line would create.
 9.9.9.9      US?  AS19281  Quad9
 203.0.113.7  ?    ?        ?
 
-US?  contested or single provider
-?    no data
+value?  contested or single provider
+?       no data
 ```
 
 Rules:
@@ -175,9 +175,13 @@ Rules:
   their own `ResolvedField` (`resolution.country`, `.asn`, `.isp`). An address
   may legitimately print `US` beside `AS13335?`.
 - **The legend prints only the markers actually used.** A fully high-confidence
-  batch carries no legend. The suffix legend line is keyed by an example drawn
-  from the block itself (`US?` above), and the suffix applies to any column, not
-  only country.
+  batch carries no legend. The suffix line is keyed by the placeholder `value?`,
+  not by an example cell: on real batches the first suffixed cell is often a long
+  org name (`Cloudflare, Inc?`), and the two markers must read as distinct rules.
+- **The ASN column prints the canonical AS number.** `tally` groups ASN votes by
+  `canonicalAsn` but stores the *raw* winning string, so `resolution.asn.value`
+  is `"AS13335 Cloudflare, Inc."`. The org tail is stripped: it already has its
+  own column, and it destroys the alignment.
 
 ISP column ladder, in order:
 

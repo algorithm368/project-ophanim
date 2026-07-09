@@ -8,6 +8,7 @@
  */
 import type { Confidence, ResolvedField } from "../types";
 import type { GeoRow } from "../geo";
+import { canonicalAsn } from "./geokit";
 
 /** Provider ids as users should read them. Unlisted ids pass through, so a new
  *  provider degrades to a readable id rather than vanishing from attribution. */
@@ -144,11 +145,19 @@ function countryCell(row: GeoRow): string {
   return field.confidence === "high" ? code : `${code}?`;
 }
 
+/** `tally` groups ASN votes by canonicalAsn but stores the raw winning string,
+ *  which carries an org tail ("AS13335 Cloudflare, Inc."). Strip it: the org
+ *  already has its own column, and the tail wrecks the alignment. */
 function asnCell(row: GeoRow): string {
   const res = row.resolution;
-  if (res) return res.asn ? marked(res.asn) : "?";
+  if (res) {
+    if (!res.asn) return "?";
+    const num = canonicalAsn(res.asn.value) || res.asn.value;
+    return res.asn.confidence === "high" ? num : `${num}?`;
+  }
   const raw = row.geo?.asn;
-  return raw ? `${raw}?` : "?";
+  if (!raw) return "?";
+  return `${canonicalAsn(raw) || raw}?`;
 }
 
 /** isp, then asnOrg, then a bare ?. `geo.org` never enters this column: it is a
@@ -180,11 +189,13 @@ export function copyBlock(rows: GeoRow[]): string {
     `${row[0].padEnd(widths[0])}  ${row[1].padEnd(widths[1])}  ${row[2].padEnd(widths[2])}  ${row[3]}`.trimEnd(),
   );
 
-  const suffixed = cells.flat().find((c) => c.length > 1 && c.endsWith("?"));
+  // A placeholder key, not an example cell: the first suffixed cell is often a
+  // long org name, and the two markers must read as distinct rules.
+  const hasSuffixed = cells.flat().some((c) => c.length > 1 && c.endsWith("?"));
   const hasBare = cells.flat().some((c) => c === "?");
   const legend: string[] = [];
-  if (suffixed) legend.push(`${suffixed}  contested or single provider`);
-  if (hasBare) legend.push("?    no data");
+  if (hasSuffixed) legend.push("value?  contested or single provider");
+  if (hasBare) legend.push("?       no data");
 
   return legend.length ? `${lines.join("\n")}\n\n${legend.join("\n")}` : lines.join("\n");
 }

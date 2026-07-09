@@ -7,61 +7,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useCopied } from "@/components/CheckResults/primitives";
 import { flagUrl } from "@/lib/flag";
 import { ConfidenceChip } from "@/components/CheckResults/confidence";
-import type { Confidence } from "@/lib/ti/types";
+import {
+  copyBlock,
+  sameCountrySentence,
+  sameCountryText,
+  summarizeCountries,
+} from "@/lib/ti/geo/summary";
 
-/** Uppercase ISO country code for a row (reconciled if available), or "?". */
-function codeOf(row: GeoRow): string {
-  const cc = row.resolution?.countryCode ?? row.geo?.countryCode;
-  return row.status === "ok" && cc ? cc.toUpperCase() : "?";
-}
-
-/** One-line, copy-friendly summary: `1.1.1.1 (US), 8.8.8.8 (US)`. */
-function copyLineOf(rows: GeoRow[]): string {
-  return rows.map((r) => `${r.ip} (${codeOf(r)})`).join(", ");
-}
-
-/** Join IPs with commas and a trailing "and": `a, b and c` (or `a and b`). */
-function joinIps(ips: string[]): string {
-  if (ips.length <= 1) return ips.join("");
-  if (ips.length === 2) return `${ips[0]} and ${ips[1]}`;
-  return `${ips.slice(0, -1).join(", ")} and ${ips[ips.length - 1]}`;
-}
-
-const RANK: Record<Confidence, number> = { high: 3, medium: 2, low: 1 };
-
-/** If every located IP shares one country, describe it with the lowest
- *  confidence seen and how many providers backed the reconciliation. */
-function sameCountryOf(rows: GeoRow[]): {
-  ips: string[];
-  country: string;
-  code: string;
-  confidence: Confidence;
-  providerCount: number;
-} | null {
-  const codeOfRow = (r: GeoRow) =>
-    (r.resolution?.countryCode ?? r.geo?.countryCode)?.toUpperCase();
-  const located = rows.filter((r) => r.status === "ok" && codeOfRow(r));
-  if (located.length < 2) return null;
-  const code = codeOfRow(located[0])!;
-  if (!located.every((r) => codeOfRow(r) === code)) return null;
-
-  let confidence: Confidence = "high";
-  let providerCount = 1;
-  for (const r of located) {
-    const c = r.resolution?.country?.confidence ?? "low";
-    if (RANK[c] < RANK[confidence]) confidence = c;
-    // providerCount is the same across a bulk batch (same provider set per IP);
-    // max is just a defensive pick.
-    providerCount = Math.max(providerCount, r.resolution?.providerCount ?? 1);
-  }
-  const country =
-    located[0].resolution?.country?.value ?? located[0].geo?.country ?? code;
-  return { ips: located.map((r) => r.ip), country, code, confidence, providerCount };
-}
-
-/** A selectable, monospace box of the one-line summary with a copy button. */
+/** A selectable, monospace block of the per-address summary with a copy button. */
 function CopyableList({ rows }: { rows: GeoRow[] }) {
-  const line = copyLineOf(rows);
+  const block = copyBlock(rows);
   const [copied, copy] = useCopied();
   return (
     <div className="space-y-1.5">
@@ -75,7 +30,7 @@ function CopyableList({ rows }: { rows: GeoRow[] }) {
           size="xs"
           aria-label="Copy summary"
           className="font-hand -mr-1.5 gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          onClick={() => copy(line)}
+          onClick={() => copy(block)}
         >
           {copied ? (
             <>
@@ -90,26 +45,21 @@ function CopyableList({ rows }: { rows: GeoRow[] }) {
           )}
         </Button>
       </div>
-      <pre className="max-h-32 overflow-auto rounded-md border-2 border-foreground/20 bg-background/60 px-3 py-2 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
-        {line}
+      {/* whitespace-pre, not pre-wrap: wrapping would break the column alignment. */}
+      <pre className="max-h-48 overflow-auto rounded-md border-2 border-foreground/20 bg-background/60 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre select-all">
+        {block}
       </pre>
     </div>
   );
 }
 
-/** Callout shown when all located IPs resolve to the same country. Mirrors the
- *  copy-friendly box: a label, a Copy button, and a selectable box. */
+/** Callout shown when every located IP resolves to one country. The copied
+ *  sentence and the rendered sentence are the same words, from one source. */
 function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
-  const same = sameCountryOf(rows);
+  const summary = summarizeCountries(rows);
   const [copied, copy] = useCopied();
-  if (!same) return null;
-  const verb =
-    same.confidence === "high" ? "are located in" : "are likely located in";
-  const basis =
-    same.providerCount >= 2
-      ? `as reconciled across ${same.providerCount} geolocation providers`
-      : "as reported by ip-api.com";
-  const sentence = `${joinIps(same.ips)} ${verb} the same country, ${same.country} (${same.code}), ${basis}.`;
+  if (!summary) return null;
+  const { lead, place, tail } = sameCountryText(summary);
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -122,7 +72,7 @@ function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
           size="xs"
           aria-label="Copy same-country summary"
           className="font-hand -mr-1.5 gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          onClick={() => copy(sentence)}
+          onClick={() => copy(sameCountrySentence(summary))}
         >
           {copied ? (
             <>
@@ -139,12 +89,9 @@ function SameCountryCallout({ rows }: { rows: GeoRow[] }) {
       </div>
       <div className="rounded-md border-2 border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 select-all">
         <p className="font-sans text-sm leading-relaxed text-foreground/90">
-          {joinIps(same.ips)} {verb} the same country,{" "}
-          <span className="font-semibold">
-            {same.country} ({same.code})
-          </span>
-          <ConfidenceChip confidence={same.confidence} />
-          {`, ${basis}.`}
+          {lead} <span className="font-semibold">{place}</span>
+          <ConfidenceChip confidence={summary.confidence} />
+          {tail}
         </p>
       </div>
     </div>
