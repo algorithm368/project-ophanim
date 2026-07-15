@@ -1,45 +1,43 @@
 import { describe, expect, it } from "vitest";
 import type { GeoRow } from "../geo";
-import type { CountrySummary } from "./summary";
-import {
-  countryCodeOf,
-  sameCountrySentence,
-  sameCountryText,
-  summarizeCountries,
-} from "./summary";
+import type { ResolvedField } from "../types";
+import { countryCodeOf, originReport, sameCountryNote } from "./summary";
 
-/** A located row whose country resolved with the given sources/confidence. */
-function row(
+/** A located row whose country, city/region, and network can each be set. */
+function named(
   ip: string,
+  name: string,
   code: string,
-  confidence: "high" | "medium" | "low",
-  sources: string[],
-  alternatives?: { value: string; sources: string[] }[],
+  extra?: { city?: string; region?: string; asn?: string; org?: string },
 ): GeoRow {
+  const field = (value: string): ResolvedField<string> => ({
+    value,
+    confidence: "high",
+    score: 1,
+    agreement: 1,
+    sources: ["ip-api"],
+  });
   return {
     ip,
     version: 4,
     status: "ok",
-    geo: { country: "United States", countryCode: code },
+    geo: { country: name, countryCode: code, city: extra?.city, region: extra?.region },
     resolution: {
-      country: {
-        value: "United States",
-        confidence,
-        score: 1,
-        agreement: 1,
-        sources,
-        ...(alternatives ? { alternatives } : {}),
-      },
+      country: field(name),
       countryCode: code,
+      ...(extra?.city ? { city: field(extra.city) } : {}),
+      ...(extra?.region ? { region: field(extra.region) } : {}),
+      ...(extra?.asn ? { asn: field(extra.asn) } : {}),
+      ...(extra?.org ? { asnOrg: field(extra.org) } : {}),
       flags: { isHosting: false, isProxy: false, isMobile: false, sources: {} },
-      providerCount: sources.length,
+      providerCount: 1,
     },
   };
 }
 
 describe("countryCodeOf", () => {
   it("uses the reconciled code", () => {
-    expect(countryCodeOf(row("1.1.1.1", "US", "high", ["ip-api"]))).toBe("US");
+    expect(countryCodeOf(named("1.1.1.1", "United States", "US"))).toBe("US");
   });
 
   it("returns undefined when a resolution won on name only, ignoring the stale base code", () => {
@@ -84,124 +82,115 @@ describe("countryCodeOf", () => {
   });
 });
 
-describe("summarizeCountries", () => {
-  it("returns null below two located rows", () => {
-    expect(summarizeCountries([row("1.1.1.1", "US", "high", ["ip-api"])])).toBeNull();
+describe("originReport", () => {
+  it("leads with coverage, then a sentence per country naming address, city, and network", () => {
+    const report = originReport([
+      named("8.8.8.8", "United States", "US", {
+        city: "Ashburn",
+        region: "Virginia",
+        asn: "AS15169 Google LLC",
+        org: "Google LLC",
+      }),
+      named("9.9.9.9", "United States", "US", {
+        city: "Berkeley",
+        region: "California",
+        asn: "AS19281",
+        org: "Quad9",
+      }),
+      named("78.46.0.1", "Germany", "DE", {
+        city: "Nuremberg",
+        region: "Bavaria",
+        asn: "AS24940 Hetzner Online GmbH",
+        org: "Hetzner Online GmbH",
+      }),
+    ]);
+    expect(report).toBe(
+      "All 3 addresses geolocated to 2 countries. " +
+        "United States (US) accounts for 2 addresses: 8.8.8.8 in Ashburn, Virginia, announced by AS15169 (Google LLC); " +
+        "9.9.9.9 in Berkeley, California, announced by AS19281 (Quad9). " +
+        "Germany (DE) accounts for 1 address: 78.46.0.1 in Nuremberg, Bavaria, announced by AS24940 (Hetzner Online GmbH).",
+    );
   });
 
-  it("returns null when located rows disagree on country", () => {
-    const rows = [
-      row("1.1.1.1", "US", "high", ["ip-api"]),
-      row("8.8.8.8", "AU", "high", ["ip-api"]),
-    ];
-    expect(summarizeCountries(rows)).toBeNull();
+  it("uses the ASN number alone when the org is unknown", () => {
+    const report = originReport([
+      named("1.1.1.1", "Australia", "AU", { city: "Sydney", asn: "AS13335" }),
+    ]);
+    expect(report).toContain("1.1.1.1 in Sydney, announced by AS13335.");
   });
 
-  it("takes the weakest located confidence, not the first or the average", () => {
-    const rows = [
-      row("1.1.1.1", "US", "high", ["ip-api"]),
-      row("8.8.8.8", "US", "low", ["ip-api"]),
-    ];
-    expect(summarizeCountries(rows)?.confidence).toBe("low");
+  it("orders countries by count desc, then name", () => {
+    const report = originReport([
+      named("1.1.1.1", "Germany", "DE"),
+      named("2.2.2.2", "Australia", "AU"),
+      named("3.3.3.3", "United States", "US"),
+      named("4.4.4.4", "United States", "US"),
+    ]);
+    const order = ["United States (US)", "Australia (AU)", "Germany (DE)"].map((c) =>
+      report.indexOf(c),
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
-  it("intersects agreeing providers across rows and labels them", () => {
-    const rows = [
-      row("1.1.1.1", "US", "high", ["ip-api", "ipinfo"]),
-      row("8.8.8.8", "US", "high", ["ip-api", "rdap-ip"]),
-    ];
-    expect(summarizeCountries(rows)?.agreedBy).toEqual(["ip-api.com"]);
+  it("omits the city when no place is known", () => {
+    const report = originReport([named("1.1.1.1", "Australia", "AU")]);
+    expect(report).toBe(
+      "All 1 address geolocated to 1 country. Australia (AU) accounts for 1 address: 1.1.1.1.",
+    );
   });
 
-  it("yields an empty intersection when no provider backed every row", () => {
-    const rows = [
-      row("1.1.1.1", "US", "high", ["ipinfo"]),
-      row("8.8.8.8", "US", "high", ["rdap-ip"]),
-    ];
-    expect(summarizeCountries(rows)?.agreedBy).toEqual([]);
-  });
-
-  it("counts contested rows and reports coverage against the full batch", () => {
-    const rows: GeoRow[] = [
-      row("1.1.1.1", "US", "high", ["ip-api"]),
-      row("8.8.8.8", "US", "medium", ["ip-api"], [
-        { value: "Australia", sources: ["ipinfo"] },
-      ]),
+  it("reports partial coverage and closes with the unlocated addresses", () => {
+    const report = originReport([
+      named("8.8.8.8", "United States", "US", { city: "Ashburn" }),
       { ip: "203.0.113.7", version: 4, status: "error", error: "Lookup failed" },
-    ];
-    const s = summarizeCountries(rows);
-    expect(s?.contested).toBe(1);
-    expect(s?.located).toBe(2);
-    expect(s?.total).toBe(3);
-    expect(s?.ips).toEqual(["1.1.1.1", "8.8.8.8"]);
+    ]);
+    expect(report).toContain("1 of 2 addresses geolocated to 1 country.");
+    expect(report).toContain("1 address could not be geolocated: 203.0.113.7.");
+  });
+
+  it("says nothing located when no address resolves", () => {
+    const report = originReport([
+      { ip: "203.0.113.7", version: 4, status: "error", error: "Lookup failed" },
+      { ip: "203.0.113.8", version: 4, status: "error", error: "Lookup failed" },
+    ]);
+    expect(report).toBe("None of the 2 addresses could be geolocated.");
+  });
+
+  it("returns an empty string for no rows", () => {
+    expect(originReport([])).toBe("");
   });
 });
 
-/** Build a summary directly, so sentence tests don't depend on row plumbing. */
-function summary(over: Partial<CountrySummary> = {}): CountrySummary {
-  return {
-    country: "United States",
-    code: "US",
-    ips: ["1.1.1.1", "8.8.8.8"],
-    located: 2,
-    total: 2,
-    confidence: "high",
-    agreedBy: ["ip-api.com", "IPinfo"],
-    contested: 0,
-    ...over,
-  };
-}
-
-describe("sameCountrySentence", () => {
-  it("states coverage, the country, and multi-provider agreement", () => {
-    expect(sameCountrySentence(summary())).toBe(
-      "2 of 2 addresses resolved to a country. All 2 are located in the same country, " +
-        "United States (US), agreed by ip-api.com and IPinfo on all 2 addresses.",
-    );
+describe("sameCountryNote", () => {
+  it("affirms one country when every located address matches", () => {
+    expect(
+      sameCountryNote([
+        named("8.8.8.8", "United States", "US"),
+        named("9.9.9.9", "United States", "US"),
+      ]),
+    ).toBe("All 2 addresses resolve to the same country, United States (US).");
   });
 
-  it("hedges the verb below high confidence", () => {
-    expect(sameCountrySentence(summary({ confidence: "medium" }))).toContain(
-      "All 2 are likely located in the same country",
-    );
+  it("returns null when the batch spans more than one country", () => {
+    expect(
+      sameCountryNote([
+        named("8.8.8.8", "United States", "US"),
+        named("9.9.9.9", "Germany", "DE"),
+      ]),
+    ).toBeNull();
   });
 
-  it("says reported, not agreed, for a lone provider", () => {
-    const s = summary({ agreedBy: ["ip-api.com"] });
-    expect(sameCountrySentence(s)).toContain("as reported by ip-api.com on all 2 addresses.");
-    expect(sameCountrySentence(s)).not.toContain("agreed by");
+  it("returns null below two located addresses", () => {
+    expect(sameCountryNote([named("8.8.8.8", "United States", "US")])).toBeNull();
   });
 
-  it("names no provider when none backed every address", () => {
-    expect(sameCountrySentence(summary({ agreedBy: [] }))).toContain(
-      "backed by different providers per address.",
-    );
-  });
-
-  it("appends the disagreement clause, pluralized", () => {
-    expect(sameCountrySentence(summary({ contested: 1 }))).toContain(
-      ", providers disagreed on 1 address.",
-    );
-    expect(sameCountrySentence(summary({ contested: 2 }))).toContain(
-      ", providers disagreed on 2 addresses.",
-    );
-  });
-
-  it("reports partial coverage against the full batch", () => {
-    expect(sameCountrySentence(summary({ located: 2, total: 6 }))).toContain(
-      "2 of 6 addresses resolved to a country.",
-    );
-  });
-
-  it("joins three or more providers with commas and a trailing and", () => {
-    const s = summary({ agreedBy: ["ip-api.com", "IPinfo", "RDAP"] });
-    expect(sameCountrySentence(s)).toContain("agreed by ip-api.com, IPinfo and RDAP");
-  });
-
-  it("concatenates back to the rendered parts exactly", () => {
-    const s = summary({ contested: 1 });
-    const t = sameCountryText(s);
-    expect(`${t.lead} ${t.place}${t.tail}`).toBe(sameCountrySentence(s));
-    expect(t.place).toBe("United States (US)");
+  it("scopes the claim to located addresses when some had no data", () => {
+    expect(
+      sameCountryNote([
+        named("8.8.8.8", "United States", "US"),
+        named("9.9.9.9", "United States", "US"),
+        { ip: "203.0.113.7", version: 4, status: "error", error: "Lookup failed" },
+      ]),
+    ).toBe("All 2 located addresses resolve to the same country, United States (US).");
   });
 });
