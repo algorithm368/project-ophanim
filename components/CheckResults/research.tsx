@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, ExternalLink, Loader2, Telescope } from "lucide-react";
+import {
+    Check,
+    Copy,
+    ExternalLink,
+    ImageOff,
+    Loader2,
+    Telescope,
+} from "lucide-react";
 import {
     isDomainResult,
     isHashResult,
@@ -86,6 +93,52 @@ function hostOf(url: string): string {
     }
 }
 
+/** One screenshot tile: a shimmer while the image loads, a soft fade-in on
+ *  success, and a labeled fallback when the scan produced no screenshot or the
+ *  image fails to load, so a broken tile never collapses to a bare gray box.
+ *  Loading is deferred and deprioritized (lazy + async decode + low fetch
+ *  priority) so the grid never competes with the main result for bandwidth. */
+function ScanThumb({ item }: { item: UrlScanItem }) {
+    // No screenshot URL at all → skip the request and show the fallback.
+    const [status, setStatus] = useState<"loading" | "loaded" | "error">(
+        item.screenshot ? "loading" : "error",
+    );
+
+    if (status === "error") {
+        return (
+            <div className="flex aspect-[4/3] flex-col items-center justify-center gap-1.5 bg-muted text-muted-foreground">
+                <ImageOff className="size-5" aria-hidden />
+                <span className="max-w-full truncate px-2 font-mono text-[10px]">
+                    {hostOf(item.pageUrl)}
+                </span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+            {status === "loading" && (
+                <div className="absolute inset-0 animate-pulse bg-foreground/5" />
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+                src={item.screenshot}
+                alt={`Screenshot of ${item.pageUrl}`}
+                width={400}
+                height={300}
+                loading="lazy"
+                decoding="async"
+                fetchPriority="low"
+                onLoad={() => setStatus("loaded")}
+                onError={() => setStatus("error")}
+                className={`size-full object-cover object-top grayscale-[0.15] transition duration-300 group-hover:grayscale-0 ${
+                    status === "loaded" ? "opacity-100" : "opacity-0"
+                }`}
+            />
+        </div>
+    );
+}
+
 /** A grid of URLScan submission screenshots, each linking to its full scan. */
 function UrlScanGrid({ scans }: { scans: UrlScanItem[] }) {
     return (
@@ -100,18 +153,7 @@ function UrlScanGrid({ scans }: { scans: UrlScanItem[] }) {
                     title={`${s.pageUrl} — open scan`}
                     className="group block overflow-hidden rounded-md border border-border bg-background transition-colors hover:border-foreground/40"
                 >
-                    <div className="aspect-[4/3] overflow-hidden bg-muted">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={s.screenshot}
-                            alt={`Screenshot of ${s.pageUrl}`}
-                            loading="lazy"
-                            className="size-full object-cover object-top grayscale-[0.15] transition group-hover:grayscale-0"
-                            onError={(e) => {
-                                e.currentTarget.style.visibility = "hidden";
-                            }}
-                        />
-                    </div>
+                    <ScanThumb item={s} />
                     <div className="space-y-0.5 p-2">
                         <div
                             className="truncate font-mono text-[11px] text-foreground"
