@@ -102,7 +102,8 @@ Enabled only when an API key is set:
 
 ```bash
 cp .env.example .env.local   # optional: add any API keys you have
-npm run dev
+bun install
+bun run dev
 ```
 
 Open http://localhost:3000. Each checked indicator also has a shareable

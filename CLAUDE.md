@@ -15,12 +15,23 @@ working *in* the codebase: where things live, the conventions, and how to verify
 ## Commands
 
 ```bash
-npm run dev        # next dev (http://localhost:3000)
-npm run build      # production build
-npm run lint       # eslint (next core-web-vitals + typescript)
-npm test           # vitest run (unit tests, no network, ~0.4s)
-npm run test:watch # vitest watch
+bun install        # install dependencies (bun.lock is the lockfile)
+bun run dev        # next dev (http://localhost:3000)
+bun run build      # production build
+bun run lint       # eslint (next core-web-vitals + typescript)
+bun run test       # vitest run (unit tests, no network, ~0.4s)
+bun run test:watch # vitest watch
 ```
+
+The toolchain is Bun (package manager + script runner). Next/Vitest/ESLint still
+do the actual build/test/lint work, so `bun run <script>` just runs the same
+tools. After a fresh install, run `bunx playwright install chromium` once so the
+screenshot helpers in `scripts/` have a matching browser.
+
+Use `bun run test`, not `bun test`: the latter invokes Bun's own test runner
+(which does not understand the Vitest API) instead of the `test` script. The
+deploy uses the Bun runtime for Vercel Functions (`bunVersion` in `vercel.json`),
+and `dev`/`build`/`start` run Next under Bun via `bun run --bun`.
 
 ## Architecture: the indicator pipeline
 
@@ -89,8 +100,8 @@ components/ui/                           shadcn primitives
 - **HTTP**: use the helpers in `lib/ti/http.ts`, not bare `fetch`, so timeouts
   and errors are uniform.
 - **Tests**: Vitest, files are `lib/**/*.test.ts` (colocated next to source).
-  They are pure/unit (no network) and use the `@/` alias. Run `npm test` before
-  declaring work done. Parsing, scoring, and refang are all covered; add cases
+  They are pure/unit (no network) and use the `@/` alias. Run `bun run test`
+  before declaring work done. Parsing, scoring, and refang are all covered; add cases
   there when you touch that logic.
 - **Untrusted input** is validated at the boundary: route `validate` functions
   reject bad/non-routable indicators (see `validateIp` rejecting private/reserved
@@ -102,10 +113,10 @@ components/ui/                           shadcn primitives
 
 ## Verifying changes
 
-1. `npm test` and `npm run lint` should both pass.
+1. `bun run test` and `bun run lint` should both pass.
 2. For lookup/source logic, the no-key sources (ip-api, Shodan InternetDB,
    DNSBLs, Feodo, etc.) work without any credentials, so you can exercise the
    real pipeline end-to-end against a known-bad and a known-clean indicator.
-3. For UI changes, run `npm run dev` and check the feature in a browser. There
+3. For UI changes, run `bun run dev` and check the feature in a browser. There
    are Playwright screenshot helpers in `scripts/` (e.g. `node scripts/shot.mjs`)
    used for visual checks. If you cannot verify the UI, say so explicitly.
