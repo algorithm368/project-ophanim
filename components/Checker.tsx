@@ -713,10 +713,15 @@ export default function Checker({
           </div>
           <Button
             type="submit"
+            aria-label="Check"
             disabled={loading || !query.trim() || (!detected && !bulkPreview)}
-            className="h-10 shrink-0 rounded-md px-4 text-sm font-medium"
+            className="h-10 w-10 shrink-0 rounded-md p-0"
           >
-            {loading ? <Loader2 className="size-4 animate-spin" /> : "Check"}
+            {loading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Search className="size-4" />
+            )}
           </Button>
         </form>
       ) : (
@@ -772,16 +777,14 @@ export default function Checker({
           </div>
           <Button
             type="submit"
+            aria-label="Check"
             disabled={loading || !query.trim() || (!detected && !bulkPreview)}
-            className="h-11 min-w-[7rem] shrink-0 rounded-md px-5 text-sm font-medium"
+            className="h-11 w-11 shrink-0 rounded-md p-0"
           >
             {loading ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Checking…
-              </>
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              "Check"
+              <Search className="size-4" />
             )}
           </Button>
         </form>
