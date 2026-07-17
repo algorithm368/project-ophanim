@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Check,
     Copy,
     ExternalLink,
     ImageOff,
     Loader2,
+    Maximize2,
     Telescope,
+    X,
 } from "lucide-react";
 import {
     isDomainResult,
@@ -139,37 +141,146 @@ function ScanThumb({ item }: { item: UrlScanItem }) {
     );
 }
 
-/** A grid of URLScan submission screenshots, each linking to its full scan. */
-function UrlScanGrid({ scans }: { scans: UrlScanItem[] }) {
+/** A full-screen viewer for one scan's screenshot. Closes on Escape, on a
+ *  backdrop click, or via the close button; locks body scroll while open. */
+function Lightbox({
+    item,
+    onClose,
+}: {
+    item: UrlScanItem;
+    onClose: () => void;
+}) {
+    useEffect(() => {
+        function onKey(e: KeyboardEvent) {
+            if (e.key === "Escape") onClose();
+        }
+        document.addEventListener("keydown", onKey);
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.removeEventListener("keydown", onKey);
+            document.body.style.overflow = prevOverflow;
+        };
+    }, [onClose]);
+
     return (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {scans.map((s, i) => (
-                <a
-                    key={i}
-                    href={s.scanUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => backgroundClick(e, s.scanUrl)}
-                    title={`${s.pageUrl} — open scan`}
-                    className="group block overflow-hidden rounded-md border border-border bg-background transition-colors hover:border-foreground/40"
-                >
-                    <ScanThumb item={s} />
-                    <div className="space-y-0.5 p-2">
-                        <div
-                            className="truncate font-mono text-[11px] text-foreground"
-                            title={s.pageUrl}
-                        >
-                            {hostOf(s.pageUrl)}
-                        </div>
-                        <div className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
-                            <span className="tabular-nums">{fmtDay(s.time)}</span>
-                            {s.country && <span>{s.country}</span>}
-                            {s.asn && <span className="truncate">{s.asn}</span>}
-                        </div>
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Screenshot of ${item.pageUrl}`}
+            onClick={onClose}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/90 p-4 backdrop-blur-sm sm:p-8"
+        >
+            <div className="flex w-full max-w-5xl items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <div
+                        className="truncate font-mono text-[13px] text-foreground"
+                        title={item.pageUrl}
+                    >
+                        {hostOf(item.pageUrl)}
                     </div>
-                </a>
-            ))}
+                    <div className="font-mono text-[11px] text-muted-foreground">
+                        <span className="tabular-nums">{fmtDay(item.time)}</span>
+                        {item.country && ` · ${item.country}`}
+                        {item.asn && ` · ${item.asn}`}
+                    </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                    <a
+                        href={item.scanUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Open scan"
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                        <ExternalLink className="size-4" />
+                    </a>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label="Close"
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                        <X className="size-4" />
+                    </button>
+                </div>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+                src={item.screenshot}
+                alt={`Screenshot of ${item.pageUrl}`}
+                onClick={(e) => e.stopPropagation()}
+                className="max-h-[80vh] max-w-full rounded-md border border-border object-contain"
+            />
         </div>
+    );
+}
+
+/** URLScan submissions as tidy rows: a small screenshot that opens full-screen
+ *  on click, the page host + capture metadata, and an outbound link to the full
+ *  scan. Compact so many scans read as an orderly list rather than a heavy grid. */
+function UrlScanList({ scans }: { scans: UrlScanItem[] }) {
+    const [zoom, setZoom] = useState<UrlScanItem | null>(null);
+
+    return (
+        <>
+            <div className="divide-y divide-border overflow-hidden rounded-md border border-border">
+                {scans.map((s, i) => (
+                    <div
+                        key={i}
+                        className="flex items-center gap-3 bg-background p-2 transition-colors hover:bg-muted/30"
+                    >
+                        <button
+                            type="button"
+                            onClick={() => s.screenshot && setZoom(s)}
+                            disabled={!s.screenshot}
+                            aria-label={`View screenshot of ${s.pageUrl}`}
+                            title={
+                                s.screenshot ? "View screenshot" : "No screenshot"
+                            }
+                            className="group relative w-24 shrink-0 overflow-hidden rounded border border-border enabled:cursor-zoom-in"
+                        >
+                            <ScanThumb item={s} />
+                            {s.screenshot && (
+                                <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100">
+                                    <Maximize2 className="size-4" />
+                                </span>
+                            )}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                            <div
+                                className="truncate font-mono text-[12px] text-foreground"
+                                title={s.pageUrl}
+                            >
+                                {hostOf(s.pageUrl)}
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
+                                <span className="tabular-nums">
+                                    {fmtDay(s.time)}
+                                </span>
+                                {s.country && <span>{s.country}</span>}
+                                {s.asn && (
+                                    <span className="truncate">{s.asn}</span>
+                                )}
+                            </div>
+                        </div>
+                        <a
+                            href={s.scanUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => backgroundClick(e, s.scanUrl)}
+                            title={`${s.pageUrl} — open scan`}
+                            aria-label="Open scan"
+                            className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                            <ExternalLink className="size-3.5" />
+                        </a>
+                    </div>
+                ))}
+            </div>
+            {zoom && <Lightbox item={zoom} onClose={() => setZoom(null)} />}
+        </>
     );
 }
 
@@ -239,7 +350,7 @@ function ProviderBlock({ result }: { result: ResearchResult }) {
 
     let body: React.ReactNode = null;
     if (data?.type === "urlscan") {
-        body = <UrlScanGrid scans={data.scans} />;
+        body = <UrlScanList scans={data.scans} />;
     } else if (data?.type === "wayback") {
         body =
             data.snapshots.length > 0 ? (
