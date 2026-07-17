@@ -662,8 +662,64 @@ export default function Checker({
     runCheck(value);
   }
 
+  // On a populated (or in-flight) single-IOC lookup, the full hero form collapses
+  // to a one-line search bar so the verdict is the first thing on screen. The full
+  // hero — heading, detection hint, TRY chips — stays on the landing/empty/error
+  // states and on the bulk path.
+  const showCompact = !isBulk && !bulkRows && (loading || result);
+
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
+      {showCompact ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            runCheck(query);
+          }}
+          className="sketch-shadow flex items-center gap-2 rounded-lg border border-border bg-card p-2"
+        >
+          <div className="relative flex flex-1 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/50">
+            <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
+            <Input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              inputMode="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="IOC to check"
+              placeholder="IP, domain, or file hash"
+              className={cn(
+                "h-10 rounded-none border-0 bg-transparent pl-9 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
+                query ? "pr-9" : "pr-3",
+              )}
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  if (error?.kind === "input") setError(null);
+                  inputRef.current?.focus();
+                }}
+                aria-label="Clear input"
+                className="absolute right-2 flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+          <Button
+            type="submit"
+            disabled={loading || !query.trim() || (!detected && !bulkPreview)}
+            className="h-10 shrink-0 rounded-md px-4 text-sm font-medium"
+          >
+            {loading ? <Loader2 className="size-4 animate-spin" /> : "Check"}
+          </Button>
+        </form>
+      ) : (
       <div className="sketch-shadow relative rounded-lg border border-border bg-card p-4 sm:p-5">
         <div className="mb-2 font-mono text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
           Indicator lookup
@@ -783,6 +839,7 @@ export default function Checker({
           ))}
         </div>
       </div>
+      )}
 
       {error && (
         <ErrorState

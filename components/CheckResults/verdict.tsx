@@ -116,24 +116,44 @@ function VerdictShell({
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                {/* Verdict + risk score. The verdict word is the only color; the
-                    score stays monochrome so the accent reads at a glance. */}
-                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                    <span
-                        className={cn(
-                            "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
-                            style.text,
-                        )}
-                    >
-                        {style.headline}
-                    </span>
-                    <span className="font-mono text-xl font-semibold tabular-nums text-foreground sm:text-2xl">
-                        {Math.round(result.riskScore)}
-                        <span className="text-sm font-medium text-muted-foreground">
-                            {" "}
-                            / 100
+                {/* Verdict + risk score. The score is the focal point — a large
+                    monochrome number over a monochrome meter; the verdict word is
+                    the only element that carries color. */}
+                <div className="space-y-2.5">
+                    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+                        <span
+                            className={cn(
+                                "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
+                                style.text,
+                            )}
+                        >
+                            {style.headline}
                         </span>
-                    </span>
+                        <span className="font-mono font-bold tabular-nums leading-none text-foreground">
+                            <span className="text-4xl sm:text-5xl">
+                                {Math.round(result.riskScore)}
+                            </span>
+                            <span className="text-base font-medium text-muted-foreground">
+                                {" "}
+                                / 100
+                            </span>
+                        </span>
+                    </div>
+                    <div
+                        role="meter"
+                        aria-label="Risk score"
+                        aria-valuenow={Math.round(result.riskScore)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                    >
+                        <div
+                            className="h-full rounded-full bg-foreground"
+                            style={{
+                                width: `${Math.max(0, Math.min(100, result.riskScore))}%`,
+                            }}
+                        />
+                    </div>
                 </div>
 
                 <CopyableSummary text={narrative} />
