@@ -676,7 +676,7 @@ export default function Checker({
             e.preventDefault();
             runCheck(query);
           }}
-          className="sketch-shadow flex items-center gap-2 rounded-lg border border-border bg-card p-2"
+          className="sketch-shadow sticky top-2 z-30 flex items-center gap-2 rounded-lg border border-border bg-card p-2"
         >
           <div className="relative flex flex-1 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/50">
             <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />

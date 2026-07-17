@@ -132,7 +132,7 @@ export function SectionNav({ items }: { items: NavItem[] }) {
             {/* Narrow screens: sticky horizontal icon strip above the content. */}
             <nav
                 aria-label="Result sections"
-                className="sticky top-0 z-20 -mx-4 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70 xl:hidden"
+                className="sticky top-[4.25rem] z-20 -mx-4 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70 xl:hidden"
             >
                 <div className="flex gap-1 overflow-x-auto py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {present.map((item) => (
