@@ -1,6 +1,22 @@
 "use client";
 
-import { useEffect, useState, type MouseEvent } from "react";
+import {
+    useEffect,
+    useState,
+    type ComponentType,
+    type MouseEvent,
+} from "react";
+import {
+    BadgeCheck,
+    Circle,
+    Download,
+    Globe,
+    Link2,
+    ListChecks,
+    Network,
+    Server,
+    Telescope,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { pickActiveId } from "./use-scroll-spy";
 
@@ -8,12 +24,54 @@ export type NavItem = { id: string; label: string };
 
 const NAV_OFFSET = 88;
 
+type IconType = ComponentType<{ className?: string }>;
+
+/** One glyph per section id. The item's label is the accessible name/tooltip. */
+const ICONS: Record<string, IconType> = {
+    origin: Globe,
+    exposed: Server,
+    certs: BadgeCheck,
+    dns: Network,
+    related: Link2,
+    dist: Download,
+    research: Telescope,
+    sources: ListChecks,
+};
+
+function jumpTo(e: MouseEvent<HTMLAnchorElement>, id: string) {
+    e.preventDefault();
+    document
+        .getElementById(id)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+    const Icon = ICONS[item.id] ?? Circle;
+    return (
+        <a
+            href={`#${item.id}`}
+            onClick={(e) => jumpTo(e, item.id)}
+            aria-label={item.label}
+            title={item.label}
+            aria-current={active ? "true" : undefined}
+            className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-md transition-colors",
+                active
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            )}
+        >
+            <Icon className="size-4" />
+        </a>
+    );
+}
+
 /**
- * Sticky jump nav for the result page. Renders one anchor per section, pins to
- * the top of the viewport on scroll, and highlights the section currently under
- * the nav line (scroll-spy). Result cards self-hide when they have no data, so
- * candidate items whose section rendered nothing are pruned — the nav never
- * points at an empty anchor.
+ * Section jump nav for the result page — icon-only, scroll-spy highlighted.
+ * On wide screens it is a vertical rail floating in the left gutter, listed
+ * top-down in document order; below that it falls back to a sticky horizontal
+ * icon strip so it never overlaps the content column. Result cards self-hide
+ * when empty, so items whose section rendered nothing are pruned.
  */
 export function SectionNav({ items }: { items: NavItem[] }) {
     const candidateKey = items.map((i) => i.id).join(",");
@@ -41,8 +99,6 @@ export function SectionNav({ items }: { items: NavItem[] }) {
             frame = requestAnimationFrame(update);
         }
 
-        // Measure on the next frame (async — avoids a synchronous effect setState)
-        // and on every scroll/resize thereafter.
         schedule();
         window.addEventListener("scroll", schedule, { passive: true });
         window.addEventListener("resize", schedule);
@@ -57,36 +113,37 @@ export function SectionNav({ items }: { items: NavItem[] }) {
 
     if (present.length < 2) return null;
 
-    function go(e: MouseEvent<HTMLAnchorElement>, id: string) {
-        e.preventDefault();
-        document
-            .getElementById(id)
-            ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-
     return (
-        <nav
-            aria-label="Result sections"
-            className="sticky top-0 z-20 -mx-4 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70"
-        >
-            <div className="flex gap-1 overflow-x-auto py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <>
+            {/* Wide screens: vertical icon rail floating in the left gutter. */}
+            <nav
+                aria-label="Result sections"
+                className="fixed top-28 left-4 z-30 hidden flex-col gap-1 rounded-lg border border-border bg-background/80 p-1 backdrop-blur xl:flex 2xl:left-8"
+            >
                 {present.map((item) => (
-                    <a
+                    <NavLink
                         key={item.id}
-                        href={`#${item.id}`}
-                        onClick={(e) => go(e, item.id)}
-                        aria-current={active === item.id ? "true" : undefined}
-                        className={cn(
-                            "shrink-0 rounded-md px-2.5 py-1 font-mono text-[11px] font-medium tracking-wider uppercase transition-colors",
-                            active === item.id
-                                ? "bg-muted text-foreground"
-                                : "text-muted-foreground hover:text-foreground",
-                        )}
-                    >
-                        {item.label}
-                    </a>
+                        item={item}
+                        active={active === item.id}
+                    />
                 ))}
-            </div>
-        </nav>
+            </nav>
+
+            {/* Narrow screens: sticky horizontal icon strip above the content. */}
+            <nav
+                aria-label="Result sections"
+                className="sticky top-0 z-20 -mx-4 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70 xl:hidden"
+            >
+                <div className="flex gap-1 overflow-x-auto py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {present.map((item) => (
+                        <NavLink
+                            key={item.id}
+                            item={item}
+                            active={active === item.id}
+                        />
+                    ))}
+                </div>
+            </nav>
+        </>
     );
 }
