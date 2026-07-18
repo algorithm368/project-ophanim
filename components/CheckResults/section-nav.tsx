@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
     BadgeCheck,
+    Bug,
     Circle,
     Download,
     Globe,
@@ -29,6 +30,7 @@ type IconType = ComponentType<{ className?: string }>;
 /** One glyph per section id. The item's label is the accessible name/tooltip. */
 const ICONS: Record<string, IconType> = {
     origin: Globe,
+    threat: Bug,
     exposed: Server,
     certs: BadgeCheck,
     dns: Network,
