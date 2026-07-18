@@ -18,6 +18,15 @@ function EnginesChip({ malicious, total }: { malicious: number; total: number })
     );
 }
 
+/** Small uppercase mono lead for a card sub-section. */
+function GroupLabel({ children }: { children: React.ReactNode }) {
+    return (
+        <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            {children}
+        </div>
+    );
+}
+
 /** Host of a reference URL, minus a leading www, for a compact link label. */
 function refLabel(href: string): string {
     try {
@@ -33,6 +42,8 @@ function refLabel(href: string): string {
  * row keyed by its MITRE id; leftover techniques and reference links follow as
  * their own rows. Renders nothing for an unknown hash.
  */
+const MAX_DETECTIONS = 8;
+
 export function ThreatProfileCard({ result }: { result: HashCheckResult }) {
     const ctx = result.context;
     const family = ctx?.malwareFamily;
@@ -40,9 +51,11 @@ export function ThreatProfileCard({ result }: { result: HashCheckResult }) {
     const techniques = ctx?.mitreTechniques ?? [];
     const refs = ctx?.familyRefs ?? [];
     const ratio = ctx?.detectionRatio;
+    const detections = [...new Set(ctx?.detectionNames ?? [])];
 
     // Nothing to say about an unknown hash, show only File identity.
-    if (!family && capabilities.length === 0 && !ratio) return null;
+    if (!family && capabilities.length === 0 && !ratio && detections.length === 0)
+        return null;
 
     const tone = hashTone(ctx);
     // Techniques a capability row already carries, so the att&ck row lists only
@@ -87,20 +100,47 @@ export function ThreatProfileCard({ result }: { result: HashCheckResult }) {
                     </div>
                 )}
 
-                <div className="space-y-3">
-                    {capabilities.length > 0 ? (
-                        <dl>
-                            {capabilities.map((c) => (
-                                <HashRow key={c.label} label={c.mitre?.[0] ?? "behavior"}>
-                                    {c.label}
-                                </HashRow>
-                            ))}
-                        </dl>
-                    ) : (
+                <div className="space-y-4">
+                    {capabilities.length > 0 && (
+                        <div className="space-y-1">
+                            <GroupLabel>What this file does</GroupLabel>
+                            <dl>
+                                {capabilities.map((c) => (
+                                    <HashRow key={c.label} label={c.mitre?.[0] ?? "behavior"}>
+                                        {c.label}
+                                    </HashRow>
+                                ))}
+                            </dl>
+                        </div>
+                    )}
+
+                    {detections.length > 0 && (
+                        <div className="space-y-1">
+                            <GroupLabel>Engine detections</GroupLabel>
+                            <ul className="space-y-0.5">
+                                {detections.slice(0, MAX_DETECTIONS).map((n) => (
+                                    <li
+                                        key={n}
+                                        title={n}
+                                        className="truncate font-mono text-[12px] text-foreground/80"
+                                    >
+                                        {n}
+                                    </li>
+                                ))}
+                            </ul>
+                            {detections.length > MAX_DETECTIONS && (
+                                <div className="text-xs text-muted-foreground">
+                                    +{detections.length - MAX_DETECTIONS} more
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {capabilities.length === 0 && detections.length === 0 && (
                         <p className="text-sm text-muted-foreground">
-                            No sandbox report is available for this sample, so its
-                            behavior hasn&apos;t been observed directly. The family
-                            description is the best guide.
+                            No sandbox report or engine detections are available for
+                            this sample, so its behavior hasn&apos;t been observed
+                            directly. The family description is the best guide.
                         </p>
                     )}
 
