@@ -520,6 +520,24 @@ export function HashRow({
     );
 }
 
+/** Small uppercase mono lead for a sub-section inside the identity card. */
+function SubLabel({ children }: { children: ReactNode }) {
+    return (
+        <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            {children}
+        </div>
+    );
+}
+
+/** Host of a reference URL, minus a leading www, for a compact link label. */
+function refLabel(href: string): string {
+    try {
+        return new URL(href).hostname.replace(/^www\./, "");
+    } catch {
+        return href;
+    }
+}
+
 export function HashProfileCard({ result }: { result: HashCheckResult }) {
     const ctx = result.context;
     const hasData = result.sources.some(
@@ -551,6 +569,25 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
             value: result.hash,
         });
     }
+
+    // Threat evidence folded into the identity card: family write-up, engine
+    // detection labels, sandbox behavior, and ATT&CK techniques.
+    const capabilities = ctx?.capabilities ?? [];
+    const techniques = ctx?.mitreTechniques ?? [];
+    const refs = ctx?.familyRefs ?? [];
+    const detections = [...new Set(ctx?.detectionNames ?? [])];
+    const ratio = ctx?.detectionRatio;
+    const shownTech = new Set(
+        capabilities.flatMap((c) => (c.mitre ?? []).map((id) => id.toUpperCase())),
+    );
+    const extraTech = techniques.filter(
+        (t) => !shownTech.has(t.id.toUpperCase()),
+    );
+    const hasThreat =
+        Boolean(ctx?.familyDescription) ||
+        capabilities.length > 0 ||
+        detections.length > 0 ||
+        extraTech.length > 0;
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -671,6 +708,98 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                         </dl>
                     )}
                 </div>
+
+                {/* Threat evidence: what scanners and sandboxes say this file is
+                    and does. Only the malware verdict carries color. */}
+                {hasThreat && (
+                    <>
+                        <Rule />
+                        <div className="space-y-4">
+                            {ctx?.familyDescription && (
+                                <p className="text-sm leading-relaxed text-foreground/85">
+                                    {ctx.familyDescription}
+                                </p>
+                            )}
+                            {refs.length > 0 && (
+                                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                    {refs.map((href, i) => (
+                                        <a
+                                            key={href}
+                                            href={href}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-[13px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                                        >
+                                            {i === 0 ? "refs: " : ""}
+                                            {refLabel(href)}
+                                        </a>
+                                    ))}
+                                </div>
+                            )}
+
+                            {capabilities.length > 0 && (
+                                <div className="space-y-1">
+                                    <SubLabel>What this file does</SubLabel>
+                                    <dl>
+                                        {capabilities.map((c) => (
+                                            <HashRow
+                                                key={c.label}
+                                                label={c.mitre?.[0] ?? "behavior"}
+                                            >
+                                                {c.label}
+                                            </HashRow>
+                                        ))}
+                                    </dl>
+                                </div>
+                            )}
+
+                            {detections.length > 0 && (
+                                <div className="space-y-1">
+                                    <SubLabel>
+                                        Engine detections
+                                        {ratio
+                                            ? `, ${ratio.malicious} of ${ratio.total} flagged`
+                                            : ""}
+                                    </SubLabel>
+                                    <ul className="space-y-0.5">
+                                        {detections.slice(0, 8).map((n) => (
+                                            <li
+                                                key={n}
+                                                title={n}
+                                                className="truncate font-mono text-[12px] text-foreground/80"
+                                            >
+                                                {n}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    {detections.length > 8 && (
+                                        <div className="text-xs text-muted-foreground">
+                                            +{detections.length - 8} more
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {extraTech.length > 0 && (
+                                <div className="space-y-1">
+                                    <SubLabel>MITRE ATT&amp;CK</SubLabel>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {extraTech.map((t) => (
+                                            <span
+                                                key={t.id}
+                                                title={t.tactic}
+                                                className="inline-flex items-center rounded-md border border-foreground/15 bg-background px-2 py-0.5 font-mono text-[12px] text-foreground/80"
+                                            >
+                                                {t.id}
+                                                {t.name ? ` ${t.name}` : ""}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
             </CardContent>
         </Card>
     );

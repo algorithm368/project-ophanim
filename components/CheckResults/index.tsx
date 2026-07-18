@@ -22,7 +22,6 @@ import {
     DomainProfileCard,
     HashProfileCard,
 } from "./profile";
-import { ThreatProfileCard } from "./threat-profile";
 import { ResearchCard } from "./research";
 import { SectionNav, type NavItem } from "./section-nav";
 import type { ResearchStreamState } from "./use-research";
@@ -49,7 +48,6 @@ const DOMAIN_SECTIONS: NavItem[] = [
 
 const HASH_SECTIONS: NavItem[] = [
     { id: "origin", label: "Origin" },
-    { id: "threat", label: "Threat" },
     { id: "related", label: "Related" },
     { id: "dist", label: "Dist" },
     { id: "research", label: "Research" },
@@ -161,9 +159,6 @@ function HashResults({
             <SectionNav items={HASH_SECTIONS} />
             <Section id="origin">
                 <HashProfileCard result={result} />
-            </Section>
-            <Section id="threat">
-                <ThreatProfileCard result={result} />
             </Section>
             <Section id="related">
                 <ConnectionsCard result={result} />
