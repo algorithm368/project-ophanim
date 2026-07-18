@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import {
-    ChevronRight,
     Clock,
     Database,
     RefreshCw,
@@ -23,7 +21,6 @@ import {
     buildHashNarrative,
     buildNarrative,
     consensusBuckets,
-    scoreExplanation,
     type ResultLike,
 } from "@/lib/ti/narrative";
 import { cn } from "@/lib/utils";
@@ -160,8 +157,6 @@ function VerdictShell({
 
                 <ConsensusLine result={result} />
 
-                <ScoreRationale result={result} />
-
                 {/* Meta: plain muted line, no bordered chips. */}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5 font-mono">
@@ -244,37 +239,3 @@ function ConsensusLine({ result }: { result: ResultLike }) {
     );
 }
 
-function ScoreRationale({ result }: { result: ResultLike }) {
-    const [open, setOpen] = useState(false);
-    // scoreExplanation reads the unit-tested scoreBreakdown; it returns [] when
-    // there's nothing to say (no scored sources), so the disclosure never shows
-    // on a no-data result. Color stays reserved for the verdict word.
-    const lines = scoreExplanation(result);
-    if (lines.length === 0) return null;
-
-    return (
-        <div className="font-mono text-[11px]">
-            <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                aria-expanded={open}
-                className="flex items-center gap-1 uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-            >
-                <ChevronRight
-                    className={cn(
-                        "size-3 transition-transform",
-                        open && "rotate-90",
-                    )}
-                />
-                why this score
-            </button>
-            {open && (
-                <div className="mt-2 space-y-1.5 border-l border-foreground/15 pl-3 text-xs leading-relaxed text-muted-foreground">
-                    {lines.map((line, i) => (
-                        <p key={i}>{line}</p>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
