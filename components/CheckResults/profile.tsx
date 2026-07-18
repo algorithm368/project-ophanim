@@ -17,7 +17,6 @@ import {
 import { formatBytes, formatDate, joinPlace } from "@/lib/ti/narrative";
 import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -462,14 +461,78 @@ function CopyHashButton({ value }: { value: string }) {
     );
 }
 
+/** A minimal verdict marker, the one place this card carries color: filled red
+ *  for a flagged file, filled neutral for a known but unflagged file, and a
+ *  hollow ring for an unknown one, so the verdict reads at a glance. */
+export function StatusDot({ kind }: { kind: "malicious" | "known" | "unknown" }) {
+    return (
+        <span
+            aria-hidden
+            className={cn(
+                "mt-[7px] size-2.5 shrink-0 rounded-full",
+                kind === "malicious" && "bg-red-500 dark:bg-red-400",
+                kind === "known" && "bg-foreground/40",
+                kind === "unknown" && "border-[1.5px] border-muted-foreground/50",
+            )}
+        />
+    );
+}
+
+/** One aligned readout row: a fixed lowercase label column, the value beside it,
+ *  and an optional trailing action (e.g. a copy button). Every row shares the
+ *  same label width so the whole card reads as a single column. */
+export function HashRow({
+    label,
+    hint,
+    mono = false,
+    action,
+    children,
+}: {
+    label: string;
+    hint?: string;
+    mono?: boolean;
+    action?: ReactNode;
+    children: ReactNode;
+}) {
+    return (
+        <div className="flex items-baseline gap-3 py-[3px]">
+            <dt
+                title={hint}
+                className={cn(
+                    "w-24 shrink-0 text-[13px] leading-snug text-muted-foreground",
+                    hint &&
+                        "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
+                )}
+            >
+                {label}
+            </dt>
+            <dd
+                className={cn(
+                    "min-w-0 flex-1 truncate text-foreground",
+                    mono ? "font-mono text-[12px]" : "text-sm font-medium",
+                )}
+                title={mono && typeof children === "string" ? children : undefined}
+            >
+                {children}
+            </dd>
+            {action}
+        </div>
+    );
+}
+
 export function HashProfileCard({ result }: { result: HashCheckResult }) {
     const ctx = result.context;
     const hasData = result.sources.some(
         (s) => s.status === "ok" && s.score !== undefined,
     );
     const type = classifyHash(ctx, hasData);
-    const TypeIcon = type.icon;
     const tone = hashTone(ctx);
+    const kind: "malicious" | "known" | "unknown" =
+        ctx?.malwareFamily || ctx?.threatLabel
+            ? "malicious"
+            : ctx
+              ? "known"
+              : "unknown";
 
     const size = formatBytes(ctx?.fileSize);
     const firstSeen = formatDate(ctx?.firstSeen);
@@ -503,167 +566,111 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                     File identity
                 </SectionHeading>
 
-                {/* Classification identity header. */}
-                <IdentityHeader
-                    icon={TypeIcon}
-                    label={type.label}
-                    desc={type.desc}
-                    tone={tone}
-                />
-
-                {ctx ? (
-                    <div className="space-y-4">
-                        <Rule />
-
-                        {(ctx.malwareFamily ||
-                            ctx.threatLabel ||
-                            ctx.fileName ||
-                            ctx.fileType ||
-                            size) && (
-                            <Group label="Classification">
-                                {ctx.malwareFamily && (
-                                    <Field
-                                        label="Malware family"
-                                        tone="text-red-600 dark:text-red-400"
-                                    >
-                                        {ctx.malwareFamily}
-                                    </Field>
-                                )}
-                                {ctx.threatLabel && (
-                                    <Field
-                                        label="Threat label"
-                                        tone="text-red-600 dark:text-red-400"
-                                    >
-                                        {ctx.threatLabel}
-                                    </Field>
-                                )}
-                                {ctx.fileName && (
-                                    <Field label="File name">
-                                        <span className="font-mono text-[13px]">
-                                            {ctx.fileName}
-                                        </span>
-                                    </Field>
-                                )}
-                                {ctx.fileType && (
-                                    <Field label="File type">{ctx.fileType}</Field>
-                                )}
-                                {size && <Field label="Size">{size}</Field>}
-                            </Group>
-                        )}
-
-                        {(firstSeen || lastSeen) && (
-                            <Group label="Timeline">
-                                {firstSeen && (
-                                    <Field label="First seen">{firstSeen}</Field>
-                                )}
-                                {lastSeen && (
-                                    <Field label="Last seen">{lastSeen}</Field>
-                                )}
-                            </Group>
-                        )}
-
-                        {(ctx.magic || ctx.imphash || ctx.ssdeep) && (
-                            <Group label="Fingerprints">
-                                {ctx.magic && (
-                                    <Field
-                                        label="Magic"
-                                        wrap
-                                        hint="libmagic file-type signature derived from the file's leading bytes"
-                                    >
-                                        <span className="font-mono text-[13px] break-all">
-                                            {ctx.magic}
-                                        </span>
-                                    </Field>
-                                )}
-                                {ctx.imphash && (
-                                    <Field
-                                        label="Imphash"
-                                        wrap
-                                        hint="Hash of the PE import table, clusters samples built from the same code"
-                                    >
-                                        <span className="font-mono text-[13px] break-all">
-                                            {ctx.imphash}
-                                        </span>
-                                    </Field>
-                                )}
-                                {ctx.ssdeep && (
-                                    <Field
-                                        label="ssdeep"
-                                        wrap
-                                        hint="Fuzzy hash, matches files that are similar but not identical"
-                                    >
-                                        <span className="font-mono text-[13px] break-all">
-                                            {ctx.ssdeep}
-                                        </span>
-                                    </Field>
-                                )}
-                            </Group>
-                        )}
-                    </div>
-                ) : (
-                    <p className="text-sm text-muted-foreground">
-                        {hasData
-                            ? "No file metadata was returned for this hash."
-                            : "No threat-intel source has this file on record, so there's nothing to describe. An unknown hash isn't necessarily safe; it may just be new or unseen."}
-                    </p>
-                )}
-
-                <div className="space-y-1.5">
-                    <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                        Digests
-                    </div>
-                    <dl className="space-y-1.5">
-                        {digests.map((d) => (
-                            <div
-                                key={d.label}
-                                className="flex items-center gap-2 text-xs"
-                            >
-                                <span className="w-16 shrink-0 text-muted-foreground">
-                                    {d.label}
-                                </span>
-                                <code
-                                    className="min-w-0 truncate font-mono text-[12px] text-foreground"
-                                    title={d.value}
-                                >
-                                    {d.value}
-                                </code>
-                                <CopyHashButton value={d.value} />
+                {/* Verdict dot + classification, the one place color appears. */}
+                <div className="flex items-start gap-3">
+                    <StatusDot kind={kind} />
+                    <div className="min-w-0">
+                        <div
+                            className={cn(
+                                "text-lg font-bold uppercase leading-tight tracking-tight",
+                                tone,
+                            )}
+                        >
+                            {type.label}
+                        </div>
+                        {type.desc && (
+                            <div className="mt-0.5 text-sm text-muted-foreground">
+                                {type.desc}
                             </div>
-                        ))}
-                    </dl>
+                        )}
+                    </div>
                 </div>
 
-                {altNames.length > 0 && (
-                    <div className="space-y-1.5">
-                        <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                            Also seen as
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                            {altNames.slice(0, 8).map((n) => (
-                                <Badge
-                                    key={n}
-                                    variant="outline"
-                                    className="font-mono font-normal"
-                                >
-                                    {n}
-                                </Badge>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {/* Flat record readout: one aligned label to value column. */}
+                <div className="space-y-3">
+                    {ctx &&
+                        (ctx.fileName ||
+                            ctx.fileType ||
+                            size ||
+                            firstSeen ||
+                            lastSeen) && (
+                            <dl>
+                                {ctx.fileName && (
+                                    <HashRow label="name" mono>
+                                        {ctx.fileName}
+                                    </HashRow>
+                                )}
+                                {ctx.fileType && (
+                                    <HashRow label="type">{ctx.fileType}</HashRow>
+                                )}
+                                {size && <HashRow label="size">{size}</HashRow>}
+                                {firstSeen && (
+                                    <HashRow label="first seen">{firstSeen}</HashRow>
+                                )}
+                                {lastSeen && (
+                                    <HashRow label="last seen">{lastSeen}</HashRow>
+                                )}
+                            </dl>
+                        )}
 
-                {ctx?.tags && ctx.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                        {ctx.tags.slice(0, 10).map((t) => (
-                            <span
-                                key={t}
-                                className="inline-flex items-center rounded-md border border-foreground/15 bg-background px-2.5 py-0.5 text-sm font-medium text-foreground/80"
+                    <dl>
+                        {digests.map((d) => (
+                            <HashRow
+                                key={d.label}
+                                label={d.label.toLowerCase()}
+                                mono
+                                action={<CopyHashButton value={d.value} />}
                             >
-                                {t}
-                            </span>
+                                {d.value}
+                            </HashRow>
                         ))}
-                    </div>
-                )}
+                        {ctx?.imphash && (
+                            <HashRow
+                                label="imphash"
+                                mono
+                                hint="Hash of the PE import table, clusters samples built from the same code"
+                            >
+                                {ctx.imphash}
+                            </HashRow>
+                        )}
+                        {ctx?.ssdeep && (
+                            <HashRow
+                                label="ssdeep"
+                                mono
+                                hint="Fuzzy hash, matches files that are similar but not identical"
+                            >
+                                {ctx.ssdeep}
+                            </HashRow>
+                        )}
+                        {ctx?.magic && (
+                            <HashRow
+                                label="magic"
+                                mono
+                                hint="libmagic file-type signature derived from the file's leading bytes"
+                            >
+                                {ctx.magic}
+                            </HashRow>
+                        )}
+                    </dl>
+
+                    {(altNames.length > 0 ||
+                        (ctx?.tags && ctx.tags.length > 0)) && (
+                        <dl>
+                            {altNames.length > 0 && (
+                                <HashRow label="aka">
+                                    {altNames.slice(0, 6).join(", ")}
+                                    {altNames.length > 6 &&
+                                        ` +${altNames.length - 6}`}
+                                </HashRow>
+                            )}
+                            {ctx?.tags && ctx.tags.length > 0 && (
+                                <HashRow label="tags">
+                                    {ctx.tags.slice(0, 10).join(", ")}
+                                </HashRow>
+                            )}
+                        </dl>
+                    )}
+                </div>
             </CardContent>
         </Card>
     );
