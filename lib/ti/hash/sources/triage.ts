@@ -14,7 +14,7 @@ interface TriageOverview {
     score?: number;
     family?: string[];
     tags?: string[];
-    signatures?: { name?: string }[];
+    signatures?: { name?: string; ttp?: string[]; tags?: string[] }[];
     // Sandbox-observed network IOCs for this target (mixes C2 with benign OS
     // noise); read defensively.
     iocs?: { domains?: string[]; ips?: string[]; urls?: string[] };
@@ -45,7 +45,11 @@ export function extractTriageRelations(
 ): RelatedIndicator[] {
   const relations: RelatedIndicator[] = [];
   const seen = new Set<string>();
-  const add = (raw: unknown) => {
+  // Config-derived hosts are C2 extracted from the malware itself (high trust),
+  // so they land in the `confirmed` tier; sandbox-observed `iocs` mix real
+  // contacts with benign OS noise, so they are `observed`. First writer wins the
+  // tier for a given host (config is walked first).
+  const add = (raw: unknown, tier: "confirmed" | "observed") => {
     if (typeof raw !== "string") return;
     const host = bareHost(raw);
     if (!host || seen.has(host) || !isRoutableHost(host)) return;
@@ -54,6 +58,8 @@ export function extractTriageRelations(
       value: host,
       type: detectIOC(host) === "ip" ? "ip" : "domain",
       relation: "contacts",
+      sources: ["triage"],
+      tier,
     });
   };
   for (const e of data.extracted ?? []) {
@@ -63,13 +69,53 @@ export function extractTriageRelations(
       ...(cfg.domains ?? []),
       ...(cfg.hosts ?? []),
     ])
-      add(raw);
+      add(raw, "confirmed");
   }
   for (const t of data.targets ?? []) {
     const iocs = t.iocs ?? {};
-    for (const raw of [...(iocs.domains ?? []), ...(iocs.ips ?? [])]) add(raw);
+    for (const raw of [...(iocs.domains ?? []), ...(iocs.ips ?? [])])
+      add(raw, "observed");
   }
   return relations.slice(0, cap);
+}
+
+/**
+ * Sandbox-observed behaviors for this sample: each unique signature name is a
+ * capability, tagged with its MITRE technique ids (`ttp`) when present. Deduped
+ * by name; first occurrence wins.
+ */
+export function extractTriageCapabilities(
+  data: TriageOverview,
+): { label: string; mitre?: string[] }[] {
+  const seen = new Set<string>();
+  const out: { label: string; mitre?: string[] }[] = [];
+  for (const t of data.targets ?? []) {
+    for (const s of t.signatures ?? []) {
+      if (!s.name) continue;
+      const key = s.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ label: s.name, mitre: s.ttp?.length ? s.ttp : undefined });
+    }
+  }
+  return out;
+}
+
+/** Deduped MITRE technique ids across every signature, uppercased. */
+export function extractTriageMitre(data: TriageOverview): { id: string }[] {
+  const seen = new Set<string>();
+  const out: { id: string }[] = [];
+  for (const t of data.targets ?? []) {
+    for (const s of t.signatures ?? []) {
+      for (const id of s.ttp ?? []) {
+        const up = id.toUpperCase();
+        if (seen.has(up)) continue;
+        seen.add(up);
+        out.push({ id: up });
+      }
+    }
+  }
+  return out;
 }
 
 const API = "https://tria.ge/api/v0";
@@ -176,6 +222,12 @@ export const triageSource: TiSource = {
           fileName: data.sample?.target,
           fileNames: fileNames.length ? fileNames : undefined,
           fileSize: data.sample?.size,
+          capabilities: extractTriageCapabilities(data).length
+            ? extractTriageCapabilities(data)
+            : undefined,
+          mitreTechniques: extractTriageMitre(data).length
+            ? extractTriageMitre(data)
+            : undefined,
         },
         relations: relations.length ? relations : undefined,
         raw: data,

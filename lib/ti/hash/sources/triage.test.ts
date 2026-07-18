@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { bareHost, extractTriageRelations, triageSource } from "./triage";
+import {
+  bareHost,
+  extractTriageCapabilities,
+  extractTriageMitre,
+  extractTriageRelations,
+  triageSource,
+} from "./triage";
 import * as http from "../../http";
 
 describe("extractTriageRelations", () => {
@@ -15,10 +21,29 @@ describe("extractTriageRelations", () => {
         },
       ],
     });
+    // config-derived C2 is the confirmed tier; sandbox iocs are observed.
     expect(rels).toEqual([
-      { value: "45.9.148.0", type: "ip", relation: "contacts" },
-      { value: "evil.example.com", type: "domain", relation: "contacts" },
-      { value: "203.0.113.5", type: "ip", relation: "contacts" },
+      {
+        value: "45.9.148.0",
+        type: "ip",
+        relation: "contacts",
+        sources: ["triage"],
+        tier: "confirmed",
+      },
+      {
+        value: "evil.example.com",
+        type: "domain",
+        relation: "contacts",
+        sources: ["triage"],
+        tier: "observed",
+      },
+      {
+        value: "203.0.113.5",
+        type: "ip",
+        relation: "contacts",
+        sources: ["triage"],
+        tier: "observed",
+      },
     ]);
   });
 
@@ -28,7 +53,13 @@ describe("extractTriageRelations", () => {
     });
     // private/loopback removed; the public resolver is kept as a network contact
     expect(rels).toEqual([
-      { value: "8.8.8.8", type: "ip", relation: "contacts" },
+      {
+        value: "8.8.8.8",
+        type: "ip",
+        relation: "contacts",
+        sources: ["triage"],
+        tier: "observed",
+      },
     ]);
   });
 
@@ -82,5 +113,41 @@ describe("triageSource.check", () => {
       } as never);
     const finding = await triageSource.check("aabbccdd" + "00112233" + "44556677" + "8899aabb", new AbortController().signal);
     expect(finding.hashContext?.fileNames).toEqual(["invoice.doc", "stage2.exe"]);
+  });
+});
+
+describe("extractTriageCapabilities / extractTriageMitre", () => {
+  const data = {
+    targets: [
+      {
+        signatures: [
+          { name: "Downloads executable", ttp: ["T1105"] },
+          { name: "Modifies run key", ttp: ["T1547"] },
+          { name: "Downloads executable", ttp: ["T1105"] }, // dup
+        ],
+      },
+      { signatures: [{ name: "Contacts C2", ttp: ["T1071", "T1105"] }] },
+    ],
+  };
+
+  it("dedupes capabilities by label and carries their ttp", () => {
+    expect(extractTriageCapabilities(data)).toEqual([
+      { label: "Downloads executable", mitre: ["T1105"] },
+      { label: "Modifies run key", mitre: ["T1547"] },
+      { label: "Contacts C2", mitre: ["T1071", "T1105"] },
+    ]);
+  });
+
+  it("dedupes MITRE ids across all signatures, uppercased", () => {
+    expect(extractTriageMitre(data)).toEqual([
+      { id: "T1105" },
+      { id: "T1547" },
+      { id: "T1071" },
+    ]);
+  });
+
+  it("returns empty arrays when no signatures carry behavior", () => {
+    expect(extractTriageCapabilities({ targets: [{}] })).toEqual([]);
+    expect(extractTriageMitre({})).toEqual([]);
   });
 });
