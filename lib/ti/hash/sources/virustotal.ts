@@ -157,6 +157,7 @@ export const virusTotalHashSource: TiSource = {
           // Names the engines assigned — the hash profile card renders none of
           // these, so they also surface in `details` (the raw disclosure).
           detectionNames: detections.length ? detections : undefined,
+          detectionRatio: { malicious, total },
         },
         details: {
           maliciousEngines: malicious,

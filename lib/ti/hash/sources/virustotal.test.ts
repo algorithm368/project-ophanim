@@ -69,4 +69,16 @@ describe("virusTotalHashSource.check — definitive-flag wiring (P1.1)", () => {
     );
     expect(f.malicious).toBe(true);
   });
+
+  it("promotes the engine tally into hashContext.detectionRatio", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue(
+      vtFileResponse({ malicious: 48, suspicious: 3, harmless: 20 }),
+    );
+    const f = await virusTotalHashSource.check(
+      "c".repeat(64),
+      new AbortController().signal,
+    );
+    expect(f.hashContext?.detectionRatio).toEqual({ malicious: 48, total: 71 });
+  });
 });
