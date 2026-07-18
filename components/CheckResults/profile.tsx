@@ -506,7 +506,7 @@ export function HashRow({
                 title={hint}
                 className={cn(
                     "shrink-0 text-[13px] leading-snug text-muted-foreground",
-                    narrow ? "w-14" : "w-24",
+                    narrow ? "w-14" : "w-28",
                     hint &&
                         "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
                 )}
@@ -721,9 +721,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                             <SubLabel>Identity</SubLabel>
                             <dl>
                                 {ctx?.fileName && (
-                                    <HashRow label="name" mono>
-                                        {ctx.fileName}
-                                    </HashRow>
+                                    <HashRow label="name">{ctx.fileName}</HashRow>
                                 )}
                                 {ctx?.fileType && (
                                     <HashRow label="type">{ctx.fileType}</HashRow>
