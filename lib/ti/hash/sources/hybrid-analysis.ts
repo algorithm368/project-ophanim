@@ -16,6 +16,12 @@ interface HaOverview {
   related_parent_hashes?: string[] | null;
   /** SHA-256s of files this sample dropped/extracted. */
   related_children_hashes?: string[] | null;
+  /** Behavioral signatures (present only on some overview responses). */
+  signatures?: { name?: string; attck_id?: string[] | null }[] | null;
+  /** MITRE ATT&CK mappings (present only on some overview responses). */
+  mitre_attcks?:
+    | { technique?: string; attck_id?: string; tactic?: string }[]
+    | null;
   message?: string;
 }
 
@@ -41,7 +47,13 @@ export function haRelatedHashes(
       ),
     ]
       .slice(0, cap)
-      .map((value) => ({ value, type: "hash" as const, relation }));
+      .map((value) => ({
+        value,
+        type: "hash" as const,
+        relation,
+        sources: ["hybrid-analysis"],
+        tier: "observed" as const,
+      }));
   return [...pick(parents, "parent"), ...pick(children, "drops")];
 }
 
@@ -66,6 +78,39 @@ export function hybridAnalysisScore(
   if (verdict === "malicious") return Math.max(threatScore ?? 0, 75);
   if (verdict === "suspicious") return Math.max(threatScore ?? 0, 45);
   return threatScore ?? 0;
+}
+
+/** Behavioral signatures as capabilities, tagged with their technique ids. */
+export function haCapabilities(
+  data: HaOverview,
+): { label: string; mitre?: string[] }[] {
+  const out: { label: string; mitre?: string[] }[] = [];
+  const seen = new Set<string>();
+  for (const s of data.signatures ?? []) {
+    if (!s?.name) continue;
+    const key = s.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const mitre = (s.attck_id ?? []).map((id) => id.toUpperCase());
+    out.push({ label: s.name, mitre: mitre.length ? mitre : undefined });
+  }
+  return out;
+}
+
+/** MITRE ATT&CK entries as deduped techniques with names and tactics. */
+export function haMitre(
+  data: HaOverview,
+): { id: string; name?: string; tactic?: string }[] {
+  const out: { id: string; name?: string; tactic?: string }[] = [];
+  const seen = new Set<string>();
+  for (const m of data.mitre_attcks ?? []) {
+    if (!m?.attck_id) continue;
+    const id = m.attck_id.toUpperCase();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: m.technique || undefined, tactic: m.tactic || undefined });
+  }
+  return out;
 }
 
 export const hybridAnalysisSource: TiSource = {
@@ -141,6 +186,8 @@ export const hybridAnalysisSource: TiSource = {
           fileType,
           fileSize: data.size ?? undefined,
           malwareFamily: family,
+          capabilities: haCapabilities(data).length ? haCapabilities(data) : undefined,
+          mitreTechniques: haMitre(data).length ? haMitre(data) : undefined,
         },
         details: {
           verdict,

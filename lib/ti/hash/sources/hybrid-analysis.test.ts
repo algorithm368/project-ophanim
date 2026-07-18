@@ -1,5 +1,11 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { haRelatedHashes, hybridAnalysisScore, hybridAnalysisSource } from "./hybrid-analysis";
+import {
+  haCapabilities,
+  haMitre,
+  haRelatedHashes,
+  hybridAnalysisScore,
+  hybridAnalysisSource,
+} from "./hybrid-analysis";
 import * as http from "../../http";
 
 describe("haRelatedHashes", () => {
@@ -7,9 +13,9 @@ describe("haRelatedHashes", () => {
     expect(
       haRelatedHashes(["P1", "SELF", "p1"], ["C1", "C2"], "self"),
     ).toEqual([
-      { value: "p1", type: "hash", relation: "parent" },
-      { value: "c1", type: "hash", relation: "drops" },
-      { value: "c2", type: "hash", relation: "drops" },
+      { value: "p1", type: "hash", relation: "parent", sources: ["hybrid-analysis"], tier: "observed" },
+      { value: "c1", type: "hash", relation: "drops", sources: ["hybrid-analysis"], tier: "observed" },
+      { value: "c2", type: "hash", relation: "drops", sources: ["hybrid-analysis"], tier: "observed" },
     ]);
   });
 
@@ -52,5 +58,37 @@ describe("hybridAnalysisSource.check", () => {
     } as never);
     const finding = await hybridAnalysisSource.check("f".repeat(64), new AbortController().signal);
     expect(finding.hashContext?.fileNames).toEqual(["dropper.exe"]);
+  });
+});
+
+describe("haCapabilities / haMitre", () => {
+  const data = {
+    signatures: [
+      { name: "Contacts a randomly generated domain", attck_id: ["T1568"] },
+      { name: "Writes to startup", attck_id: ["T1547"] },
+    ],
+    mitre_attcks: [
+      { technique: "Application Layer Protocol", attck_id: "T1071", tactic: "Command and Control" },
+      { technique: "Ingress Tool Transfer", attck_id: "T1105", tactic: "Command and Control" },
+    ],
+  };
+
+  it("maps behavioral signatures to capabilities with their technique ids", () => {
+    expect(haCapabilities(data)).toEqual([
+      { label: "Contacts a randomly generated domain", mitre: ["T1568"] },
+      { label: "Writes to startup", mitre: ["T1547"] },
+    ]);
+  });
+
+  it("maps mitre_attcks entries to techniques with names and tactics", () => {
+    expect(haMitre(data)).toEqual([
+      { id: "T1071", name: "Application Layer Protocol", tactic: "Command and Control" },
+      { id: "T1105", name: "Ingress Tool Transfer", tactic: "Command and Control" },
+    ]);
+  });
+
+  it("returns empty arrays when the overview omits behavior data", () => {
+    expect(haCapabilities({})).toEqual([]);
+    expect(haMitre({})).toEqual([]);
   });
 });
