@@ -22,6 +22,16 @@ export interface RelatedIndicator {
   type: IndicatorType;
   /** Short edge label, e.g. "rDNS", "A", "hosted", "contacts". */
   relation: string;
+  /** Source ids that reported this pivot, for provenance + corroboration.
+   *  Unioned across sources when the same value is merged. */
+  sources?: string[];
+  /**
+   * Trust tier for malware pivots (hash results). `confirmed` = extracted C2
+   * config, or corroborated by two or more sources; `observed` = single-source
+   * sandbox contact that may include benign noise. Left undefined for DNS/infra
+   * relations on IP/domain results, which are not tiered.
+   */
+  tier?: "confirmed" | "observed";
 }
 
 export interface SourceMeta {
@@ -133,6 +143,16 @@ export interface HashContext {
   distributionUrls?: string[];
   /** AV/engine detection labels, e.g. "Trojan.Win32.Emotet". */
   detectionNames?: string[];
+  /** Plain-language summary of the malware family (from Malpedia). */
+  familyDescription?: string;
+  /** Reference URLs for deeper reading on the family (capped ~5). */
+  familyRefs?: string[];
+  /** Sandbox-observed behaviors, each optionally tagged with MITRE technique ids. */
+  capabilities?: { label: string; mitre?: string[] }[];
+  /** Deduped ATT&CK techniques observed for this sample. */
+  mitreTechniques?: { id: string; name?: string; tactic?: string }[];
+  /** Multi-engine detection tally, for a first-class confidence number. */
+  detectionRatio?: { malicious: number; total: number };
 }
 
 /** One TLS certificate observed in certificate-transparency logs (e.g. crt.sh). */
