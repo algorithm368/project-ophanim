@@ -92,12 +92,33 @@ function mergeHashContext(
   hash: string,
   algorithm: HashAlgorithm,
 ): HashContext | undefined {
-  const merged = mergeFields(
-    results
-      .filter((r) => r.status === "ok" && r.hashContext)
-      .map((r) => r.hashContext as HashContext),
-  );
+  const contexts = results
+    .filter((r) => r.status === "ok" && r.hashContext)
+    .map((r) => r.hashContext as HashContext);
+  const merged = mergeFields(contexts);
   if (!merged) return undefined;
+
+  const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const item of items) {
+      const k = key(item);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(item);
+    }
+    return out;
+  };
+
+  const capabilities = dedupeBy(
+    contexts.flatMap((c) => c.capabilities ?? []),
+    (c) => c.label.toLowerCase(),
+  );
+  const mitreTechniques = dedupeBy(
+    contexts.flatMap((c) => c.mitreTechniques ?? []),
+    (t) => t.id.toUpperCase(),
+  );
+
   const hashes = {
     md5: merged.md5 ?? (algorithm === "md5" ? hash : undefined),
     sha1: merged.sha1 ?? (algorithm === "sha1" ? hash : undefined),
@@ -108,6 +129,8 @@ function mergeHashContext(
     ...merged,
     fileName: resolved.fileName,
     fileNames: resolved.fileNames,
+    capabilities: capabilities.length ? capabilities : undefined,
+    mitreTechniques: mitreTechniques.length ? mitreTechniques : undefined,
   };
 }
 

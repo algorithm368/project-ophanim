@@ -162,3 +162,33 @@ describe("assembleHashResult — benign override (B2)", () => {
     expect(r.scoreBreakdown?.benignOverride).toBeUndefined();
   });
 });
+
+describe("assembleHashResult context union", () => {
+  it("unions capabilities and mitre techniques across sources, deduped", () => {
+    const results = [
+      ok("triage", 0.8, 90, {
+        hashContext: {
+          capabilities: [{ label: "Downloads executable", mitre: ["T1105"] }],
+          mitreTechniques: [{ id: "T1105" }],
+        },
+      }),
+      ok("hybrid", 0.85, 80, {
+        hashContext: {
+          capabilities: [{ label: "downloads executable" }, { label: "Writes run key" }],
+          mitreTechniques: [{ id: "T1105" }, { id: "T1547" }],
+        },
+      }),
+    ];
+    const r = assembleHashResult(
+      "d41d8cd98f00b204e9800998ecf8427e",
+      "md5",
+      results,
+      "2026-07-18T00:00:00Z",
+    );
+    expect(r.context?.capabilities).toEqual([
+      { label: "Downloads executable", mitre: ["T1105"] },
+      { label: "Writes run key" },
+    ]);
+    expect(r.context?.mitreTechniques).toEqual([{ id: "T1105" }, { id: "T1547" }]);
+  });
+});
