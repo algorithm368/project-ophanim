@@ -485,21 +485,28 @@ export function HashRow({
     label,
     hint,
     mono = false,
+    narrow = false,
     action,
     children,
 }: {
     label: string;
     hint?: string;
     mono?: boolean;
+    /** Narrower label column (for short fingerprint labels), giving long mono
+     *  values more room before truncating. */
+    narrow?: boolean;
     action?: ReactNode;
     children: ReactNode;
 }) {
+    // Fixed row height so parallel columns (Identity / Fingerprints) share the
+    // same horizontal gridlines even when only some rows carry a copy button.
     return (
-        <div className="flex items-baseline gap-3 py-[3px]">
+        <div className="flex min-h-7 items-center gap-3">
             <dt
                 title={hint}
                 className={cn(
-                    "w-24 shrink-0 text-[13px] leading-snug text-muted-foreground",
+                    "shrink-0 text-[13px] leading-snug text-muted-foreground",
+                    narrow ? "w-14" : "w-24",
                     hint &&
                         "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
                 )}
@@ -740,6 +747,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                     key={d.label}
                                     label={d.label.toLowerCase()}
                                     mono
+                                    narrow
                                     action={<CopyHashButton value={d.value} />}
                                 >
                                     {d.value}
@@ -749,6 +757,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                 <HashRow
                                     label="imphash"
                                     mono
+                                    narrow
                                     hint="Hash of the PE import table, clusters samples built from the same code"
                                 >
                                     {ctx.imphash}
@@ -758,6 +767,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                 <HashRow
                                     label="ssdeep"
                                     mono
+                                    narrow
                                     hint="Fuzzy hash, matches files that are similar but not identical"
                                 >
                                     {ctx.ssdeep}
@@ -767,6 +777,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                 <HashRow
                                     label="magic"
                                     mono
+                                    narrow
                                     hint="libmagic file-type signature derived from the file's leading bytes"
                                 >
                                     {ctx.magic}
