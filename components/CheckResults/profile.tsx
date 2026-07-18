@@ -538,6 +538,58 @@ function refLabel(href: string): string {
     }
 }
 
+/** Substring, normalized-category pairs. Ordered so more specific tokens are
+ *  listed first; substrings must not overlap (e.g. no bare "loader" that would
+ *  also fire on "downloader"). */
+const CATEGORY_TOKENS: { match: string; label: string }[] = [
+    { match: "ransomware", label: "ransomware" },
+    { match: "ransom", label: "ransomware" },
+    { match: "downloader", label: "downloader" },
+    { match: "dropper", label: "dropper" },
+    { match: "backdoor", label: "backdoor" },
+    { match: "keylog", label: "keylogger" },
+    { match: "spyware", label: "spyware" },
+    { match: "adware", label: "adware" },
+    { match: "rootkit", label: "rootkit" },
+    { match: "worm", label: "worm" },
+    { match: "banker", label: "banker" },
+    { match: "stealer", label: "stealer" },
+    { match: "miner", label: "miner" },
+    { match: "inject", label: "injector" },
+    { match: "trojan", label: "trojan" },
+    { match: "botnet", label: "botnet" },
+    { match: "exploit", label: "exploit" },
+    { match: "riskware", label: "riskware" },
+    { match: "clicker", label: "clicker" },
+    { match: "hacktool", label: "hacktool" },
+];
+
+/** Summarize what a file is from its engine detection labels: the malware
+ *  categories the engines keep naming, most frequent first, capped at four.
+ *  Turns a wall of vendor strings into an at-a-glance read. Detection labels
+ *  only, not tags, which are often joke or user labels (EICAR's are nonsense). */
+function deriveCategories(labels: string[]): string[] {
+    const haystack = labels.map((s) => s.toLowerCase());
+    const counts = new Map<string, number>();
+    for (const { match, label } of CATEGORY_TOKENS) {
+        const n = haystack.filter((s) => s.includes(match)).length;
+        if (n > 0) counts.set(label, (counts.get(label) ?? 0) + n);
+    }
+    return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([label]) => label);
+}
+
+/** `N of M flagged` engines chip, shown in the identity header. */
+function EnginesChip({ malicious, total }: { malicious: number; total: number }) {
+    return (
+        <code className="ml-auto shrink-0 rounded-sm border border-foreground/15 bg-muted/60 px-2 py-0.5 font-mono text-[11px] font-semibold tracking-tight text-foreground/80">
+            {malicious} / {total} flagged
+        </code>
+    );
+}
+
 export function HashProfileCard({ result }: { result: HashCheckResult }) {
     const ctx = result.context;
     const hasData = result.sources.some(
@@ -583,11 +635,15 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
     const extraTech = techniques.filter(
         (t) => !shownTech.has(t.id.toUpperCase()),
     );
-    const hasThreat =
-        Boolean(ctx?.familyDescription) ||
+    const hasEvidence =
         capabilities.length > 0 ||
         detections.length > 0 ||
-        extraTech.length > 0;
+        extraTech.length > 0 ||
+        refs.length > 0;
+    const categories = deriveCategories(detections);
+    const hasIdentityFacts = Boolean(
+        ctx?.fileName || ctx?.fileType || size || firstSeen || lastSeen,
+    );
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -603,41 +659,66 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                     File identity
                 </SectionHeading>
 
-                {/* Verdict dot + classification, the one place color appears. */}
+                {/* Header: verdict dot, family, at-a-glance categories + tally. */}
                 <div className="flex items-start gap-3">
                     <StatusDot kind={kind} />
-                    <div className="min-w-0">
-                        <div
-                            className={cn(
-                                "text-lg font-bold uppercase leading-tight tracking-tight",
-                                tone,
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                            <span
+                                className={cn(
+                                    "text-lg font-bold uppercase leading-tight tracking-tight",
+                                    tone,
+                                )}
+                            >
+                                {type.label}
+                            </span>
+                            {ratio && (
+                                <EnginesChip
+                                    malicious={ratio.malicious}
+                                    total={ratio.total}
+                                />
                             )}
-                        >
-                            {type.label}
                         </div>
                         {type.desc && (
                             <div className="mt-0.5 text-sm text-muted-foreground">
                                 {type.desc}
                             </div>
                         )}
+                        {categories.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                {categories.map((c) => (
+                                    <span
+                                        key={c}
+                                        className="inline-flex items-center rounded-md border border-foreground/15 bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground/75"
+                                    >
+                                        {c}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {/* Flat record readout: one aligned label to value column. */}
-                <div className="space-y-3">
-                    {ctx &&
-                        (ctx.fileName ||
-                            ctx.fileType ||
-                            size ||
-                            firstSeen ||
-                            lastSeen) && (
+                {ctx?.familyDescription && (
+                    <p className="text-sm leading-relaxed text-foreground/85">
+                        {ctx.familyDescription}
+                    </p>
+                )}
+
+                <Rule />
+
+                {/* Two-column dossier: identity facts left, fingerprints right. */}
+                <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                    {hasIdentityFacts && (
+                        <div className="space-y-1">
+                            <SubLabel>Identity</SubLabel>
                             <dl>
-                                {ctx.fileName && (
+                                {ctx?.fileName && (
                                     <HashRow label="name" mono>
                                         {ctx.fileName}
                                     </HashRow>
                                 )}
-                                {ctx.fileType && (
+                                {ctx?.fileType && (
                                     <HashRow label="type">{ctx.fileType}</HashRow>
                                 )}
                                 {size && <HashRow label="size">{size}</HashRow>}
@@ -648,95 +729,76 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                     <HashRow label="last seen">{lastSeen}</HashRow>
                                 )}
                             </dl>
-                        )}
+                        </div>
+                    )}
 
-                    <dl>
-                        {digests.map((d) => (
-                            <HashRow
-                                key={d.label}
-                                label={d.label.toLowerCase()}
-                                mono
-                                action={<CopyHashButton value={d.value} />}
-                            >
-                                {d.value}
-                            </HashRow>
-                        ))}
-                        {ctx?.imphash && (
-                            <HashRow
-                                label="imphash"
-                                mono
-                                hint="Hash of the PE import table, clusters samples built from the same code"
-                            >
-                                {ctx.imphash}
-                            </HashRow>
-                        )}
-                        {ctx?.ssdeep && (
-                            <HashRow
-                                label="ssdeep"
-                                mono
-                                hint="Fuzzy hash, matches files that are similar but not identical"
-                            >
-                                {ctx.ssdeep}
-                            </HashRow>
-                        )}
-                        {ctx?.magic && (
-                            <HashRow
-                                label="magic"
-                                mono
-                                hint="libmagic file-type signature derived from the file's leading bytes"
-                            >
-                                {ctx.magic}
-                            </HashRow>
-                        )}
-                    </dl>
-
-                    {(altNames.length > 0 ||
-                        (ctx?.tags && ctx.tags.length > 0)) && (
+                    <div className="space-y-1">
+                        <SubLabel>Fingerprints</SubLabel>
                         <dl>
-                            {altNames.length > 0 && (
-                                <HashRow label="aka">
-                                    {altNames.slice(0, 6).join(", ")}
-                                    {altNames.length > 6 &&
-                                        ` +${altNames.length - 6}`}
+                            {digests.map((d) => (
+                                <HashRow
+                                    key={d.label}
+                                    label={d.label.toLowerCase()}
+                                    mono
+                                    action={<CopyHashButton value={d.value} />}
+                                >
+                                    {d.value}
+                                </HashRow>
+                            ))}
+                            {ctx?.imphash && (
+                                <HashRow
+                                    label="imphash"
+                                    mono
+                                    hint="Hash of the PE import table, clusters samples built from the same code"
+                                >
+                                    {ctx.imphash}
                                 </HashRow>
                             )}
-                            {ctx?.tags && ctx.tags.length > 0 && (
-                                <HashRow label="tags">
-                                    {ctx.tags.slice(0, 10).join(", ")}
+                            {ctx?.ssdeep && (
+                                <HashRow
+                                    label="ssdeep"
+                                    mono
+                                    hint="Fuzzy hash, matches files that are similar but not identical"
+                                >
+                                    {ctx.ssdeep}
+                                </HashRow>
+                            )}
+                            {ctx?.magic && (
+                                <HashRow
+                                    label="magic"
+                                    mono
+                                    hint="libmagic file-type signature derived from the file's leading bytes"
+                                >
+                                    {ctx.magic}
                                 </HashRow>
                             )}
                         </dl>
-                    )}
+                    </div>
                 </div>
 
-                {/* Threat evidence: what scanners and sandboxes say this file is
-                    and does. Only the malware verdict carries color. */}
-                {hasThreat && (
+                {(altNames.length > 0 ||
+                    (ctx?.tags && ctx.tags.length > 0)) && (
+                    <dl>
+                        {altNames.length > 0 && (
+                            <HashRow label="aka">
+                                {altNames.slice(0, 6).join(", ")}
+                                {altNames.length > 6 && ` +${altNames.length - 6}`}
+                            </HashRow>
+                        )}
+                        {ctx?.tags && ctx.tags.length > 0 && (
+                            <HashRow label="tags">
+                                {ctx.tags.slice(0, 10).join(", ")}
+                            </HashRow>
+                        )}
+                    </dl>
+                )}
+
+                {/* Threat evidence below a rule: behavior, raw detection labels,
+                    ATT&CK techniques, references. */}
+                {hasEvidence && (
                     <>
                         <Rule />
                         <div className="space-y-4">
-                            {ctx?.familyDescription && (
-                                <p className="text-sm leading-relaxed text-foreground/85">
-                                    {ctx.familyDescription}
-                                </p>
-                            )}
-                            {refs.length > 0 && (
-                                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                                    {refs.map((href, i) => (
-                                        <a
-                                            key={href}
-                                            href={href}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-[13px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                                        >
-                                            {i === 0 ? "refs: " : ""}
-                                            {refLabel(href)}
-                                        </a>
-                                    ))}
-                                </div>
-                            )}
-
                             {capabilities.length > 0 && (
                                 <div className="space-y-1">
                                     <SubLabel>What this file does</SubLabel>
@@ -755,12 +817,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
 
                             {detections.length > 0 && (
                                 <div className="space-y-1">
-                                    <SubLabel>
-                                        Engine detections
-                                        {ratio
-                                            ? `, ${ratio.malicious} of ${ratio.total} flagged`
-                                            : ""}
-                                    </SubLabel>
+                                    <SubLabel>Detection labels</SubLabel>
                                     <ul className="space-y-0.5">
                                         {detections.slice(0, 8).map((n) => (
                                             <li
@@ -795,6 +852,23 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                             </span>
                                         ))}
                                     </div>
+                                </div>
+                            )}
+
+                            {refs.length > 0 && (
+                                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                    {refs.map((href, i) => (
+                                        <a
+                                            key={href}
+                                            href={href}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-[13px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                                        >
+                                            {i === 0 ? "refs: " : ""}
+                                            {refLabel(href)}
+                                        </a>
+                                    ))}
                                 </div>
                             )}
                         </div>
