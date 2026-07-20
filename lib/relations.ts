@@ -43,6 +43,48 @@ function dedupe(nodes: RelatedIndicator[]): RelatedIndicator[] {
   return out;
 }
 
+/**
+ * Merge relations that point at the same value (case-insensitive), preserving
+ * first-seen order. Unlike `dedupe`, this keeps corroboration: it unions the
+ * reporting `sources` across duplicates and recomputes the trust tier. A pivot
+ * is `confirmed` when any contributor already marked it confirmed (e.g. Triage
+ * extracted it from the malware config) or when two or more distinct sources
+ * report it; otherwise it stays `observed`. Relations with no tier at all (DNS /
+ * infra pivots on IP/domain results) pass through untiered.
+ */
+export function mergeRelations(nodes: RelatedIndicator[]): RelatedIndicator[] {
+  const byKey = new Map<string, RelatedIndicator>();
+  const order: string[] = [];
+  for (const n of nodes) {
+    const key = n.value.toLowerCase();
+    const existing = byKey.get(key);
+    if (!existing) {
+      order.push(key);
+      byKey.set(key, { ...n, sources: n.sources ? [...n.sources] : undefined });
+      continue;
+    }
+    // Union sources.
+    if (n.sources?.length) {
+      const merged = new Set([...(existing.sources ?? []), ...n.sources]);
+      existing.sources = [...merged];
+    }
+    // Keep the first non-empty relation label.
+    if (!existing.relation && n.relation) existing.relation = n.relation;
+    // Strongest tier wins: confirmed > observed > undefined.
+    if (n.tier === "confirmed") existing.tier = "confirmed";
+    else if (n.tier === "observed" && existing.tier !== "confirmed")
+      existing.tier = "observed";
+  }
+  // Promote to confirmed when corroborated by two or more distinct sources.
+  const out: RelatedIndicator[] = [];
+  for (const key of order) {
+    const rel = byKey.get(key)!;
+    if (rel.tier && (rel.sources?.length ?? 0) >= 2) rel.tier = "confirmed";
+    out.push(rel);
+  }
+  return out;
+}
+
 /** Passive-DNS resolutions as pivots: for an IP lookup the records are domains
  *  (relation "hosted"); for a domain lookup they are IPs (relation "resolved"). */
 function passiveDnsRelations(
@@ -145,12 +187,14 @@ export function relationsFor(
     type = "ip";
     contextual = ipRelations(result);
   }
-  // Merge context-derived + source-contributed relations, then dedupe by
-  // lowercased value and drop any entry that points back at the focus itself.
+  // Merge context-derived + source-contributed relations by lowercased value
+  // (unioning sources + tier for corroboration), then drop any entry that points
+  // back at the focus itself.
   const focusKey = value.toLowerCase();
-  const merged = dedupe([...contextual, ...sourceRelations(result)]).filter(
-    (r) => r.value.toLowerCase() !== focusKey && isRoutableRelation(r),
-  );
+  const merged = mergeRelations([
+    ...contextual,
+    ...sourceRelations(result),
+  ]).filter((r) => r.value.toLowerCase() !== focusKey && isRoutableRelation(r));
   return { value, type, related: merged };
 }
 
@@ -233,39 +277,37 @@ export const RELATION_ORDER = [
 /** A file's other digests are shown in the profile card, not as "connections". */
 export const DIGEST_RELATIONS = new Set(["MD5", "SHA-1", "SHA-256"]);
 
-export interface RelationGroup {
-  relation: string;
-  label: string;
-  description: string;
-  items: { value: string; type: IndicatorType }[];
-}
+/** Short relation label for the tiered hash table (the tier column already
+ *  distinguishes confirmed C2 from observed contact). Falls back to the raw
+ *  relation string. */
+export const RELATION_SHORT: Record<string, string> = {
+  contacts: "C2 / network",
+  communicating: "communicating",
+  drops: "drops",
+  parent: "parent sample",
+  similar: "similar sample",
+  distribution: "distribution",
+};
 
-/** Shape relations for the connections detail view: drop a file's other digests,
- *  group by relation (preserving each item's type), order by RELATION_ORDER then
- *  unknown relations alphabetically, and attach the shared label/description. */
-export function groupRelations(related: RelatedIndicator[]): RelationGroup[] {
-  const byRelation = new Map<string, { value: string; type: IndicatorType }[]>();
-  for (const r of related) {
-    if (DIGEST_RELATIONS.has(r.relation)) continue;
-    const items = byRelation.get(r.relation) ?? [];
-    if (!items.some((i) => i.value === r.value)) {
-      items.push({ value: r.value, type: r.type });
-    }
-    byRelation.set(r.relation, items);
-  }
+const TIER_RANK: Record<string, number> = { confirmed: 0, observed: 1 };
 
-  const keys = [
-    ...RELATION_ORDER.filter((k) => byRelation.has(k)),
-    ...[...byRelation.keys()].filter((k) => !RELATION_ORDER.includes(k)).sort(),
-  ];
-
-  return keys.map((relation) => {
-    const meta = RELATION_META[relation] ?? { label: relation, description: "" };
-    return {
-      relation,
-      label: meta.label,
-      description: meta.description,
-      items: byRelation.get(relation) ?? [],
-    };
+/** Order relations for the SIEM-style hash table: confirmed tier first, then
+ *  observed, then untiered; within a tier by RELATION_ORDER, then value. Does
+ *  not mutate the input. */
+export function sortRelationsForTable(
+  related: RelatedIndicator[],
+): RelatedIndicator[] {
+  const relRank = (r: string) => {
+    const i = RELATION_ORDER.indexOf(r);
+    return i === -1 ? RELATION_ORDER.length : i;
+  };
+  return [...related].sort((a, b) => {
+    const ta = TIER_RANK[a.tier ?? ""] ?? 2;
+    const tb = TIER_RANK[b.tier ?? ""] ?? 2;
+    if (ta !== tb) return ta - tb;
+    const ra = relRank(a.relation);
+    const rb = relRank(b.relation);
+    if (ra !== rb) return ra - rb;
+    return a.value.localeCompare(b.value);
   });
 }

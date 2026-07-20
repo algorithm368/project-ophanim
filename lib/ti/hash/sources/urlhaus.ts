@@ -106,6 +106,8 @@ export const urlhausHashSource: TiSource = {
             value: host,
             type: "domain",
             relation: "distribution",
+            sources: ["urlhaus"],
+            tier: "confirmed",
           });
         }
       }

@@ -55,7 +55,13 @@ export function fileRelationsFromVt(
   const out: RelatedIndicator[] = [];
   for (const r of FILE_RELS)
     for (const value of relationshipIds(rels, r.kind, cap))
-      out.push({ value, type: r.type, relation: r.relation });
+      out.push({
+        value,
+        type: r.type,
+        relation: r.relation,
+        sources: ["virustotal"],
+        tier: "observed",
+      });
   return out;
 }
 

@@ -40,11 +40,15 @@ describe("fileRelationsFromVt", () => {
       // inline contacted_urls carries only an opaque url-id -> must be ignored
       contacted_urls: { data: [{ type: "url", id: "69b1d41239160438" }] },
     };
+    // A file's VT relationships are sandbox-observed, so each carries the
+    // virustotal source id and the `observed` tier for corroboration/merging.
+    const s = ["virustotal"];
+    const t = "observed";
     expect(fileRelationsFromVt(rels)).toEqual([
-      { value: "103.16.203.232", type: "ip", relation: "contacts" },
-      { value: "evil.example.com", type: "domain", relation: "contacts" },
-      { value: "dead00", type: "hash", relation: "drops" },
-      { value: "beef11", type: "hash", relation: "parent" },
+      { value: "103.16.203.232", type: "ip", relation: "contacts", sources: s, tier: t },
+      { value: "evil.example.com", type: "domain", relation: "contacts", sources: s, tier: t },
+      { value: "dead00", type: "hash", relation: "drops", sources: s, tier: t },
+      { value: "beef11", type: "hash", relation: "parent", sources: s, tier: t },
     ]);
   });
 

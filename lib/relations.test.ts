@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   domainRelations,
-  groupRelations,
   hashRelations,
   ipRelations,
+  mergeRelations,
   relationsFor,
+  sortRelationsForTable,
 } from "@/lib/relations";
 import type {
   CheckResult,
@@ -348,55 +349,84 @@ describe("relationsFor", () => {
   });
 });
 
-describe("groupRelations", () => {
-  it("excludes a file's other digests (MD5/SHA-1/SHA-256)", () => {
-    const related: RelatedIndicator[] = [
-      { value: "44d88612fea8a8f36de82e1278abb02f", type: "hash", relation: "MD5" },
-      { value: "1.2.3.4", type: "ip", relation: "A" },
-    ];
-    expect(groupRelations(related).map((g) => g.relation)).toEqual(["A"]);
-  });
-
-  it("orders groups by RELATION_ORDER, then unknown relations alphabetically", () => {
-    const related: RelatedIndicator[] = [
-      { value: "mx.example", type: "domain", relation: "MX" },
-      { value: "zeta", type: "domain", relation: "zeta" }, // unknown
-      { value: "1.2.3.4", type: "ip", relation: "A" },
-      { value: "ns.example", type: "domain", relation: "NS" },
-      { value: "alpha", type: "domain", relation: "alpha" }, // unknown
-    ];
-    expect(groupRelations(related).map((g) => g.relation)).toEqual([
-      "A",
-      "NS",
-      "MX",
-      "alpha",
-      "zeta",
+describe("mergeRelations", () => {
+  it("unions sources and promotes to confirmed when 2+ sources agree", () => {
+    const merged = mergeRelations([
+      {
+        value: "1.2.3.4",
+        type: "ip",
+        relation: "contacts",
+        sources: ["triage"],
+        tier: "observed",
+      },
+      {
+        value: "1.2.3.4",
+        type: "ip",
+        relation: "contacts",
+        sources: ["virustotal"],
+        tier: "observed",
+      },
     ]);
+    expect(merged).toHaveLength(1);
+    expect([...(merged[0].sources ?? [])].sort()).toEqual([
+      "triage",
+      "virustotal",
+    ]);
+    expect(merged[0].tier).toBe("confirmed");
   });
 
-  it("groups items, preserves type, and dedupes duplicate values within a group", () => {
-    const related: RelatedIndicator[] = [
+  it("keeps config-extracted C2 confirmed from a single source", () => {
+    const merged = mergeRelations([
+      {
+        value: "evil.com",
+        type: "domain",
+        relation: "contacts",
+        sources: ["triage"],
+        tier: "confirmed",
+      },
+    ]);
+    expect(merged[0].tier).toBe("confirmed");
+  });
+
+  it("leaves a single-source observed contact as observed", () => {
+    const merged = mergeRelations([
+      {
+        value: "noise.com",
+        type: "domain",
+        relation: "contacts",
+        sources: ["triage"],
+        tier: "observed",
+      },
+    ]);
+    expect(merged[0].tier).toBe("observed");
+  });
+
+  it("passes untiered DNS relations through untiered", () => {
+    const merged = mergeRelations([
       { value: "1.1.1.1", type: "ip", relation: "A" },
-      { value: "1.1.1.1", type: "ip", relation: "A" }, // dup value
-      { value: "8.8.8.8", type: "ip", relation: "A" },
-    ];
-    const groups = groupRelations(related);
-    expect(groups).toHaveLength(1);
-    expect(groups[0].items).toEqual([
-      { value: "1.1.1.1", type: "ip" },
-      { value: "8.8.8.8", type: "ip" },
     ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].tier).toBeUndefined();
+  });
+});
+
+describe("sortRelationsForTable", () => {
+  it("orders confirmed before observed before untiered, then by value", () => {
+    const rows = sortRelationsForTable([
+      { value: "b", type: "domain", relation: "contacts", tier: "observed" },
+      { value: "a", type: "ip", relation: "contacts", tier: "confirmed" },
+      { value: "c", type: "hash", relation: "similar" },
+    ]);
+    expect(rows.map((r) => r.value)).toEqual(["a", "b", "c"]);
   });
 
-  it("attaches label and description from RELATION_META", () => {
-    const [g] = groupRelations([{ value: "1.2.3.4", type: "ip", relation: "A" }]);
-    expect(g.label).toBe("Resolves to (A)");
-    expect(g.description).toBe("IP addresses this domain resolves to");
-  });
-
-  it("falls back to the raw relation as label for unknown relations", () => {
-    const [g] = groupRelations([{ value: "x", type: "domain", relation: "weird" }]);
-    expect(g.label).toBe("weird");
-    expect(g.description).toBe("");
+  it("does not mutate the input array", () => {
+    const input: RelatedIndicator[] = [
+      { value: "b", type: "ip", relation: "contacts", tier: "observed" },
+      { value: "a", type: "ip", relation: "contacts", tier: "confirmed" },
+    ];
+    const before = input.map((r) => r.value);
+    sortRelationsForTable(input);
+    expect(input.map((r) => r.value)).toEqual(before);
   });
 });

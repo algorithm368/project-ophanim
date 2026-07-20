@@ -3,10 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import {
-  CircleX,
-  Clock,
   FileDigit,
-  Gauge,
   Globe,
   Loader2,
   Network,
@@ -14,10 +11,7 @@ import {
   Search,
   SearchX,
   ServerCrash,
-  ShieldAlert,
-  ShieldCheck,
   ShieldQuestion,
-  TriangleAlert,
   X,
 } from "lucide-react";
 import {
@@ -61,62 +55,56 @@ type Progress = {
   settled: Record<string, SourceResult>;
 };
 
-/** How to render a source row in the live progress list. */
+/**
+ * A simple status dot. Sits in the same size-4 slot the lucide icons used, but
+ * draws a small filled circle that takes its color from the surrounding text
+ * color, so `cls` (text-*) still drives the hue.
+ */
+function StatusDot({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("inline-flex items-center justify-center", className)}
+    >
+      <span className="size-2 rounded-full bg-current" />
+    </span>
+  );
+}
+
+/** Dot color + label for a source row in the live progress list. */
 function progressStatus(result?: SourceResult): {
-  icon: IconType;
   cls: string;
   label: string;
-  spin?: boolean;
 } {
   if (!result) {
-    return {
-      icon: Loader2,
-      cls: "text-muted-foreground/50",
-      label: "checking…",
-      spin: true,
-    };
+    return { cls: "text-muted-foreground", label: "checking…" };
   }
   const score = result.score ?? 0;
   const flagged =
     result.status === "ok" && (result.malicious === true || score >= 40);
   if (flagged) {
-    return {
-      icon: TriangleAlert,
-      cls: "text-red-600 dark:text-red-400",
-      label: "flagged",
-    };
+    return { cls: "text-red-600 dark:text-red-400", label: "flagged" };
   }
   if (result.status === "ok" && score > 0) {
-    return {
-      icon: ShieldAlert,
-      cls: "text-amber-600 dark:text-amber-400",
-      label: "low risk",
-    };
+    return { cls: "text-amber-600 dark:text-amber-400", label: "low risk" };
   }
   switch (result.status) {
     case "ok":
-      return {
-        icon: ShieldCheck,
-        cls: "text-emerald-600 dark:text-emerald-400",
-        label: "clean",
-      };
+      return { cls: "text-emerald-600 dark:text-emerald-400", label: "clean" };
     case "error":
     case "timeout":
       return {
-        icon: CircleX,
         cls: "text-orange-500",
         label: result.status === "timeout" ? "timeout" : "no response",
       };
     case "rate_limited":
       return {
-        icon: Gauge,
         cls: "text-amber-600 dark:text-amber-400",
         label: "rate limited",
       };
     default:
       return {
-        icon: ShieldQuestion,
-        cls: "text-muted-foreground/50",
+        cls: "text-muted-foreground",
         label: result.enabled ? "n/a" : "no key",
       };
   }
@@ -186,10 +174,6 @@ function canonicalFor(value: string, detected: Mode | null): string {
 /** No NDJSON line for this long means the stream stalled (server bounds each
  *  source at ~12s), so the inactivity watchdog aborts and we show what we have. */
 const STREAM_INACTIVITY_MS = 20000;
-
-/** A still-pending source past this many seconds is flagged "slow…" so the wait
- *  reads as a known laggard about to time out, not a frozen UI. */
-const SLOW_THRESHOLD_S = 5;
 
 /** abort() reason used when a history navigation cancels an in-flight lookup, so
  *  runCheck's catch can tell a deliberate Back/Forward from a real failure. */
@@ -1059,12 +1043,6 @@ function SearchProgress({
   const total = progress?.total ?? 0;
   const done = progress ? Object.keys(progress.settled).length : 0;
   const metas = progress?.metas ?? [];
-  // The most recently settled source, for the "currently doing" caption.
-  const lastSettled = progress
-    ? Object.values(progress.settled).sort(
-        (a, b) => b.durationMs - a.durationMs,
-      )[0]
-    : undefined;
   const allSettled = total > 0 && done >= total;
 
   // Worst-case remaining wait = the longest timeout among the sources still
@@ -1087,7 +1065,6 @@ function SearchProgress({
     return () => clearInterval(id);
   }, [allSettled]);
   const elapsedMs = Math.max(0, nowTs - startTs);
-  const elapsedS = Math.floor(elapsedMs / 1000);
 
   // Smooth fill: elapsed time advances it continuously (held just shy of full so
   // it never claims to be done early), while real source completion can push it
@@ -1105,145 +1082,87 @@ function SearchProgress({
       ? `~${fmtElapsed(remainingS)} left`
       : "finishing up…";
 
-  // Slow-tail awareness: name the still-pending sources and the worst-case wait.
-  const maxTimeoutS = Math.round(etaMs / 1000);
-  const showSlowNote = elapsedS >= SLOW_THRESHOLD_S && pendingMetas.length > 0;
-
   return (
     <Card className="sketch-shadow mt-8 overflow-hidden rounded-lg border border-border bg-card">
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2 text-xl font-semibold leading-none">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
-              Checking this {noun}…
-            </div>
+      <CardContent className="space-y-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <p className="font-mono text-[0.7rem] uppercase tracking-[0.2em] text-muted-foreground">
+              Scanning · {noun}
+            </p>
             {indicator && (
-              <p className="font-mono text-sm break-all text-muted-foreground">
+              <p className="font-mono text-lg break-all text-foreground">
                 {indicator}
               </p>
             )}
           </div>
-          <div className="text-right leading-none">
-            <span className="text-3xl font-semibold tabular-nums text-foreground">
-              {pct}%
+          <span className="font-mono text-3xl font-semibold tabular-nums text-muted-foreground">
+            {pct}%
+          </span>
+        </div>
+
+        <div className="space-y-1.5">
+          {/* Minimal 2px hairline that fills left→right; monochrome. */}
+          <div
+            role="progressbar"
+            aria-label="Threat-intel sources checked"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={total > 0 ? pct : undefined}
+            aria-valuetext={
+              total > 0 ? `${done} of ${total} sources checked` : undefined
+            }
+            className="h-0.5 w-full overflow-hidden rounded-full bg-border"
+          >
+            <div
+              className={cn(
+                "h-full bg-foreground/70 transition-[width] duration-200 ease-linear",
+                total === 0 && "w-1/3 animate-pulse",
+              )}
+              style={total > 0 ? { width: `${Math.max(pct, 2)}%` } : undefined}
+            />
+          </div>
+          <div className="flex items-center justify-between font-mono text-xs tabular-nums text-muted-foreground">
+            <span>
+              {done} / {total || "…"} sources
             </span>
-            <div className="text-sm text-muted-foreground">
-              <span className="font-mono">{done}</span> of{" "}
-              <span className="font-mono">{total || "…"}</span> sources
-            </div>
-            <div className="mt-1 flex items-center justify-end gap-1 font-mono text-xs tabular-nums text-muted-foreground/70">
-              <Clock className="size-3" aria-hidden />
-              {countdown}
-            </div>
+            <span>{countdown}</span>
           </div>
         </div>
 
-        <div
-          role="progressbar"
-          aria-label="Threat-intel sources checked"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={total > 0 ? pct : undefined}
-          aria-valuetext={
-            total > 0 ? `${done} of ${total} sources checked` : undefined
-          }
-          className="relative h-3.5 w-full overflow-hidden rounded-sm border border-border bg-muted"
-        >
-          <div
-            className={cn(
-              "h-full rounded-sm bg-primary transition-[width] duration-200 ease-linear",
-              total === 0 && "w-1/3 animate-pulse",
-            )}
-            style={total > 0 ? { width: `${Math.max(pct, 3)}%` } : undefined}
-          />
-          {/* Shimmer over the not-yet-filled portion so the bar never looks
-              frozen while it waits on the slow tail. */}
-          {total > 0 && !allSettled && (
-            <div
-              className="pointer-events-none absolute inset-y-0 right-0 animate-pulse bg-primary/25"
-              style={{ left: `${Math.max(pct, 3)}%` }}
-            />
-          )}
-        </div>
-
-        {/* Screen-reader-only narration: one concise, polite announcement per
-            settled source. The visible source grid below updates too often to
-            announce in full, so it's left out of the live region. */}
+        {/* Screen-reader narration; the visible grid updates too often to
+            announce in full. */}
         <p className="sr-only" role="status" aria-live="polite">
           {total > 0
-            ? `${done} of ${total} sources checked${
-                lastSettled ? `, last in ${lastSettled.source.name}` : ""
-              }`
+            ? `${done} of ${total} sources checked`
             : "Reaching out to threat-intel sources…"}
         </p>
-
-        <p className="text-sm text-muted-foreground">
-          {lastSettled
-            ? `Last in: ${lastSettled.source.name}. Querying the rest…`
-            : "Reaching out to threat-intel sources…"}
-        </p>
-
-        {showSlowNote && (
-          <p className="flex items-start gap-1.5 font-mono text-xs text-amber-600 dark:text-amber-400">
-            <Clock className="mt-0.5 size-3 shrink-0" aria-hidden />
-            <span>
-              Waiting on {pendingMetas.length} slow{" "}
-              {pendingMetas.length === 1 ? "source" : "sources"}
-              {pendingMetas.length <= 4
-                ? `, ${pendingMetas.map((m) => m.name).join(", ")}`
-                : ""}
-              . These time out at ~{maxTimeoutS}s.
-            </span>
-          </p>
-        )}
 
         {metas.length > 0 && (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {metas.map((meta) => {
               const settled = progress?.settled[meta.id];
-              // A still-pending source past the slow threshold is a laggard
-              // about to time out — flag it amber so it doesn't read as stuck.
-              const rowSlow = !settled && elapsedS >= SLOW_THRESHOLD_S;
               const s = progressStatus(settled);
-              const Icon = rowSlow ? Clock : s.icon;
-              const slowCls = "text-amber-600 dark:text-amber-400";
               return (
                 <div
                   key={meta.id}
+                  title={s.label}
                   className={cn(
-                    "flex items-center justify-between gap-2 rounded-md border border-foreground/10 bg-muted/40 px-3 py-2 transition-colors",
+                    "flex items-center gap-2 rounded-md border border-foreground/10 bg-muted/40 px-3 py-2 transition-colors",
                     settled && "bg-background",
-                    rowSlow && "border-amber-500/30",
                   )}
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Icon
-                      className={cn(
-                        "size-4 shrink-0",
-                        rowSlow ? slowCls : s.cls,
-                        !rowSlow && s.spin && "animate-spin",
-                      )}
-                    />
-                    <span className="truncate text-sm font-medium">
-                      {meta.name}
-                    </span>
+                  <StatusDot
+                    className={cn(
+                      "size-4 shrink-0",
+                      s.cls,
+                      // Still waiting on this source: fade-blink the dot.
+                      !settled && "animate-pulse",
+                    )}
+                  />
+                  <span className="truncate text-sm font-medium">
+                    {meta.name}
                   </span>
-                  {settled ? (
-                    <span className={cn("shrink-0 text-xs tabular-nums", s.cls)}>
-                      {s.label}
-                    </span>
-                  ) : (
-                    <span
-                      className={cn(
-                        "flex shrink-0 items-center gap-1 text-xs",
-                        rowSlow ? slowCls : "text-muted-foreground/60",
-                      )}
-                    >
-                      {rowSlow && <Clock className="size-3" aria-hidden />}
-                      {rowSlow ? "slow…" : "checking…"}
-                    </span>
-                  )}
                 </div>
               );
             })}

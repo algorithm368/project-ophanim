@@ -96,6 +96,8 @@ export const maltiverseSource: TiSource = {
           value: h,
           type: detectIOC(h) === "ip" ? "ip" : "domain",
           relation: "contacts",
+          sources: ["maltiverse"],
+          tier: "observed",
         });
         if (relations.length >= 10) break;
       }
