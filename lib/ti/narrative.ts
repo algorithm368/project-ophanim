@@ -11,12 +11,106 @@ import type {
   CheckResult,
   CheckStats,
   DomainCheckResult,
+  HashContext,
   HashCheckResult,
   HistorySnapshot,
   ScoreBreakdown,
   SourceResult,
   Verdict,
 } from "./types";
+
+/**
+ * VT sandbox behaviour tags -> plain verb phrases, so a wall of tags reads as one
+ * sentence ("When run, it sets up persistence, encrypts data, and deletes
+ * itself."). Only tags with a phrase here contribute; unmapped tags are skipped.
+ */
+const BEHAVIOR_TAG_PHRASES: Record<string, string> = {
+  PERSISTENCE: "sets itself to run again after reboot",
+  CRYPTO: "uses encryption",
+  RANSOM: "encrypts files for ransom",
+  SELF_DELETE: "deletes itself after running",
+  EXECUTES_DROPPED_FILE: "runs files it drops on disk",
+  DOWNLOADER: "downloads more payloads",
+  SPREADING: "spreads to other machines",
+  INJECTION: "injects code into other processes",
+  PROCESS_INJECTION: "injects code into other processes",
+  KEYLOGGER: "logs keystrokes",
+  STEALER: "steals saved data",
+  CREDENTIAL_THEFT: "steals credentials",
+  TUNNELING: "tunnels its network traffic",
+  SSH_COMMUNICATION: "communicates over SSH",
+  OBFUSCATED: "hides its code (obfuscated)",
+  PACKED: "is packed to hide its code",
+  LONG_SLEEPS: "stalls to slip past analysis",
+  DIRECT_CPU_CLOCK_ACCESS: "uses timing tricks to detect analysis",
+  DETECT_DEBUG_ENVIRONMENT: "checks for a debugger",
+  DETECT_SANDBOX: "checks whether it is in a sandbox",
+  CHECKS_BIOS: "checks the BIOS to spot virtual machines",
+  CHECKS_NETWORK_ADAPTERS: "inspects network adapters",
+  CHECKS_USER_INPUT: "waits for real user activity",
+  CALLS_WMI: "uses WMI to query the system",
+  MACRO_CREATE_OLE: "creates OLE/COM objects",
+  SETS_PROCESS_NAME: "disguises its process name",
+  RUNTIME_MODULES: "loads extra modules at runtime",
+};
+
+/** Oxford-comma join: ["a"] -> "a", ["a","b","c"] -> "a, b, and c". */
+function joinList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+/** Lowercase the first character so a label reads mid-sentence. */
+function lowerFirst(s: string): string {
+  return s ? s[0].toLowerCase() + s.slice(1) : s;
+}
+
+/**
+ * One plain-language sentence of what the sample does at runtime. Prefers VT
+ * behaviour tags (mapped to phrases); when there are none, falls back to the
+ * readable, sentence-shaped capability labels (e.g. "Adds Run key to start
+ * application") and skips machine-token signatures ("stack_pivot") that wouldn't
+ * make a grammatical sentence. Returns undefined when nothing usable is present,
+ * so callers can omit the line rather than print a broken one.
+ */
+export function hashBehaviorSummary(
+  ctx: HashContext | undefined,
+): string | undefined {
+  const seen = new Set<string>();
+  const phrases: string[] = [];
+  for (const tag of ctx?.behaviorTags ?? []) {
+    const phrase = BEHAVIOR_TAG_PHRASES[tag.toUpperCase()];
+    if (!phrase || seen.has(phrase)) continue;
+    seen.add(phrase);
+    phrases.push(phrase);
+    if (phrases.length >= 5) break;
+  }
+  if (phrases.length) return `When run, it ${joinList(phrases)}.`;
+
+  // Fallback: multi-word capability labels that read as verb phrases. Skip
+  // machine tokens ("stack_pivot") and family/label leaks ("Family: SectopRAT",
+  // "SectopRAT payload", "Detects AnimateClipper") that aren't behaviour.
+  const capSeen = new Set<string>();
+  const caps: string[] = [];
+  for (const c of ctx?.capabilities ?? []) {
+    const label = c.label.trim();
+    if (!/\s/.test(label) || label.includes("_")) continue;
+    if (/\b(family|payload|variant)\b/i.test(label)) continue;
+    if (/^detect(s|ed)?\b/i.test(label)) continue;
+    // Must read as "it <verb> …": drop adjective/noun-initial labels like
+    // "Suspicious use of X" that would produce "it suspicious use of X".
+    if (/^(suspicious|possible|potential|known|generic|anomalous)\b/i.test(label))
+      continue;
+    const key = label.toLowerCase();
+    if (capSeen.has(key)) continue;
+    capSeen.add(key);
+    caps.push(lowerFirst(label));
+    if (caps.length >= 4) break;
+  }
+  if (caps.length >= 2) return `When run, it ${joinList(caps)}.`;
+  return undefined;
+}
 
 /** The minimal result shape the narrative + score explanation need. */
 export type ResultLike = {

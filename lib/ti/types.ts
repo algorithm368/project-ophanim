@@ -132,6 +132,9 @@ export interface HashContext {
   lastSeen?: string;
   /** libmagic-style description of the file contents. */
   magic?: string;
+  /** PE static import table: DLLs the binary imports, capability-revealing ones
+   *  first, each with the number of functions imported from it. */
+  importedDlls?: { name: string; count?: number }[];
   /** Import hash (PE imports), used to cluster related samples. */
   imphash?: string;
   /** Fuzzy hash for similarity matching. */
@@ -147,12 +150,32 @@ export interface HashContext {
   familyDescription?: string;
   /** Reference URLs for deeper reading on the family (capped ~5). */
   familyRefs?: string[];
+  /** High-level sandbox behaviour tags (VT vocabulary: PERSISTENCE, CRYPTO, ...),
+   *  a one-glance summary of what the sample does. */
+  behaviorTags?: string[];
   /** Sandbox-observed behaviors, each optionally tagged with MITRE technique ids. */
   capabilities?: { label: string; mitre?: string[] }[];
   /** Deduped ATT&CK techniques observed for this sample. */
   mitreTechniques?: { id: string; name?: string; tactic?: string }[];
   /** Multi-engine detection tally, for a first-class confidence number. */
   detectionRatio?: { malicious: number; total: number };
+  /**
+   * Sandbox-observed runtime artifacts, grouped for a readable "what it did"
+   * readout. Each group is already deduped and capped by the source; strings are
+   * display-only (never executed). Only VirusTotal Sandbox populates this today.
+   */
+  sandboxBehavior?: {
+    /** Which sandbox produced the summary, when singular. */
+    sandboxName?: string;
+    /** Processes spawned and command lines executed. */
+    commands?: string[];
+    /** Files dropped or written to disk. */
+    files?: string[];
+    /** Registry keys created/set (persistence, config). */
+    registry?: string[];
+    /** Network contacted during detonation (dns / ip:port / url). */
+    network?: string[];
+  };
 }
 
 /** One TLS certificate observed in certificate-transparency logs (e.g. crt.sh). */

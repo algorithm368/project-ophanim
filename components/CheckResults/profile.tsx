@@ -1,8 +1,9 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
     Check,
+    ChevronRight,
     Copy,
     FileDigit,
     Globe,
@@ -13,8 +14,15 @@ import {
     type CheckResult,
     type DomainCheckResult,
     type HashCheckResult,
+    type HashContext,
 } from "@/lib/ti/types";
-import { formatBytes, formatDate, joinPlace } from "@/lib/ti/narrative";
+import {
+    formatBytes,
+    formatDate,
+    hashBehaviorSummary,
+    joinPlace,
+} from "@/lib/ti/narrative";
+import { describeDll } from "@/lib/ti/dll-dictionary";
 import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,7 +33,6 @@ import {
     classifyHash,
     domainTone,
     flagUrl,
-    hashTone,
 } from "./classify";
 import {
     Field,
@@ -464,13 +471,18 @@ function CopyHashButton({ value }: { value: string }) {
 /** A minimal verdict marker, the one place this card carries color: filled red
  *  for a flagged file, filled neutral for a known but unflagged file, and a
  *  hollow ring for an unknown one, so the verdict reads at a glance. */
-export function StatusDot({ kind }: { kind: "malicious" | "known" | "unknown" }) {
+export function StatusDot({
+    kind,
+}: {
+    kind: "malicious" | "clean" | "known" | "unknown";
+}) {
     return (
         <span
             aria-hidden
             className={cn(
                 "mt-[7px] size-2.5 shrink-0 rounded-full",
                 kind === "malicious" && "bg-red-500 dark:bg-red-400",
+                kind === "clean" && "bg-emerald-500 dark:bg-emerald-400",
                 kind === "known" && "bg-foreground/40",
                 kind === "unknown" && "border-[1.5px] border-muted-foreground/50",
             )}
@@ -533,6 +545,291 @@ function SubLabel({ children }: { children: ReactNode }) {
         <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             {children}
         </div>
+    );
+}
+
+/**
+ * A collapsible technical section: a clickable header (label + optional count)
+ * that expands its body. Collapsed by default so the card opens on the plain
+ * summary, with the dense detail one click away. Uses native <details> for
+ * zero-JS, keyboard-accessible disclosure.
+ */
+function Section({
+    title,
+    count,
+    defaultOpen = false,
+    children,
+}: {
+    title: string;
+    count?: number;
+    defaultOpen?: boolean;
+    children: ReactNode;
+}) {
+    return (
+        <details open={defaultOpen} className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+                <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {title}
+                </span>
+                {count !== undefined && (
+                    <span className="font-mono text-[11px] text-muted-foreground/60">
+                        {count}
+                    </span>
+                )}
+            </summary>
+            <div className="mt-2 pl-[1.375rem]">{children}</div>
+        </details>
+    );
+}
+
+/**
+ * Some sandboxes name signatures as machine tokens (`antivm_checks_available_memory`,
+ * `static_pe_pdbpath`). Space out the underscores so capability labels read as
+ * phrases; already-readable labels (with spaces) are untouched.
+ */
+function humanizeCapability(label: string): string {
+    return /^[a-z0-9]+(_[a-z0-9]+)+$/i.test(label)
+        ? label.replace(/_/g, " ")
+        : label;
+}
+
+/** Uppercase the first character only; leaves acronyms and the rest untouched. */
+function sentenceCase(s: string): string {
+    return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/** MITRE technique id -> attack.mitre.org URL (handles `T1070.004` sub-techniques). */
+function mitreUrl(id: string): string {
+    const [base, sub] = id.toUpperCase().split(".");
+    return `https://attack.mitre.org/techniques/${base}/${sub ? `${sub}/` : ""}`;
+}
+
+/** A technique id that links out to its MITRE ATT&CK page. */
+function MitreLink({ id, className }: { id: string; className?: string }) {
+    return (
+        <a
+            href={mitreUrl(id)}
+            target="_blank"
+            rel="noreferrer"
+            title={`MITRE ATT&CK ${id}`}
+            className={cn(
+                "underline-offset-2 hover:text-foreground hover:underline",
+                className,
+            )}
+        >
+            {id}
+        </a>
+    );
+}
+
+/**
+ * A capped list whose "+N more" toggles the full list open/closed. The render
+ * prop receives the currently-visible slice, so each caller keeps its own markup.
+ */
+function ExpandableList<T>({
+    items,
+    cap,
+    children,
+}: {
+    items: T[];
+    cap: number;
+    children: (shown: T[]) => ReactNode;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const shown = expanded ? items : items.slice(0, cap);
+    const extra = items.length - shown.length;
+    return (
+        <>
+            {children(shown)}
+            {items.length > cap && (
+                <button
+                    type="button"
+                    onClick={() => setExpanded((e) => !e)}
+                    className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                    {expanded ? "show less" : `+${extra} more`}
+                </button>
+            )}
+        </>
+    );
+}
+
+/**
+ * One runtime-behaviour row: plain monospace text with a hover-reveal copy button
+ * so analysts can lift the IOC. (Pivoting contacted infra lives on the Related
+ * indicators card; here we keep the readout plain.)
+ */
+function RuntimeLine({ item }: { item: string }) {
+    const [copied, copy] = useCopied();
+    return (
+        <li className="group flex min-w-0 items-center gap-1.5">
+            <span
+                title={item}
+                className="truncate font-mono text-[12px] text-foreground/80"
+            >
+                {item}
+            </span>
+            <button
+                type="button"
+                onClick={() => copy(item)}
+                aria-label="Copy"
+                className="shrink-0 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
+            >
+                {copied ? (
+                    <Check className="size-3 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                    <Copy className="size-3" />
+                )}
+            </button>
+        </li>
+    );
+}
+
+/** Display form of a capability: spaced-out tokens, sentence-cased. */
+function tidyCapabilityLabel(label: string): string {
+    return sentenceCase(humanizeCapability(label).trim());
+}
+
+/**
+ * Collapse capability variants that different sources word slightly differently
+ * (case, punctuation, `snake_case`) into one row, preferring the copy that carries
+ * an ATT&CK id, and float ATT&CK-tagged rows to the top. Presentation only, no
+ * relabeling of meaning.
+ */
+function tidyCapabilities(
+    caps: { label: string; mitre?: string[] }[],
+): { label: string; mitre?: string[] }[] {
+    const byKey = new Map<string, { label: string; mitre?: string[] }>();
+    for (const c of caps) {
+        const key = c.label.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        if (!key) continue;
+        const prev = byKey.get(key);
+        if (!prev || (!prev.mitre?.length && c.mitre?.length)) byKey.set(key, c);
+    }
+    return [...byKey.values()].sort(
+        (a, b) => (b.mitre?.length ? 1 : 0) - (a.mitre?.length ? 1 : 0),
+    );
+}
+
+/**
+ * Drop engine labels that assert only "this is bad" without naming a family
+ * (`Detected`, `Malicious`, ML-confidence/score strings, bare `ti!<hash>` refs),
+ * then dedupe case-insensitively. Keeps the family/signature strings that actually
+ * identify the sample. Filtering noise, not rewriting.
+ */
+function tidyDetections(names: string[]): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of names) {
+        const t = raw.trim();
+        if (!t) continue;
+        const key = t.toLowerCase();
+        if (seen.has(key)) continue;
+        const noise =
+            /^(detected|malicious|malware|clean|undetected|suspicious|unwanted|virus)$/i.test(
+                t,
+            ) ||
+            /^malicious\b.*(confidence|score|\bml\b)/i.test(t) ||
+            /\bscore:\s*\d+/i.test(t) ||
+            /^(generic|malicious)[._]?ml(\.score)?$/i.test(t) ||
+            /^ti![0-9a-f]+$/i.test(t);
+        if (noise) continue;
+        seen.add(key);
+        out.push(t);
+    }
+    return out;
+}
+
+/** Grouped sandbox-observed runtime actions, ordered host-first then network. */
+const RUNTIME_GROUPS: {
+    key: "commands" | "files" | "registry" | "network";
+    label: string;
+}[] = [
+    { key: "commands", label: "Processes, commands" },
+    { key: "files", label: "Files" },
+    { key: "registry", label: "Registry" },
+    { key: "network", label: "Network" },
+];
+
+/**
+ * Imported libraries as a mini dictionary: each DLL the binary links against,
+ * annotated with what it is for, so imports read as capabilities. Static PE data
+ * (present even when the sandbox report is thin), capability-revealing DLLs first.
+ */
+function DllImports({ dlls }: { dlls: { name: string; count?: number }[] }) {
+    return (
+        <ExpandableList items={dlls} cap={8}>
+            {(shown) => (
+                <ul className="space-y-0.5">
+                    {shown.map((d) => {
+                        const note = describeDll(d.name);
+                        return (
+                            <li key={d.name} className="flex items-baseline gap-3">
+                                <code className="shrink-0 font-mono text-[12px] text-foreground/85">
+                                    {d.name}
+                                </code>
+                                {note && (
+                                    <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
+                                        {note}
+                                    </span>
+                                )}
+                                {d.count !== undefined && (
+                                    <span
+                                        className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground/70"
+                                        title={`${d.count} functions imported`}
+                                    >
+                                        {d.count}
+                                    </span>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+        </ExpandableList>
+    );
+}
+
+/** "What it did when it ran": VT sandbox artifacts as a compact grouped readout. */
+function RuntimeBehavior({
+    behavior,
+}: {
+    behavior: NonNullable<HashContext["sandboxBehavior"]>;
+}) {
+    const groups = RUNTIME_GROUPS.map((g) => ({
+        ...g,
+        items: behavior[g.key],
+    })).filter(
+        (g): g is typeof g & { items: string[] } =>
+            Array.isArray(g.items) && g.items.length > 0,
+    );
+    if (groups.length === 0) return null;
+
+    return (
+        <>
+            <div className="mb-2 font-mono text-[11px] text-muted-foreground">
+                VirusTotal sandbox
+            </div>
+            <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+                {groups.map((g) => (
+                    <div key={g.key} className="min-w-0 space-y-1">
+                        <div className="text-[12px] font-medium text-foreground/70">
+                            {g.label}
+                        </div>
+                        <ExpandableList items={g.items} cap={5}>
+                            {(shown) => (
+                                <ul className="space-y-0.5">
+                                    {shown.map((item) => (
+                                        <RuntimeLine key={item} item={item} />
+                                    ))}
+                                </ul>
+                            )}
+                        </ExpandableList>
+                    </div>
+                ))}
+            </div>
+        </>
     );
 }
 
@@ -603,13 +900,23 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
         (s) => s.status === "ok" && s.score !== undefined,
     );
     const type = classifyHash(ctx, hasData);
-    const tone = hashTone(ctx);
-    const kind: "malicious" | "known" | "unknown" =
-        ctx?.malwareFamily || ctx?.threatLabel
+    // Severity signal follows the actual verdict, not just whether a family label
+    // exists — otherwise a clean file with a family (EICAR) looks malicious and a
+    // malicious file without one (a flagged script) looks benign.
+    const kind: "malicious" | "clean" | "known" | "unknown" =
+        result.verdict === "malicious" || result.verdict === "suspicious"
             ? "malicious"
-            : ctx
-              ? "known"
-              : "unknown";
+            : result.verdict === "clean"
+              ? "clean"
+              : result.verdict === "unknown" && !ctx
+                ? "unknown"
+                : "known";
+    const tone =
+        kind === "malicious"
+            ? "text-red-600 dark:text-red-400"
+            : kind === "clean"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-foreground/80";
 
     const size = formatBytes(ctx?.fileSize);
     const firstSeen = formatDate(ctx?.firstSeen);
@@ -631,10 +938,20 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
 
     // Threat evidence folded into the identity card: family write-up, engine
     // detection labels, sandbox behavior, and ATT&CK techniques.
-    const capabilities = ctx?.capabilities ?? [];
+    const capabilities = tidyCapabilities(ctx?.capabilities ?? []);
     const techniques = ctx?.mitreTechniques ?? [];
+    // VT sandbox behaviour is aggregated across every submission of a hash, so for
+    // a clean-verdict file it can surface unrelated/among-noise behaviour. Suppress
+    // the prominent behaviour summary + tags there so a benign file doesn't read as
+    // malicious; the (collapsed) detail sections stay available.
+    const isClean = result.verdict === "clean";
+    const behaviorTags = isClean ? [] : (ctx?.behaviorTags ?? []);
+    const behaviorSummary = isClean ? undefined : hashBehaviorSummary(ctx);
+    const dlls = ctx?.importedDlls ?? [];
     const refs = ctx?.familyRefs ?? [];
-    const detections = [...new Set(ctx?.detectionNames ?? [])];
+    // Full set drives category derivation; the tidied set is what we display.
+    const detectionsAll = [...new Set(ctx?.detectionNames ?? [])];
+    const detections = tidyDetections(detectionsAll);
     const ratio = ctx?.detectionRatio;
     const shownTech = new Set(
         capabilities.flatMap((c) => (c.mitre ?? []).map((id) => id.toUpperCase())),
@@ -642,12 +959,19 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
     const extraTech = techniques.filter(
         (t) => !shownTech.has(t.id.toUpperCase()),
     );
-    const hasEvidence =
-        capabilities.length > 0 ||
-        detections.length > 0 ||
-        extraTech.length > 0 ||
-        refs.length > 0;
-    const categories = deriveCategories(detections);
+    // A flagged file with nothing to show (no behaviour, labels, imports) would
+    // otherwise render an empty card that never says why it's flagged.
+    const isThreat =
+        result.verdict === "malicious" || result.verdict === "suspicious";
+    const emptyThreat =
+        isThreat &&
+        !behaviorSummary &&
+        capabilities.length === 0 &&
+        detections.length === 0 &&
+        extraTech.length === 0 &&
+        dlls.length === 0 &&
+        !ctx?.sandboxBehavior;
+    const categories = deriveCategories(detectionsAll);
     const hasIdentityFacts = Boolean(
         ctx?.fileName || ctx?.fileType || size || firstSeen || lastSeen,
     );
@@ -706,10 +1030,39 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                     </div>
                 </div>
 
+                {/* Plain-language lead: what it does, then the family write-up. */}
+                {behaviorSummary && (
+                    <p className="text-[0.95rem] leading-relaxed text-foreground/90">
+                        {behaviorSummary}
+                    </p>
+                )}
+
+                {emptyThreat && (
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                        Flagged by scoring sources, but no behaviour, engine labels,
+                        or imports are on record to detail what it does. The score
+                        rests on limited signal, check the score breakdown and
+                        sources below.
+                    </p>
+                )}
+
                 {ctx?.familyDescription && (
                     <p className="text-sm leading-relaxed text-foreground/85">
                         {ctx.familyDescription}
                     </p>
+                )}
+
+                {behaviorTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                        {behaviorTags.map((t) => (
+                            <span
+                                key={t}
+                                className="inline-flex items-center rounded-md border border-foreground/15 bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground/75"
+                            >
+                                {t.toLowerCase().replace(/_/g, " ")}
+                            </span>
+                        ))}
+                    </div>
                 )}
 
                 <Rule />
@@ -785,87 +1138,124 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                     </div>
                 </div>
 
-                {(altNames.length > 0 ||
-                    (ctx?.tags && ctx.tags.length > 0)) && (
+                {/* `aka` only. The raw VT `tags` field is dropped: it is community
+                    /crowd-sourced and often noise (EICAR's read "ransomware, worm,
+                    backdoor, …"). Real classification comes from the category chips. */}
+                {altNames.length > 0 && (
                     <dl>
-                        {altNames.length > 0 && (
-                            <HashRow label="aka">
-                                {altNames.slice(0, 6).join(", ")}
-                                {altNames.length > 6 && ` +${altNames.length - 6}`}
-                            </HashRow>
-                        )}
-                        {ctx?.tags && ctx.tags.length > 0 && (
-                            <HashRow label="tags">
-                                {ctx.tags.slice(0, 10).join(", ")}
-                            </HashRow>
-                        )}
+                        <HashRow label="aka">
+                            {altNames.slice(0, 6).join(", ")}
+                            {altNames.length > 6 && ` +${altNames.length - 6}`}
+                        </HashRow>
                     </dl>
                 )}
 
-                {/* Threat evidence below a rule: behavior, raw detection labels,
-                    ATT&CK techniques, references. */}
-                {hasEvidence && (
+                {/* Technical detail, collapsed by default so the card opens on the
+                    plain summary; each section expands on click. */}
+                {(capabilities.length > 0 ||
+                    detections.length > 0 ||
+                    extraTech.length > 0 ||
+                    dlls.length > 0 ||
+                    ctx?.sandboxBehavior ||
+                    refs.length > 0) && (
                     <>
                         <Rule />
-                        <div className="space-y-4">
+                        <div className="space-y-1.5">
                             {capabilities.length > 0 && (
-                                <div className="space-y-1">
-                                    <SubLabel>What this file does</SubLabel>
-                                    <dl>
-                                        {capabilities.map((c) => (
-                                            <HashRow
-                                                key={c.label}
-                                                label={c.mitre?.[0] ?? "behavior"}
-                                            >
-                                                {c.label}
-                                            </HashRow>
-                                        ))}
-                                    </dl>
-                                </div>
+                                <Section
+                                    title="What this file does"
+                                    count={capabilities.length}
+                                >
+                                    <ExpandableList items={capabilities} cap={10}>
+                                        {(shown) => (
+                                            <ul className="space-y-0.5">
+                                                {shown.map((c) => (
+                                                    <li
+                                                        key={c.label}
+                                                        className="flex items-baseline justify-between gap-3"
+                                                    >
+                                                        <span
+                                                            title={c.label}
+                                                            className="truncate text-[13px] text-foreground/85"
+                                                        >
+                                                            {tidyCapabilityLabel(c.label)}
+                                                        </span>
+                                                        {c.mitre?.[0] && (
+                                                            <MitreLink
+                                                                id={c.mitre[0]}
+                                                                className="shrink-0 font-mono text-[11px] text-muted-foreground"
+                                                            />
+                                                        )}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </ExpandableList>
+                                </Section>
                             )}
 
                             {detections.length > 0 && (
-                                <div className="space-y-1">
-                                    <SubLabel>Detection labels</SubLabel>
-                                    <ul className="space-y-0.5">
-                                        {detections.slice(0, 8).map((n) => (
-                                            <li
-                                                key={n}
-                                                title={n}
-                                                className="truncate font-mono text-[12px] text-foreground/80"
-                                            >
-                                                {n}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    {detections.length > 8 && (
-                                        <div className="text-xs text-muted-foreground">
-                                            +{detections.length - 8} more
-                                        </div>
-                                    )}
-                                </div>
+                                <Section
+                                    title="Detection labels"
+                                    count={detections.length}
+                                >
+                                    <ExpandableList items={detections} cap={8}>
+                                        {(shown) => (
+                                            <ul className="space-y-0.5">
+                                                {shown.map((n) => (
+                                                    <li
+                                                        key={n}
+                                                        title={n}
+                                                        className="truncate font-mono text-[12px] text-foreground/80"
+                                                    >
+                                                        {n}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </ExpandableList>
+                                </Section>
                             )}
 
                             {extraTech.length > 0 && (
-                                <div className="space-y-1">
-                                    <SubLabel>MITRE ATT&amp;CK</SubLabel>
+                                <Section title="MITRE ATT&CK" count={extraTech.length}>
                                     <div className="flex flex-wrap gap-1.5">
                                         {extraTech.map((t) => (
-                                            <span
+                                            <a
                                                 key={t.id}
-                                                title={t.tactic}
-                                                className="inline-flex items-center rounded-md border border-foreground/15 bg-background px-2 py-0.5 font-mono text-[12px] text-foreground/80"
+                                                href={mitreUrl(t.id)}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                title={t.tactic ?? `MITRE ATT&CK ${t.id}`}
+                                                className="inline-flex items-center rounded-md border border-foreground/15 bg-background px-2 py-0.5 font-mono text-[12px] text-foreground/80 transition-colors hover:border-foreground/40 hover:bg-muted"
                                             >
                                                 {t.id}
                                                 {t.name ? ` ${t.name}` : ""}
-                                            </span>
+                                            </a>
                                         ))}
                                     </div>
-                                </div>
+                                </Section>
+                            )}
+
+                            {dlls.length > 0 && (
+                                <Section
+                                    title="Imported libraries"
+                                    count={dlls.length}
+                                >
+                                    <DllImports dlls={dlls} />
+                                </Section>
+                            )}
+
+                            {ctx?.sandboxBehavior && (
+                                <Section title="Runtime behavior">
+                                    <RuntimeBehavior
+                                        behavior={ctx.sandboxBehavior}
+                                    />
+                                </Section>
                             )}
 
                             {refs.length > 0 && (
-                                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 pl-[1.375rem]">
                                     {refs.map((href, i) => (
                                         <a
                                             key={href}

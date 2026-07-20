@@ -6,6 +6,7 @@ import {
   fileRelationsFromVt,
   type VtRelationships,
 } from "../../vt-relationships";
+import { dllRank } from "../../dll-dictionary";
 
 interface VtFileResponse {
   data?: {
@@ -45,6 +46,13 @@ interface VtFileResponse {
         suggested_threat_label?: string;
         popular_threat_name?: { value?: string }[];
       };
+      /** PE static import table: the DLLs (and functions) the binary imports. */
+      pe_info?: {
+        import_list?: {
+          library_name?: string;
+          imported_functions?: string[];
+        }[];
+      };
     };
     /** Inline relationship pivots fetched via the `?relationships=` param. */
     relationships?: VtRelationships;
@@ -60,6 +68,34 @@ export function isoFromEpoch(seconds?: number): string | undefined {
 /** VT vendor stats → 0-100 (file weighting: 8× malicious + 3× suspicious). */
 export function vtFileScore(malicious: number, suspicious: number): number {
   return Math.min(100, malicious * 8 + suspicious * 3);
+}
+
+/**
+ * PE `import_list` → imported DLLs (base name + function count), deduped and
+ * ordered so capability-revealing libraries lead over UI/CRT boilerplate. Capped
+ * for the readout. Returns [] for non-PE files (no import table).
+ */
+export function importedDllsFromVt(
+  imports:
+    | { library_name?: string; imported_functions?: string[] }[]
+    | undefined,
+  cap = 14,
+): { name: string; count?: number }[] {
+  if (!Array.isArray(imports)) return [];
+  const byName = new Map<string, number>();
+  for (const imp of imports) {
+    const name = imp.library_name?.replace(/^.*[\\/]/, "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    byName.set(key, (byName.get(key) ?? 0) + (imp.imported_functions?.length ?? 0));
+  }
+  return [...byName.entries()]
+    .map(([name, count]) => ({ name, count: count || undefined }))
+    .sort(
+      (a, b) =>
+        dllRank(a.name) - dllRank(b.name) || (b.count ?? 0) - (a.count ?? 0),
+    )
+    .slice(0, cap);
 }
 
 /** VirusTotal v3 - multi-engine file detection by hash (free API key required). */
@@ -124,6 +160,7 @@ export const virusTotalHashSource: TiSource = {
 
       const relations = fileRelationsFromVt(data.data.relationships);
       const detections = detectionNames(attr.last_analysis_results);
+      const dlls = importedDllsFromVt(attr.pe_info?.import_list);
       const votes = attr.total_votes;
       const hasVotes = Boolean(votes && (votes.harmless || votes.malicious));
 
@@ -149,6 +186,7 @@ export const virusTotalHashSource: TiSource = {
           malwareFamily: family,
           threatLabel,
           magic: attr.magic,
+          importedDlls: dlls.length ? dlls : undefined,
           imphash: attr.imphash,
           ssdeep: attr.ssdeep,
           tlsh: attr.tlsh,

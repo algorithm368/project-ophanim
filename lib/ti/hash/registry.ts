@@ -1,6 +1,7 @@
 import type { TiSource } from "../types";
 import { malwareBazaarSource } from "./sources/malwarebazaar";
 import { virusTotalHashSource } from "./sources/virustotal";
+import { virusTotalSandboxSource } from "./sources/virustotal-sandbox";
 import { metadefenderHashSource } from "./sources/metadefender";
 import { threatFoxHashSource } from "./sources/threatfox";
 import { urlhausHashSource } from "./sources/urlhaus";
@@ -19,6 +20,7 @@ import { triageSource } from "./sources/triage";
 export const hashSources: TiSource[] = [
   malwareBazaarSource,
   virusTotalHashSource,
+  virusTotalSandboxSource,
   kasperskyOpenTipSource,
   metadefenderHashSource,
   triageSource,

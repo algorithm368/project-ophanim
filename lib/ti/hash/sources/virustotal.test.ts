@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isoFromEpoch, vtFileScore, virusTotalHashSource } from "./virustotal";
+import {
+  importedDllsFromVt,
+  isoFromEpoch,
+  vtFileScore,
+  virusTotalHashSource,
+} from "./virustotal";
 import { getJson } from "../../http";
 
 vi.mock("../../http", async (importOriginal) => {
@@ -22,6 +27,35 @@ describe("vtFileScore (hash)", () => {
     expect(vtFileScore(0, 0)).toBe(0);
     expect(vtFileScore(3, 2)).toBe(30);
     expect(vtFileScore(20, 0)).toBe(100);
+  });
+});
+
+describe("importedDllsFromVt", () => {
+  it("bases, dedupes, sums function counts, and ranks capability DLLs first", () => {
+    expect(
+      importedDllsFromVt([
+        { library_name: "KERNEL32.dll", imported_functions: Array(125) },
+        { library_name: "C:\\x\\ws2_32.dll", imported_functions: Array(21) },
+        { library_name: "ws2_32.dll", imported_functions: Array(4) },
+        { library_name: "weird_custom.dll", imported_functions: ["a"] },
+      ]),
+    ).toEqual([
+      { name: "ws2_32.dll", count: 25 }, // capability DLL, merged 21+4, ranked first
+      { name: "kernel32.dll", count: 125 }, // common boilerplate
+      { name: "weird_custom.dll", count: 1 }, // unknown, last
+    ]);
+  });
+
+  it("returns [] for non-PE files (no import list)", () => {
+    expect(importedDllsFromVt(undefined)).toEqual([]);
+  });
+
+  it("caps the number of DLLs returned", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      library_name: `lib${i}.dll`,
+      imported_functions: [String(i)],
+    }));
+    expect(importedDllsFromVt(many, 14)).toHaveLength(14);
   });
 });
 

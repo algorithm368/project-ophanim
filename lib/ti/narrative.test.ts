@@ -5,6 +5,7 @@ import {
   buildHashNarrative,
   buildNarrative,
   consensusBuckets,
+  hashBehaviorSummary,
   type ResultLike,
   scoreExplanation,
   threatSentences,
@@ -48,6 +49,61 @@ function makeStats(over: Partial<CheckStats> = {}): CheckStats {
     ...over,
   };
 }
+
+describe("hashBehaviorSummary", () => {
+  it("turns behaviour tags into one plain sentence, deduped and capped", () => {
+    expect(
+      hashBehaviorSummary({
+        behaviorTags: ["PERSISTENCE", "CRYPTO", "SELF_DELETE"],
+      }),
+    ).toBe(
+      "When run, it sets itself to run again after reboot, uses encryption, and deletes itself after running.",
+    );
+  });
+
+  it("skips unmapped tags and returns undefined when none map and no capabilities", () => {
+    expect(hashBehaviorSummary({ behaviorTags: ["PERSISTENCE", "WEIRD_TAG"] })).toBe(
+      "When run, it sets itself to run again after reboot.",
+    );
+    expect(hashBehaviorSummary({ behaviorTags: ["WEIRD_TAG"] })).toBeUndefined();
+    expect(hashBehaviorSummary(undefined)).toBeUndefined();
+  });
+
+  it("falls back to sentence-shaped capabilities when there are no tags", () => {
+    expect(
+      hashBehaviorSummary({
+        capabilities: [
+          { label: "Adds Run key to start application" },
+          { label: "Executes dropped EXE" },
+          { label: "stack_pivot" }, // machine token, skipped
+          { label: "terminate" }, // single word, skipped
+        ],
+      }),
+    ).toBe(
+      "When run, it adds Run key to start application and executes dropped EXE.",
+    );
+  });
+
+  it("omits the line rather than build one from a single weak capability", () => {
+    expect(
+      hashBehaviorSummary({ capabilities: [{ label: "Executes dropped EXE" }] }),
+    ).toBeUndefined();
+  });
+
+  it("skips family/label capabilities in the fallback, keeping real behaviour", () => {
+    expect(
+      hashBehaviorSummary({
+        capabilities: [
+          { label: "Detects AnimateClipper" },
+          { label: "Family: SectopRAT" },
+          { label: "SectopRAT payload" },
+          { label: "Adds Run key to start application" },
+          { label: "Executes dropped EXE" },
+        ],
+      }),
+    ).toBe("When run, it adds Run key to start application and executes dropped EXE.");
+  });
+});
 
 describe("threatSentences — category attribution (issue #2)", () => {
   it("only lists categories from the sources that actually flagged", () => {
