@@ -195,15 +195,16 @@ const VERDICT_PHRASE: Record<Verdict, string> = {
 };
 
 /**
- * Opening sentence. An "unknown" verdict means no scoring source returned data,
- * so `riskScore` is a placeholder 0 — say "no information", never "0/100",
- * which would read as a clean result.
+ * Opening sentence. The verdict phrase carries the severity in words (the UI
+ * shows a matching qualitative risk level, not a raw number), so we never render
+ * the 0-100 score here. An "unknown" verdict means no scoring source returned
+ * data, so it reads as "no information", never a clean result.
  */
 function headline(subject: string, result: ResultLike): string {
   if (result.verdict === "unknown") {
     return `This ${subject} ${VERDICT_PHRASE.unknown}, no scoring TI source returned data, so this is "no information", not a clean result.`;
   }
-  return `This ${subject} ${VERDICT_PHRASE[result.verdict]}, scoring ${result.riskScore}/100.`;
+  return `This ${subject} ${VERDICT_PHRASE[result.verdict]}.`;
 }
 
 /** Render a domain's age in the largest unit that stays accurate. */

@@ -211,7 +211,7 @@ describe("unknown verdict is not rendered as 0/100 (issue #3)", () => {
     expect(text).not.toContain("0/100");
   });
 
-  it("still shows the score for a rated result", () => {
+  it("states the verdict in words without a raw score for a rated result", () => {
     const result: CheckResult = {
       ip: "1.2.3.4",
       checkedAt: "2026-05-28T00:00:00Z",
@@ -221,7 +221,8 @@ describe("unknown verdict is not rendered as 0/100 (issue #3)", () => {
       stats: makeStats({ flagged: 1 }),
     };
     const text = buildNarrative(result).join(" ");
-    expect(text).toContain("scoring 75/100");
+    expect(text).toContain("is almost certainly malicious");
+    expect(text).not.toContain("/100");
   });
 });
 
@@ -442,7 +443,8 @@ describe("buildDomainNarrative — NXDOMAIN honesty (P1.2)", () => {
         stats: makeStats(),
       }),
     ).join(" ");
-    expect(text).toContain("scoring 20/100");
+    expect(text).toContain("carries only low-level risk");
+    expect(text).not.toContain("/100");
     expect(text).toContain("NXDOMAIN");
   });
 

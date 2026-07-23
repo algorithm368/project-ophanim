@@ -41,6 +41,17 @@ export type VerdictStyle = {
     border: string;
 };
 
+// Qualitative risk level shown in place of the numeric score. The verdict word
+// already carries the meaning and the color, so the level stays monochrome and
+// coarser (a plain band), mirroring how the old score read as a bare number.
+const RISK_LEVEL: Record<Verdict, string> = {
+    malicious: "High",
+    suspicious: "Medium",
+    low: "Low",
+    clean: "Minimal",
+    unknown: "Unknown",
+};
+
 export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
     malicious: {
         label: "Malicious",
@@ -113,9 +124,9 @@ function VerdictShell({
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                {/* Verdict + risk score. The score is the focal point — a large
-                    monochrome number over a monochrome meter; the verdict word is
-                    the only element that carries color. */}
+                {/* Verdict + risk level. The verdict word is the focal point and
+                    the only element that carries color; the level reads as a plain
+                    monochrome band over a monochrome meter. */}
                 <div className="space-y-2.5">
                     <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
                         <span
@@ -126,13 +137,13 @@ function VerdictShell({
                         >
                             {style.headline}
                         </span>
-                        <span className="font-mono font-bold tabular-nums leading-none text-foreground">
-                            <span className="text-4xl sm:text-5xl">
-                                {Math.round(result.riskScore)}
+                        <span className="font-mono font-bold uppercase leading-none text-foreground">
+                            <span className="text-2xl sm:text-3xl">
+                                {RISK_LEVEL[result.verdict]}
                             </span>
                             <span className="text-base font-medium text-muted-foreground">
                                 {" "}
-                                / 100
+                                risk
                             </span>
                         </span>
                     </div>
