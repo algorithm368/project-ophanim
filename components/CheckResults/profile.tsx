@@ -61,13 +61,13 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** A hairline rule used to separate the identity line from the field groups. */
-function Rule() {
+export function Rule() {
     return <div className="h-px bg-foreground/10" />;
 }
 
 /** One label-value pair in the Origin spec grid: a fixed label column then the
  *  value, so every fact lines up into the same regular columns. */
-function GridItem({
+export function GridItem({
     label,
     hint,
     children,
