@@ -9,6 +9,7 @@ import { reverseDnsSource } from "./sources/reverse-dns";
 import { reverseIpSource } from "./sources/reverse-ip";
 import { shodanInternetDbSource } from "./sources/shodan-internetdb";
 import { ripeStatSource } from "./sources/ripestat";
+import { peeringDbSource } from "./sources/peeringdb";
 import { dnsblSource } from "./sources/dnsbl";
 import { blocklistDeSource } from "./sources/blocklist-de";
 import { ipsumSource } from "./sources/ipsum";
@@ -33,6 +34,7 @@ export const sources: TiSource[] = [
   reverseDnsSource,
   reverseIpSource,
   ripeStatSource,
+  peeringDbSource,
   shodanInternetDbSource,
   dnsblSource,
   blocklistDeSource,
