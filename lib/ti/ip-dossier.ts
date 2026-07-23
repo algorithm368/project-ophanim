@@ -111,7 +111,13 @@ export function buildNetworkProvenance(result: CheckResult): DossierGroup | null
   const rdap = findFinding(result, "rdap-ip")?.details;
   const ripe = findFinding(result, "ripestat")?.details;
 
-  const asn = geo?.asn ? `${geo.asn}${geo.asnOrg ? ` ${geo.asnOrg}` : ""}` : "";
+  const asnOrg = geo?.asnOrg?.trim();
+  const asnBase = geo?.asn?.trim();
+  const asn = asnBase
+    ? asnOrg && !asnBase.toLowerCase().includes(asnOrg.toLowerCase())
+      ? `${asnBase} ${asnOrg}`
+      : asnBase
+    : "";
   const netClass = str(pdb?.networkClass)
     ? `${str(pdb?.networkClass)}${str(pdb?.trafficLevel) ? `, ${str(pdb?.trafficLevel)}` : ""}`
     : "";

@@ -117,6 +117,24 @@ describe("buildNetworkProvenance", () => {
     const g = buildNetworkProvenance(mkResult({ geo: { isp: "Foo Inc", org: "Foo Inc" } }));
     expect(g!.fields.map((f) => f.label)).not.toContain("Organization");
   });
+
+  it("suppresses duplicate org when ASN already contains it, case-insensitive", () => {
+    const g = buildNetworkProvenance(
+      mkResult({
+        geo: { asn: "AS14061 DigitalOcean, LLC", asnOrg: "Digitalocean, LLC" },
+      }),
+    );
+    expect(g!.fields.find((f) => f.label === "Autonomous system")?.value).toBe("AS14061 DigitalOcean, LLC");
+  });
+
+  it("appends org when ASN is a bare number", () => {
+    const g = buildNetworkProvenance(
+      mkResult({
+        geo: { asn: "AS49447", asnOrg: "Nice IT Services Group" },
+      }),
+    );
+    expect(g!.fields.find((f) => f.label === "Autonomous system")?.value).toBe("AS49447 Nice IT Services Group");
+  });
 });
 
 describe("buildThreatActivity", () => {
