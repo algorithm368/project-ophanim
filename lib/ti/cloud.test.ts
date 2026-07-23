@@ -28,4 +28,27 @@ describe("cloudProvider", () => {
     ).toBe("Akamai (Linode)");
     expect(cloudProvider("AS54113 FASTLY")?.name).toBe("Fastly");
   });
+
+  it("does not match 'aws' buried mid-word in an unrelated org name", () => {
+    // These are ordinary networks whose names merely contain the letters a-w-s
+    // (jAWSon, strAWSon, hAWSley). Labelling them Amazon would put wrong
+    // attribution in front of an analyst.
+    for (const org of [
+      "Jaws Communications Inc",
+      "Strawson Data Center",
+      "Hawsley Telecom Ltd",
+    ]) {
+      expect(cloudProvider("AS99999", org)).toBeUndefined();
+    }
+  });
+
+  it("still matches AWS when it is a standalone word", () => {
+    expect(cloudProvider("AS99999", "AWS")?.name).toBe("Amazon Web Services");
+    expect(cloudProvider("AS99999", "aws-us-east-1")?.name).toBe(
+      "Amazon Web Services",
+    );
+    expect(cloudProvider("AS99999", "AMAZON-02")?.name).toBe(
+      "Amazon Web Services",
+    );
+  });
 });

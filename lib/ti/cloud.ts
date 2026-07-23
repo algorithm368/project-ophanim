@@ -25,7 +25,10 @@ const CLOUD_BY_ASN: Record<number, string> = {
 
 /** Substring markers on the ASN org name, for ASNs not in the table above. */
 const CLOUD_BY_ORG: [RegExp, string][] = [
-  [/amazon|aws/i, "Amazon Web Services"],
+  // `aws` needs word boundaries: without them it matches mid-word and labels
+  // unrelated networks as Amazon (jAWSon, strAWSon, hAWSley). Every other entry
+  // here is a distinctive full word, so only this one is ambiguous.
+  [/amazon|\baws\b/i, "Amazon Web Services"],
   [/google/i, "Google Cloud"],
   [/microsoft|azure/i, "Microsoft Azure"],
   [/cloudflare/i, "Cloudflare"],
