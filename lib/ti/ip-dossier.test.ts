@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { buildHostClassification, buildExposedServices, buildNetworkProvenance, sparkline } from "@/lib/ti/ip-dossier";
+import {
+  buildHostClassification,
+  buildExposedServices,
+  buildNetworkProvenance,
+  buildThreatActivity,
+  buildRelationships,
+  buildIpDossier,
+  sparkline,
+} from "@/lib/ti/ip-dossier";
 import type { CheckResult, SourceResult } from "@/lib/ti/types";
 
 function mkResult(over: Partial<CheckResult> = {}): CheckResult {
@@ -67,6 +75,16 @@ describe("buildExposedServices", () => {
     expect(g!.fields.find((f) => f.label === "Infrastructure tags")?.value).toBe("cloud");
     expect(buildExposedServices(mkResult())).toBeNull();
   });
+
+  it("truncates the CVE list past 6 entries with a , … suffix", () => {
+    const vulns = ["CVE-1", "CVE-2", "CVE-3", "CVE-4", "CVE-5", "CVE-6", "CVE-7", "CVE-8"];
+    const g = buildExposedServices(
+      mkResult({ sources: [finding("shodan-internetdb", { details: { vulns } })] }),
+    );
+    const value = g!.fields.find((f) => f.label === "Known vulnerabilities")?.value;
+    expect(value).toContain("8 (");
+    expect(value).toContain(", …");
+  });
 });
 
 describe("buildNetworkProvenance", () => {
@@ -83,8 +101,75 @@ describe("buildNetworkProvenance", () => {
     );
     expect(g!.fields.find((f) => f.label === "Autonomous system")?.value).toBe("AS49447 Nice IT Services Group");
     expect(g!.fields.find((f) => f.label === "Network class")?.value).toBe("NSP, 1-5Gbps");
+    expect(g!.fields.find((f) => f.label === "Allocation")?.value).toBe(
+      "NICEIT-NL, 45.9.148.0 – 45.9.148.255",
+    );
     expect(g!.fields.find((f) => f.label === "Announced prefix")?.value).toBe("45.9.148.0/24, RPKI valid");
     expect(g!.fields.find((f) => f.label === "Abuse contact")?.value).toContain("abuse@niceit.nl");
     expect(g!.fields.find((f) => f.label === "Allocation country")?.value).toBe("NL");
+  });
+
+  it("is null for an IP with no network-provenance signals", () => {
+    expect(buildNetworkProvenance(mkResult())).toBeNull();
+  });
+
+  it("hides Organization when it equals ISP", () => {
+    const g = buildNetworkProvenance(mkResult({ geo: { isp: "Foo Inc", org: "Foo Inc" } }));
+    expect(g!.fields.map((f) => f.label)).not.toContain("Organization");
+  });
+});
+
+describe("buildThreatActivity", () => {
+  it("is null for a clean IP with no signals", () => {
+    expect(buildThreatActivity(mkResult())).toBeNull();
+  });
+
+  it("reports scanning, C2, blocklists and reputation trend", () => {
+    const g = buildThreatActivity(
+      mkResult({
+        history: [
+          { checkedAt: "2025-11-03T00:00:00Z", riskScore: 20, verdict: "low" },
+          { checkedAt: "2026-07-20T00:00:00Z", riskScore: 90, verdict: "malicious" },
+        ],
+        sources: [
+          finding("greynoise", {
+            malicious: true,
+            categories: ["internet-scanner", "malicious"],
+            summary: "malicious (active scanner)",
+          }),
+          finding("feodo", { malicious: true, details: { malware: "Emotet" } }),
+          finding("ipsum", { malicious: true }),
+        ],
+      }),
+    );
+    expect(g!.title).toBe("Threat activity");
+    expect(g!.fields.find((f) => f.label === "Command and control")?.value).toContain("Emotet");
+    expect(g!.fields.find((f) => f.label === "Blocklist listings")?.value).toContain("IPsum");
+    expect(g!.fields.find((f) => f.label === "Reputation history")?.value).toMatch(/Since 2025-11-03/);
+  });
+});
+
+describe("buildRelationships", () => {
+  it("summarizes hosted domains and passive DNS, null when empty", () => {
+    const g = buildRelationships(
+      mkResult({
+        passiveDns: [{ value: "a.example", type: "domain" }],
+        sources: [finding("reverse-ip", { details: { domainCount: 3, domains: ["admin-panel.taxwiseup.com"] } })],
+      }),
+    );
+    expect(g!.fields.find((f) => f.label === "Hosted domains")?.value).toContain("3");
+    expect(g!.fields.find((f) => f.label === "Passive DNS")?.value).toContain("1");
+    expect(buildRelationships(mkResult())).toBeNull();
+  });
+});
+
+describe("buildIpDossier", () => {
+  it("returns ordered groups and a provenance footer", () => {
+    const d = buildIpDossier(
+      mkResult({ geo: { isHosting: true, asn: "AS13335", isp: "Cloudflare" }, checkedAt: "2026-07-23T14:12:00Z" }),
+    );
+    expect(d.groups[0].id).toBe("classification");
+    expect(d.groups.map((g) => g.id)).not.toContain("threat"); // clean → hidden
+    expect(d.footer).toMatch(/checked/);
   });
 });

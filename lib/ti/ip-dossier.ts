@@ -5,6 +5,7 @@ import type { CheckResult, GeoContext, SourceResult } from "./types";
 import { cloudProvider } from "./cloud";
 import { shodanHostInfo, PORT_SERVICE } from "./shodan";
 import { cpeLabel } from "@/lib/cpe";
+import { relationsFor } from "@/lib/relations";
 
 export type DossierField = { label: string; value: string; hint?: string; mono?: boolean };
 export type DossierGroup = { id: string; title: string; fields: DossierField[] };
@@ -137,4 +138,90 @@ export function buildNetworkProvenance(result: CheckResult): DossierGroup | null
       ? { label: "Allocation country", value: str(rdap?.allocationCountry)! }
       : null,
   ]);
+}
+
+const BLOCKLIST_IDS: [string, string][] = [
+  ["dnsbl", "DNS blocklists"],
+  ["blocklist-de", "blocklist.de"],
+  ["ipsum", "IPsum"],
+  ["spamhaus-drop", "Spamhaus DROP"],
+  ["et-open", "ET Open"],
+];
+
+function isoDate(s: string): string {
+  return s.slice(0, 10);
+}
+
+export function buildThreatActivity(result: CheckResult): DossierGroup | null {
+  const gn = findFinding(result, "greynoise");
+  const scanning =
+    gn?.malicious === true || gn?.categories?.includes("internet-scanner")
+      ? gn?.summary || gn?.categories?.join(", ") || "Observed scanning"
+      : "";
+
+  const tf = findFinding(result, "threatfox");
+  const malware = tf?.categories?.length ? tf.categories.slice(0, 3).join(", ") : "";
+
+  const feodo = findFinding(result, "feodo");
+  const c2 = feodo?.malicious === true ? `${str(feodo.details?.malware) ?? "Botnet"} C2` : "";
+
+  const listed = BLOCKLIST_IDS.filter(([id]) => findFinding(result, id)?.malicious === true).map(
+    ([, name]) => name,
+  );
+
+  const history = result.history ?? [];
+  const rep =
+    history.length >= 2
+      ? `Since ${isoDate(history[0].checkedAt)} ${sparkline(history.map((h) => h.riskScore))} ${
+          history[history.length - 1].riskScore > history[0].riskScore ? "rising" : "stable/declining"
+        }`
+      : "";
+
+  return group("threat", "Threat activity", [
+    scanning ? { label: "Observed activity", value: scanning } : null,
+    malware ? { label: "Malware association", value: malware } : null,
+    c2 ? { label: "Command and control", value: c2 } : null,
+    listed.length ? { label: "Blocklist listings", value: listed.join(", ") } : null,
+    rep ? { label: "Reputation history", value: rep, mono: true } : null,
+  ]);
+}
+
+export function buildRelationships(result: CheckResult): DossierGroup | null {
+  const rev = findFinding(result, "reverse-ip")?.details;
+  const domainCount = typeof rev?.domainCount === "number" ? rev.domainCount : 0;
+  const example = strArr(rev?.domains)[0];
+  const pdnsCount = result.passiveDns?.length ?? 0;
+  const related = relationsFor(result).related.length;
+
+  return group("relationships", "Relationships", [
+    domainCount
+      ? {
+          label: "Hosted domains",
+          value: `${domainCount} domain${domainCount === 1 ? "" : "s"}${example ? `, e.g. ${example}` : ""}`,
+        }
+      : null,
+    pdnsCount
+      ? { label: "Passive DNS", value: `${pdnsCount} historical resolution${pdnsCount === 1 ? "" : "s"}` }
+      : null,
+    related
+      ? { label: "Related indicators", value: `${related} linked IOC${related === 1 ? "" : "s"}` }
+      : null,
+  ]);
+}
+
+export function buildIpDossier(result: CheckResult): IpDossier {
+  const groups = [
+    buildHostClassification(result),
+    buildExposedServices(result),
+    buildThreatActivity(result),
+    buildRelationships(result),
+    buildNetworkProvenance(result),
+  ].filter((g): g is DossierGroup => g !== null);
+
+  const responded = result.sources.filter((s) => s.status === "ok").length;
+  const footer = `Enriched from ${responded} source${responded === 1 ? "" : "s"}, checked ${new Date(
+    result.checkedAt,
+  ).toLocaleString()}`;
+
+  return { groups, footer };
 }
