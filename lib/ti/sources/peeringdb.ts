@@ -59,11 +59,11 @@ export const peeringDbSource: TiSource = {
       const asn = await resolveAsn(ip, signal);
       if (!asn) return { status: "ok", summary: "No ASN to look up" };
 
-      const { ok, data } = await getJson<PeeringDbNetResponse>(
+      const { ok, status, data } = await getJson<PeeringDbNetResponse>(
         `https://www.peeringdb.com/api/net?asn=${encodeURIComponent(asn)}`,
         signal,
       );
-      if (!ok || !data) return { status: "ok", summary: "Not registered in PeeringDB" };
+      if (!ok || !data) return { status: "error", error: `HTTP ${status}` };
 
       const rec = data.data?.[0];
       if (!rec) return { status: "ok", summary: "Not registered in PeeringDB" };

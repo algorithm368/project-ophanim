@@ -46,4 +46,24 @@ describe("peeringDbSource", () => {
     const f = await peeringDbSource.check("1.1.1.1", AbortSignal.timeout(1000));
     expect(f.status).toBe("error");
   });
+
+  it("returns error when PeeringDB HTTP call fails with rate limit", async () => {
+    const getJson = vi.spyOn(http, "getJson");
+    getJson.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: { data: { asns: ["13335"] } },
+      text: "",
+    } as never); // RIPE network-info
+    getJson.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      data: undefined,
+      text: "",
+    } as never); // PeeringDB rate limit
+
+    const f = await peeringDbSource.check("1.1.1.1", AbortSignal.timeout(1000));
+    expect(f.status).toBe("error");
+    expect(f.error).toBe("HTTP 429");
+  });
 });
