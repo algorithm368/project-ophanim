@@ -14,7 +14,6 @@ import {
     type HashCheckResult,
     type RelatedIndicator,
 } from "@/lib/ti/types";
-import { type ResultLike } from "@/lib/ti/narrative";
 import {
     relationsFor,
     sortRelationsForTable,
@@ -26,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { hostFromUrl } from "@/lib/url";
 import { cpeLabel } from "@/lib/cpe";
+import { shodanHostInfo, PORT_SERVICE } from "@/lib/ti/shodan";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Pivot, SectionHeading, useCopied } from "./primitives";
@@ -282,72 +282,6 @@ export function DistributionUrlsCard({ result }: { result: HashCheckResult }) {
     );
 }
 
-/** Common TCP ports -> service label, for the exposed-services view. */
-const PORT_SERVICE: Record<number, string> = {
-    21: "FTP",
-    22: "SSH",
-    23: "Telnet",
-    25: "SMTP",
-    53: "DNS",
-    80: "HTTP",
-    110: "POP3",
-    111: "RPC",
-    123: "NTP",
-    135: "MSRPC",
-    139: "NetBIOS",
-    143: "IMAP",
-    161: "SNMP",
-    389: "LDAP",
-    443: "HTTPS",
-    445: "SMB",
-    465: "SMTPS",
-    587: "SMTP",
-    993: "IMAPS",
-    995: "POP3S",
-    1433: "MSSQL",
-    1521: "Oracle",
-    2049: "NFS",
-    2375: "Docker",
-    3306: "MySQL",
-    3389: "RDP",
-    5432: "Postgres",
-    5900: "VNC",
-    5985: "WinRM",
-    6379: "Redis",
-    8080: "HTTP-alt",
-    8443: "HTTPS-alt",
-    9200: "Elasticsearch",
-    11211: "Memcached",
-    27017: "MongoDB",
-};
-
-type ShodanHostInfo = {
-    ports: number[];
-    vulns: string[];
-    cpes: string[];
-    hostnames: string[];
-};
-
-/** Pull host-exposure details out of the Shodan InternetDB source result. */
-function shodanHostInfo(result: ResultLike): ShodanHostInfo {
-    const d = (result.sources.find((s) => s.source.id === "shodan-internetdb")
-        ?.details ?? {}) as Record<string, unknown>;
-    const strs = (v: unknown): string[] =>
-        Array.isArray(v)
-            ? v.filter((x): x is string => typeof x === "string")
-            : [];
-    const nums = (v: unknown): number[] =>
-        Array.isArray(v)
-            ? v.filter((x): x is number => typeof x === "number")
-            : [];
-    return {
-        ports: nums(d.ports),
-        vulns: strs(d.vulns),
-        cpes: strs(d.cpes),
-        hostnames: strs(d.hostnames),
-    };
-}
-
 /** Shared formal sub-label: uppercase mono micro-caps, matching the other
  *  result cards (replaces the old hand-drawn headers). */
 const SUBLABEL =
@@ -356,7 +290,7 @@ const SUBLABEL =
 const CVE_PREVIEW = 12;
 
 export function ExposedServicesCard({ result }: { result: CheckResult }) {
-    const { ports, vulns, cpes } = shodanHostInfo(result);
+    const { ports, vulns, cpes } = shodanHostInfo(result.sources);
     if (ports.length === 0 && vulns.length === 0 && cpes.length === 0)
         return null;
 
