@@ -7,11 +7,8 @@ import {
     Copy,
     FileDigit,
     Globe,
-    MapPin,
-    X,
 } from "lucide-react";
 import {
-    type CheckResult,
     type DomainCheckResult,
     type HashCheckResult,
     type HashContext,
@@ -20,7 +17,6 @@ import {
     formatBytes,
     formatDate,
     hashBehaviorSummary,
-    joinPlace,
 } from "@/lib/ti/narrative";
 import { describeDll } from "@/lib/ti/dll-dictionary";
 import { HASH_ALGO_LABEL } from "@/lib/hash";
@@ -28,20 +24,16 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-    classifyType,
     classifyDomain,
     classifyHash,
     domainTone,
-    flagUrl,
 } from "./classify";
 import {
     Field,
-    Pivot,
     PivotList,
     SectionHeading,
     useCopied,
 } from "./primitives";
-import { VotingCard } from "./voting";
 import type { IconType } from "./types";
 
 /** A flat group of related fields: a small uppercase label over hairline-
@@ -63,36 +55,6 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 /** A hairline rule used to separate the identity line from the field groups. */
 export function Rule() {
     return <div className="h-px bg-foreground/10" />;
-}
-
-/** One label-value pair in the Origin spec grid: a fixed label column then the
- *  value, so every fact lines up into the same regular columns. */
-export function GridItem({
-    label,
-    hint,
-    children,
-}: {
-    label: string;
-    hint?: string;
-    children: ReactNode;
-}) {
-    return (
-        <div className="flex items-baseline gap-3 py-1">
-            <dt
-                title={hint}
-                className={cn(
-                    "w-28 shrink-0 text-[13px] leading-snug text-muted-foreground",
-                    hint &&
-                        "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
-                )}
-            >
-                {label}
-            </dt>
-            <dd className="min-w-0 flex-1 text-sm font-medium text-foreground">
-                {children}
-            </dd>
-        </div>
-    );
 }
 
 /** Compact classification header for the domain / hash profile cards: a small
@@ -136,133 +98,6 @@ function IdentityHeader({
                 )}
             </div>
         </div>
-    );
-}
-
-export function ProfileCard({ result }: { result: CheckResult }) {
-    const geo = result.geo;
-    const res = result.geoResolution;
-    const type = classifyType(geo);
-    const cityRegion = geo ? joinPlace([geo.city, geo.region]) : "";
-    const flag = flagUrl(geo?.countryCode);
-    const coords =
-        typeof geo?.lat === "number" && typeof geo?.lon === "number"
-            ? `${geo.lat.toFixed(4)}, ${geo.lon.toFixed(4)}`
-            : undefined;
-
-    return (
-        <Card className="sketch-shadow rounded-lg border border-foreground/12">
-            <CardContent className="space-y-4">
-                <SectionHeading icon={Globe}>Origin</SectionHeading>
-
-                <div className="space-y-4">
-                    {/* Identity line: grayscale flag, country, city — one row. */}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        {flag ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
-                            <img
-                                src={flag}
-                                alt={`Flag of ${geo?.country ?? geo?.countryCode}`}
-                                width={64}
-                                height={48}
-                                loading="lazy"
-                                className="mr-1 h-7 w-auto shrink-0 rounded-sm border border-foreground/20 object-cover"
-                            />
-                        ) : (
-                            <span className="mr-1 flex size-7 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-muted-foreground">
-                                <MapPin className="size-4" />
-                            </span>
-                        )}
-                        <span className="text-base font-semibold leading-tight tracking-tight">
-                            {geo?.country ?? "Unknown location"}
-                        </span>
-                        {geo?.countryCode && (
-                            <span className="font-mono text-xs text-muted-foreground">
-                                {geo.countryCode}
-                            </span>
-                        )}
-                        {cityRegion && (
-                            <>
-                                <span className="text-muted-foreground/50">·</span>
-                                <span className="text-sm text-muted-foreground">
-                                    {cityRegion}
-                                </span>
-                            </>
-                        )}
-                    </div>
-
-                    <Rule />
-
-                    {/* Uniform spec grid: every fact is a regular label-value
-                        cell, aligned into two even columns. */}
-                    <dl className="grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2">
-                        <GridItem label="Type">
-                            <span title={type.desc}>{type.label}</span>
-                        </GridItem>
-                        {geo?.asn && (
-                            <GridItem
-                                label="ASN"
-                                hint="Autonomous System Number, the network block this IP routes through"
-                            >
-                                <span className="font-mono text-[13px]">
-                                    {geo.asn}
-                                </span>
-                            </GridItem>
-                        )}
-                        {geo?.asnOrg && (
-                            <GridItem label="Operator">{geo.asnOrg}</GridItem>
-                        )}
-                        {geo?.isp && <GridItem label="ISP">{geo.isp}</GridItem>}
-                        {geo?.org && (
-                            <GridItem label="Organization">{geo.org}</GridItem>
-                        )}
-                        {geo?.reverse && (
-                            <GridItem
-                                label="Reverse DNS"
-                                hint="The PTR hostname this IP maps back to"
-                            >
-                                <div className="flex min-w-0 items-center gap-2">
-                                    <span className="min-w-0">
-                                        <Pivot value={geo.reverse} />
-                                    </span>
-                                    {geo.fcrdns && (
-                                        <span
-                                            title={
-                                                geo.fcrdns.verified
-                                                    ? "FCrDNS pass, the PTR host resolves back to this IP"
-                                                    : "FCrDNS fail, the PTR host does not resolve back to this IP"
-                                            }
-                                            className={cn(
-                                                "inline-flex shrink-0 items-center gap-0.5 text-[10px] font-semibold tracking-wide uppercase",
-                                                geo.fcrdns.verified
-                                                    ? "text-muted-foreground"
-                                                    : "text-foreground",
-                                            )}
-                                        >
-                                            {geo.fcrdns.verified ? (
-                                                <Check className="size-3" />
-                                            ) : (
-                                                <X className="size-3" />
-                                            )}
-                                            FCrDNS
-                                        </span>
-                                    )}
-                                </div>
-                            </GridItem>
-                        )}
-                        {coords && (
-                            <GridItem label="Coordinates">
-                                <span className="font-mono text-[13px]">
-                                    {coords}
-                                </span>
-                            </GridItem>
-                        )}
-                    </dl>
-                </div>
-
-                {res && <VotingCard res={res} />}
-            </CardContent>
-        </Card>
     );
 }
 

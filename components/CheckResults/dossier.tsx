@@ -75,7 +75,7 @@ export function IpDossierCard({ result }: { result: CheckResult }) {
                             // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
                             <img
                                 src={flag}
-                                alt={geo.country}
+                                alt={`Flag of ${geo.country ?? geo.countryCode}`}
                                 width={64}
                                 height={48}
                                 loading="lazy"

@@ -15,13 +15,9 @@ import { CertificatesCard, PassiveDnsCard } from "./deep";
 import {
     ConnectionsCard,
     DistributionUrlsCard,
-    ExposedServicesCard,
 } from "./connections";
-import {
-    ProfileCard,
-    DomainProfileCard,
-    HashProfileCard,
-} from "./profile";
+import { DomainProfileCard, HashProfileCard } from "./profile";
+import { IpDossierCard } from "./dossier";
 import { ResearchCard } from "./research";
 import { SectionNav, type NavItem } from "./section-nav";
 import type { ResearchStreamState } from "./use-research";
@@ -29,8 +25,7 @@ import type { ResearchStreamState } from "./use-research";
 /** Section anchors + jump-nav labels, in document order, per IOC type. Cards
  *  self-hide when empty, so SectionNav prunes any that render nothing. */
 const IP_SECTIONS: NavItem[] = [
-    { id: "origin", label: "Origin" },
-    { id: "exposed", label: "Exposed" },
+    { id: "dossier", label: "Dossier" },
     { id: "dns", label: "DNS" },
     { id: "related", label: "Related" },
     { id: "research", label: "Research" },
@@ -77,11 +72,8 @@ function Results({
             <SourceHealthNotice result={result} />
             <VerdictHero result={result} onRefresh={onRefresh} />
             <SectionNav items={IP_SECTIONS} />
-            <Section id="origin">
-                <ProfileCard result={result} />
-            </Section>
-            <Section id="exposed">
-                <ExposedServicesCard result={result} />
+            <Section id="dossier">
+                <IpDossierCard result={result} />
             </Section>
             <Section id="dns">
                 <PassiveDnsCard result={result} />

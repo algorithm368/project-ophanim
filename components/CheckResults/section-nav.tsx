@@ -10,11 +10,11 @@ import {
     BadgeCheck,
     Circle,
     Download,
+    Fingerprint,
     Globe,
     Link2,
     ListChecks,
     Network,
-    Server,
     Telescope,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,7 @@ type IconType = ComponentType<{ className?: string }>;
 /** One glyph per section id. The item's label is the accessible name/tooltip. */
 const ICONS: Record<string, IconType> = {
     origin: Globe,
-    exposed: Server,
+    dossier: Fingerprint,
     certs: BadgeCheck,
     dns: Network,
     related: Link2,

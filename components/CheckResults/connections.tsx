@@ -5,7 +5,6 @@ import {
     Copy,
     ExternalLink,
     Link2,
-    Server,
     ShieldCheck,
 } from "lucide-react";
 import {
@@ -24,8 +23,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { hostFromUrl } from "@/lib/url";
-import { cpeLabel } from "@/lib/cpe";
-import { shodanHostInfo, PORT_SERVICE } from "@/lib/ti/shodan";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Pivot, SectionHeading, useCopied } from "./primitives";
@@ -282,120 +279,3 @@ export function DistributionUrlsCard({ result }: { result: HashCheckResult }) {
     );
 }
 
-/** Shared formal sub-label: uppercase mono micro-caps, matching the other
- *  result cards (replaces the old hand-drawn headers). */
-const SUBLABEL =
-    "font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase";
-
-const CVE_PREVIEW = 12;
-
-export function ExposedServicesCard({ result }: { result: CheckResult }) {
-    const { ports, vulns, cpes } = shodanHostInfo(result.sources);
-    if (ports.length === 0 && vulns.length === 0 && cpes.length === 0)
-        return null;
-
-    const sortedPorts = [...ports].sort((a, b) => a - b);
-    const shownVulns = vulns.slice(0, CVE_PREVIEW);
-
-    // Detected technologies, deduped by their readable label so the same
-    // product reported under two CPE strings collapses to one chip.
-    const techs = Array.from(
-        new Map(
-            cpes
-                .map((c) => cpeLabel(c))
-                .map((t) => [`${t.name} ${t.version ?? ""}`, t]),
-        ).values(),
-    );
-
-    return (
-        <Card className="sketch-shadow rounded-lg border border-foreground/12">
-            <CardContent className="space-y-4">
-                <SectionHeading icon={Server}>Exposed services</SectionHeading>
-
-                {sortedPorts.length > 0 && (
-                    <div className="space-y-2">
-                        <div className={SUBLABEL}>
-                            Open ports ({sortedPorts.length})
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {sortedPorts.map((p) => {
-                                const svc = PORT_SERVICE[p];
-                                return (
-                                    <span
-                                        key={p}
-                                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 font-mono text-xs"
-                                    >
-                                        <span className="font-semibold tabular-nums">
-                                            {p}
-                                        </span>
-                                        {svc && (
-                                            <span className="text-muted-foreground">
-                                                {svc}
-                                            </span>
-                                        )}
-                                    </span>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {techs.length > 0 && (
-                    <div className="space-y-2">
-                        <div className={SUBLABEL}>
-                            Technologies ({techs.length})
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {techs.map((t) => (
-                                <span
-                                    key={`${t.name}-${t.version ?? ""}`}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[13px]"
-                                >
-                                    <span className="font-medium">{t.name}</span>
-                                    {t.version && (
-                                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                                            {t.version}
-                                        </span>
-                                    )}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {vulns.length > 0 && (
-                    <div className="space-y-2">
-                        <div className={`${SUBLABEL} text-red-600 dark:text-red-400`}>
-                            Known CVEs ({vulns.length})
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {shownVulns.map((cve) => (
-                                <a
-                                    key={cve}
-                                    href={`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve)}`}
-                                    target="_blank"
-                                    rel="noreferrer noopener"
-                                    className="inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
-                                >
-                                    {cve}
-                                    <ExternalLink className="size-3 opacity-60" />
-                                </a>
-                            ))}
-                            {vulns.length > shownVulns.length && (
-                                <span className="self-center text-xs text-muted-foreground">
-                                    +{vulns.length - shownVulns.length} more
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                <p className="text-xs text-muted-foreground">
-                    Exposure data from Shodan InternetDB. Open ports aren&apos;t
-                    malicious on their own; CVEs flag potentially unpatched
-                    services.
-                </p>
-            </CardContent>
-        </Card>
-    );
-}
