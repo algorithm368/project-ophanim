@@ -4,6 +4,7 @@
 import type { CheckResult, GeoContext, SourceResult } from "./types";
 import { cloudProvider } from "./cloud";
 import { shodanHostInfo, PORT_SERVICE } from "./shodan";
+import { maliciousTags } from "./sources/shodan-internetdb";
 import { cpeLabel } from "@/lib/cpe";
 import { relationsFor } from "@/lib/relations";
 
@@ -51,9 +52,16 @@ export function buildHostClassification(result: CheckResult): DossierGroup | nul
       ? "Tor relay"
       : "";
 
+  // A PTR record with no FCrDNS data (verification never ran) must read
+  // differently from one where FCrDNS explicitly failed to confirm the
+  // forward record — the latter is a classic spoofed-PTR indicator and was
+  // previously indistinguishable from "no data" once collapsed to a bare
+  // hostname.
   const ptr = geo?.reverse
-    ? geo.fcrdns?.verified
-      ? `${geo.reverse} (FCrDNS verified)`
+    ? geo.fcrdns
+      ? geo.fcrdns.verified
+        ? `${geo.reverse} (FCrDNS verified)`
+        : `${geo.reverse} (FCrDNS unconfirmed)`
       : geo.reverse
     : "";
 
@@ -70,10 +78,22 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v 
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
-export function buildExposedServices(result: CheckResult): DossierGroup | null {
-  const { ports, vulns, cpes, hostnames } = shodanHostInfo(result.sources);
+/** Split Shodan InternetDB's tags into threat tags (malware, compromised, c2,
+ *  phishing, botnet, honeypot — the same set the adapter uses to set its own
+ *  `malicious` flag) and the remaining benign infrastructure tags, so a threat
+ *  tag doesn't render as neutral alongside e.g. "cloud". */
+function shodanTagSplit(result: CheckResult): { threat: string[]; benign: string[] } {
   const shodan = findFinding(result, "shodan-internetdb");
   const tags = strArr(shodan?.details?.tags);
+  const threat = maliciousTags(tags);
+  const threatSet = new Set(threat.map((t) => t.toLowerCase()));
+  const benign = tags.filter((t) => !threatSet.has(t.toLowerCase()));
+  return { threat, benign };
+}
+
+export function buildExposedServices(result: CheckResult): DossierGroup | null {
+  const { ports, vulns, cpes, hostnames } = shodanHostInfo(result.sources);
+  const { benign: tags } = shodanTagSplit(result);
 
   const portList = [...ports]
     .sort((a, b) => a - b)
@@ -146,16 +166,34 @@ export function buildNetworkProvenance(result: CheckResult): DossierGroup | null
   ]);
 }
 
-const BLOCKLIST_IDS: [string, string][] = [
-  ["dnsbl", "DNS blocklists"],
-  ["blocklist-de", "blocklist.de"],
-  ["ipsum", "IPsum"],
-  ["spamhaus-drop", "Spamhaus DROP"],
-  ["et-open", "ET Open"],
-];
-
 function isoDate(s: string): string {
   return s.slice(0, 10);
+}
+
+/**
+ * Blocklist listings, keyed off each source's raw listing evidence rather than
+ * its `malicious` flag: dnsbl/blocklist-de/ipsum all gate `malicious` behind a
+ * consensus threshold (>=3 zones, >=5 attacks, >=3 feeds), so a sub-threshold
+ * listing (e.g. 2 DNSBL zones) previously produced no row at all even though
+ * the source did report a listing. spamhaus-drop is intentionally excluded:
+ * it never sets `malicious` by design (netblock-level signal) and its source
+ * is not registered in lib/ti/registry.ts, so it never contributes a finding.
+ */
+function blocklistEvidence(result: CheckResult): string[] {
+  const out: string[] = [];
+
+  const listedOn = strArr(findFinding(result, "dnsbl")?.details?.listedOn);
+  if (listedOn.length) out.push(`DNS blocklists x${listedOn.length}`);
+
+  const attacks = findFinding(result, "blocklist-de")?.details?.attacks;
+  if (typeof attacks === "number" && attacks > 0) out.push(`blocklist.de x${attacks}`);
+
+  const blocklistCount = findFinding(result, "ipsum")?.details?.blocklistCount;
+  if (typeof blocklistCount === "number" && blocklistCount > 0) out.push(`IPsum x${blocklistCount}`);
+
+  if (findFinding(result, "et-open")?.malicious === true) out.push("ET Open");
+
+  return out;
 }
 
 export function buildThreatActivity(result: CheckResult): DossierGroup | null {
@@ -166,14 +204,25 @@ export function buildThreatActivity(result: CheckResult): DossierGroup | null {
       : "";
 
   const tf = findFinding(result, "threatfox");
-  const malware = tf?.categories?.length ? tf.categories.slice(0, 3).join(", ") : "";
+  // `categories` is [...threatTypes, ...malwares, ...tags], so threat types
+  // (botnet_cc, payload_delivery) can crowd real family names out of a plain
+  // slice(0, 3). `details.malware` is the adapter's own deduped, printable
+  // malware-family list — prefer it, falling back to the old behavior only
+  // when it is absent.
+  const tfMalware = strArr(tf?.details?.malware);
+  const malware = tfMalware.length
+    ? tfMalware.slice(0, 3).join(", ")
+    : tf?.categories?.length
+      ? tf.categories.slice(0, 3).join(", ")
+      : "";
 
   const feodo = findFinding(result, "feodo");
   const c2 = feodo?.malicious === true ? `${str(feodo.details?.malware) ?? "Botnet"} C2` : "";
 
-  const listed = BLOCKLIST_IDS.filter(([id]) => findFinding(result, id)?.malicious === true).map(
-    ([, name]) => name,
-  );
+  const listed = blocklistEvidence(result);
+
+  const { threat: shodanThreatTags } = shodanTagSplit(result);
+  const hostTags = shodanThreatTags.length ? shodanThreatTags.join(", ") : "";
 
   const history = result.history ?? [];
   const rep =
@@ -188,6 +237,7 @@ export function buildThreatActivity(result: CheckResult): DossierGroup | null {
     malware ? { label: "Malware association", value: malware } : null,
     c2 ? { label: "Command and control", value: c2 } : null,
     listed.length ? { label: "Blocklist listings", value: listed.join(", ") } : null,
+    hostTags ? { label: "Flagged host tags", value: hostTags } : null,
     rep ? { label: "Reputation history", value: rep, mono: true } : null,
   ]);
 }

@@ -58,6 +58,30 @@ describe("buildHostClassification", () => {
     expect(g!.fields.find((f) => f.label === "Assignment type")?.value).toBe("Anonymizing proxy / VPN");
     expect(g!.fields.find((f) => f.label === "Anonymization")?.value).toBe("Tor exit node");
   });
+
+  it("renders the three distinct FCrDNS states for the PTR row", () => {
+    const verified = buildHostClassification(
+      mkResult({ geo: { reverse: "mail.example.com", fcrdns: { hostname: "mail.example.com", verified: true } } }),
+    );
+    expect(verified!.fields.find((f) => f.label === "Reverse DNS (PTR)")?.value).toBe(
+      "mail.example.com (FCrDNS verified)",
+    );
+
+    // FCrDNS ran but the forward record does not match — must NOT look like
+    // "no data" (a classic spoofed-PTR indicator would otherwise vanish).
+    const unconfirmed = buildHostClassification(
+      mkResult({
+        geo: { reverse: "mail.microsoft.com", fcrdns: { hostname: "mail.microsoft.com", verified: false } },
+      }),
+    );
+    expect(unconfirmed!.fields.find((f) => f.label === "Reverse DNS (PTR)")?.value).toBe(
+      "mail.microsoft.com (FCrDNS unconfirmed)",
+    );
+
+    // No fcrdns data at all (verification never ran) — bare hostname.
+    const absent = buildHostClassification(mkResult({ geo: { reverse: "host.example.com" } }));
+    expect(absent!.fields.find((f) => f.label === "Reverse DNS (PTR)")?.value).toBe("host.example.com");
+  });
 });
 
 describe("buildExposedServices", () => {
@@ -156,7 +180,7 @@ describe("buildThreatActivity", () => {
             summary: "malicious (active scanner)",
           }),
           finding("feodo", { malicious: true, details: { malware: "Emotet" } }),
-          finding("ipsum", { malicious: true }),
+          finding("ipsum", { malicious: true, details: { blocklistCount: 4 } }),
         ],
       }),
     );
@@ -164,6 +188,77 @@ describe("buildThreatActivity", () => {
     expect(g!.fields.find((f) => f.label === "Command and control")?.value).toContain("Emotet");
     expect(g!.fields.find((f) => f.label === "Blocklist listings")?.value).toContain("IPsum");
     expect(g!.fields.find((f) => f.label === "Reputation history")?.value).toMatch(/Since 2025-11-03/);
+  });
+
+  it("reports a sub-threshold blocklist listing that never crosses a source's own malicious gate", () => {
+    // dnsbl needs >=3 zones and blocklist-de needs >=5 attacks to set
+    // `malicious`; below that, the source still carries real listing counts
+    // in `details` that should not be dropped entirely.
+    const g = buildThreatActivity(
+      mkResult({
+        sources: [
+          finding("dnsbl", { malicious: false, details: { listedOn: ["Spamhaus ZEN (…)", "SpamCop (…)"] } }),
+          finding("blocklist-de", { malicious: false, details: { attacks: 2, reports: 1 } }),
+        ],
+      }),
+    );
+    const value = g!.fields.find((f) => f.label === "Blocklist listings")?.value;
+    expect(value).toContain("DNS blocklists x2");
+    expect(value).toContain("blocklist.de x2");
+  });
+
+  it("does not report a spamhaus-drop row (source is not registered / never sets malicious)", () => {
+    const g = buildThreatActivity(
+      mkResult({ sources: [finding("spamhaus-drop", { score: 55, categories: ["spamhaus-drop"] })] }),
+    );
+    expect(g).toBeNull();
+  });
+
+  it("prefers ThreatFox's printable malware-family list over the mixed categories array", () => {
+    const g = buildThreatActivity(
+      mkResult({
+        sources: [
+          finding("threatfox", {
+            malicious: true,
+            categories: ["botnet_cc", "payload_delivery", "AsyncRAT"],
+            details: { malware: ["AsyncRAT"] },
+          }),
+        ],
+      }),
+    );
+    expect(g!.fields.find((f) => f.label === "Malware association")?.value).toBe("AsyncRAT");
+  });
+
+  it("falls back to categories when ThreatFox's details.malware is absent", () => {
+    const g = buildThreatActivity(
+      mkResult({
+        sources: [
+          finding("threatfox", { malicious: true, categories: ["botnet_cc", "payload_delivery", "AsyncRAT"] }),
+        ],
+      }),
+    );
+    expect(g!.fields.find((f) => f.label === "Malware association")?.value).toBe(
+      "botnet_cc, payload_delivery, AsyncRAT",
+    );
+  });
+
+  it("routes Shodan threat tags into Flagged host tags, not neutral Infrastructure tags", () => {
+    const result = mkResult({
+      sources: [
+        finding("shodan-internetdb", {
+          malicious: true,
+          details: { tags: ["cloud", "compromised"] },
+        }),
+      ],
+    });
+    const threat = buildThreatActivity(result);
+    expect(threat).not.toBeNull();
+    expect(threat!.fields.find((f) => f.label === "Flagged host tags")?.value).toBe("compromised");
+
+    const exposed = buildExposedServices(result);
+    expect(exposed!.fields.find((f) => f.label === "Infrastructure tags")?.value).toBe("cloud");
+    // Never duplicated into both rows.
+    expect(exposed!.fields.find((f) => f.label === "Infrastructure tags")?.value).not.toContain("compromised");
   });
 });
 

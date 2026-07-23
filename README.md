@@ -19,6 +19,7 @@ Works out of the box, **no API key required**:
 | RDAP (RIR)         | Authoritative allocation country + network name |
 | Reverse DNS (FCrDNS)| PTR + forward-confirmed reverse DNS             |
 | RIPEstat           | Announced BGP prefix + origin ASN (RIPE NCC)    |
+| PeeringDB          | Network class (ISP/Content/Hosting/…), traffic level |
 | Shodan InternetDB  | Open ports, known CVEs, host tags               |
 | DNS Blocklists     | Spamhaus, SpamCop, Barracuda, DroneBL, …        |
 | blocklist.de       | Recent attack/abuse report counts               |

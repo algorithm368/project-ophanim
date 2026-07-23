@@ -1,3 +1,5 @@
+import { canonicalAsn } from "./geo/geokit";
+
 /** Major cloud/hosting providers keyed by AS number. Extend as needed; this is
  *  a zero-network lookup on the ASN we already resolved via geo. */
 const CLOUD_BY_ASN: Record<number, string> = {
@@ -23,7 +25,7 @@ const CLOUD_BY_ASN: Record<number, string> = {
 
 /** Substring markers on the ASN org name, for ASNs not in the table above. */
 const CLOUD_BY_ORG: [RegExp, string][] = [
-  [/amazon|aws|amazon-02|amazon-aes/i, "Amazon Web Services"],
+  [/amazon|aws/i, "Amazon Web Services"],
   [/google/i, "Google Cloud"],
   [/microsoft|azure/i, "Microsoft Azure"],
   [/cloudflare/i, "Cloudflare"],
@@ -41,7 +43,11 @@ export function cloudProvider(
   org?: string,
 ): { name: string } | undefined {
   if (asn) {
-    const n = Number(asn.replace(/^AS/i, "").trim());
+    // geo.asn is frequently the COMBINED "AS15169 GOOGLE" form (ip-api maps its
+    // `as` field straight through), so pull just the leading digits rather than
+    // `Number()`-parsing the whole string, which yields NaN on that shape.
+    const canon = canonicalAsn(asn);
+    const n = canon ? Number(canon.slice(2)) : NaN;
     if (Number.isFinite(n) && CLOUD_BY_ASN[n]) {
       return { name: CLOUD_BY_ASN[n] };
     }

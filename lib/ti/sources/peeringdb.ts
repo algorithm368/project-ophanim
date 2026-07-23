@@ -52,10 +52,18 @@ export const peeringDbSource: TiSource = {
     category: "context",
     requiresKey: false,
     weight: 0,
+    // check() makes two sequential calls (RIPE network-info, then PeeringDB);
+    // ripestat.ts already gives the RIPE call alone 12s because stat.ripe.net
+    // can be slow under load, so the 8s default here isn't even enough
+    // headroom for the first of the two calls this adapter makes.
+    timeoutMs: 12000,
   },
   isEnabled: () => true,
   async check(ip, signal): Promise<SourceFinding> {
     try {
+      // Re-resolves the ASN via RIPE rather than reusing the merged geo.asn:
+      // the TiSource(ip, signal) signature gives each adapter only the raw
+      // indicator, not the orchestrator's already-merged geo context.
       const asn = await resolveAsn(ip, signal);
       if (!asn) return { status: "ok", summary: "No ASN to look up" };
 
@@ -63,6 +71,12 @@ export const peeringDbSource: TiSource = {
         `https://www.peeringdb.com/api/net?asn=${encodeURIComponent(asn)}`,
         signal,
       );
+      // Anonymous PeeringDB access is throttled; surface a 429 as the
+      // codebase's quota-specific status (see greynoise.ts, reverse-ip.ts)
+      // rather than a generic error.
+      if (status === 429) {
+        return { status: "rate_limited", summary: "PeeringDB rate limit exceeded" };
+      }
       if (!ok || !data) return { status: "error", error: `HTTP ${status}` };
 
       const rec = data.data?.[0];

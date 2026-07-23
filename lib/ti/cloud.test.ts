@@ -18,4 +18,14 @@ describe("cloudProvider", () => {
       "Amazon Web Services",
     );
   });
+
+  it("matches the ASN table when geo.asn carries the COMBINED 'AS#### ORG' form", () => {
+    // ip-api maps its `as` field straight into geo.asn, so this is the shape
+    // the table has to work against in production, not just a bare "AS####".
+    expect(cloudProvider("AS15169 GOOGLE")?.name).toBe("Google Cloud");
+    expect(
+      cloudProvider("AS63949 AKAMAI-LINODE-AP Akamai Connected Cloud")?.name,
+    ).toBe("Akamai (Linode)");
+    expect(cloudProvider("AS54113 FASTLY")?.name).toBe("Fastly");
+  });
 });
