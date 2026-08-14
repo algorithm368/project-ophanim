@@ -225,10 +225,12 @@ export function buildThreatActivity(result: CheckResult): DossierGroup | null {
   const hostTags = shodanThreatTags.length ? shodanThreatTags.join(", ") : "";
 
   const history = result.history ?? [];
+  const oldest = history[0];
+  const newest = history.at(-1);
   const rep =
-    history.length >= 2
-      ? `Since ${isoDate(history[0].checkedAt)} ${sparkline(history.map((h) => h.riskScore))} ${
-          history[history.length - 1].riskScore > history[0].riskScore ? "rising" : "stable/declining"
+    history.length >= 2 && oldest && newest
+      ? `Since ${isoDate(oldest.checkedAt)} ${sparkline(history.map((h) => h.riskScore))} ${
+          newest.riskScore > oldest.riskScore ? "rising" : "stable/declining"
         }`
       : "";
 

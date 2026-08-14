@@ -87,7 +87,7 @@ describe("extractIps", () => {
 
   it("caps the number of IPs", () => {
     const many = Array.from({ length: 150 }, (_, i) => `1.1.${(i >> 8) & 255}.${i & 255}`).join(" ");
-    expect(extractIps(many).length).toBe(100);
+    expect(extractIps(many)).toHaveLength(100);
   });
 });
 

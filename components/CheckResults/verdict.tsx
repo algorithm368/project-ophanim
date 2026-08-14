@@ -9,11 +9,9 @@ import {
     ShieldQuestion,
 } from "lucide-react";
 import {
+    type AnyCheckResult,
     isDomainResult,
     isHashResult,
-    type CheckResult,
-    type DomainCheckResult,
-    type HashCheckResult,
     type Verdict,
 } from "@/lib/ti/types";
 import {
@@ -200,7 +198,7 @@ export function VerdictHero({
     result,
     onRefresh,
 }: Readonly<{
-    result: CheckResult | DomainCheckResult | HashCheckResult;
+    result: AnyCheckResult;
     onRefresh: () => void;
 }>) {
     const narrative = isHashResult(result)

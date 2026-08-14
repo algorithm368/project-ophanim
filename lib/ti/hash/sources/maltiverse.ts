@@ -108,7 +108,7 @@ export const maltiverseSource: TiSource = {
           ? [data.filename]
           : [];
       const fileNames = [
-        ...new Set(rawNames.filter((n): n is string => Boolean(n && n.trim()))),
+        ...new Set(rawNames.filter((n): n is string => Boolean(n?.trim()))),
       ];
       const name = fileNames[0];
       const tags = [

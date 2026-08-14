@@ -58,7 +58,7 @@ const BEHAVIOR_TAG_PHRASES: Record<string, string> = {
 function joinList(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 }
 
 /** Lowercase the first character so a label reads mid-sentence. */
@@ -464,7 +464,7 @@ export function buildNarrative(result: CheckResult): string[] {
     const operator = geo.isp || geo.org || geo.asnOrg || "";
     const op = operator ? ` operated by ${operator}` : "";
     // ip-api's ASN field bundles the org name; keep just the AS number here.
-    const asnNum = geo.asn ? (geo.asn.match(/^AS\d+/)?.[0] ?? geo.asn) : "";
+    const asnNum = geo.asn ? (/^AS\d+/.exec(geo.asn)?.[0] ?? geo.asn) : "";
     const asn = asnNum ? ` (${asnNum})` : "";
     const prefix = bgpPrefix(result);
     const prefixClause = prefix

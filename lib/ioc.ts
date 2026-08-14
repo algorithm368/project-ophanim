@@ -21,7 +21,7 @@ export function refangIOC(input: string): string {
     .replace(/[[({]\s*(?:\.|dot|punto)\s*[\])}]/gi, ".")
     .replace(/\s+dot\s+/gi, ".")
     // Escaped dots from some CSV / log exports.
-    .replace(/\\\./g, ".")
+    .replaceAll("\\.", ".")
     // Defanged scheme + "@" separators.
     .replace(/[[({]\s*:\s*[\])}]/g, ":")
     .replace(/[[({]\s*(?:\/\/)\s*[\])}]/g, "//")

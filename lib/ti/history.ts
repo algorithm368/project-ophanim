@@ -63,8 +63,7 @@ export async function recordHistory(
     const k = key(kind, value);
     const latest = toSnapshot(await redis.lindex(k, 0));
     if (
-      latest &&
-      latest.riskScore === snapshot.riskScore &&
+      latest?.riskScore === snapshot.riskScore &&
       latest.verdict === snapshot.verdict &&
       Date.now() - Date.parse(latest.checkedAt) < DEDUPE_WINDOW_MS
     ) {

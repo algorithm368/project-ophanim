@@ -8,9 +8,7 @@ import {
   getCachedResult,
 } from "@/lib/ti/cache";
 import type {
-  CheckResult,
-  DomainCheckResult,
-  HashCheckResult,
+  AnyCheckResult,
 } from "@/lib/ti/types";
 
 interface PageProps {
@@ -29,7 +27,7 @@ const VERDICT_LABEL: Record<string, string> = {
 const fetchCached = cache(
   async (
     decoded: string,
-  ): Promise<CheckResult | DomainCheckResult | HashCheckResult | null> => {
+  ): Promise<AnyCheckResult | null> => {
     const kind = detectIOC(decoded);
     if (!kind) return null;
     if (kind === "domain") return getCachedDomainResult(decoded);

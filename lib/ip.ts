@@ -111,7 +111,7 @@ function expandIPv6(input: string): number[] | null {
     const out: number[] = [];
     for (const g of part.split(":")) {
       if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
-      out.push(parseInt(g, 16));
+      out.push(Number.parseInt(g, 16));
     }
     return out;
   };
@@ -122,11 +122,11 @@ function expandIPv6(input: string): number[] | null {
     if (!head || !tail) return null;
     const missing = 8 - head.length - tail.length;
     if (missing < 1) return null; // "::" must stand for at least one zero group
-    return [...head, ...Array(missing).fill(0), ...tail];
+    return [...head, ...new Array(missing).fill(0), ...tail];
   }
 
   const groups = parseGroups(s);
-  if (!groups || groups.length !== 8) return null;
+  if (groups?.length !== 8) return null;
   return groups;
 }
 

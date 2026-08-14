@@ -32,7 +32,7 @@ export function parseWayback(
   if (rows.length === 0) return { snapshots: [] };
 
   const firstSeen = cdxTimeToIso(rows[0][0]);
-  const lastSeen = cdxTimeToIso(rows[rows.length - 1][0]);
+  const lastSeen = cdxTimeToIso(rows.at(-1)?.[0] ?? "");
 
   const snapshots: WaybackSnapshot[] = [];
   for (let i = rows.length - 1; i >= 0 && snapshots.length < limit; i--) {
@@ -133,10 +133,10 @@ export const waybackProvider: ResearchProvider = {
       // A network blip on CDX: try the lighter endpoint before giving up.
       try {
         return await availabilityFallback(indicator, signal);
-      } catch (err2) {
+      } catch (fallbackErr) {
         return {
-          status: isTimeout(err2) ? "timeout" : "error",
-          error: errorMessage(err2),
+          status: isTimeout(fallbackErr) ? "timeout" : "error",
+          error: errorMessage(fallbackErr),
         };
       }
     }

@@ -49,7 +49,7 @@ export const ipWhoIsSource: TiSource = {
         {},
         "no-cors",
       );
-      if (!data || !data.success) {
+      if (!data?.success) {
         return { status: "error", error: data?.message ?? "Lookup failed" };
       }
       const geo = ipWhoIsToGeo(data);

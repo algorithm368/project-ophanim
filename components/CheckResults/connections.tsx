@@ -8,8 +8,7 @@ import {
     ShieldCheck,
 } from "lucide-react";
 import {
-    type CheckResult,
-    type DomainCheckResult,
+    type AnyCheckResult,
     type HashCheckResult,
     type RelatedIndicator,
 } from "@/lib/ti/types";
@@ -30,7 +29,7 @@ import { Pivot, SectionHeading, useCopied } from "./primitives";
 export function ConnectionsCard({
     result,
 }: Readonly<{
-    result: CheckResult | DomainCheckResult | HashCheckResult;
+    result: AnyCheckResult;
 }>) {
     const { related } = relationsFor(result);
     // Drop a file's own other digests; those live in the profile card. (Harmless

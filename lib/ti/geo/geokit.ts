@@ -5,7 +5,7 @@ export function normalizeKey(value: string | undefined): string {
 
 /** Canonical "AS####" form, dropping any org tail. "" when no number found. */
 export function canonicalAsn(value: string | undefined): string {
-  const m = (value ?? "").match(/(\d+)/);
+  const m = /(\d+)/.exec(value ?? "");
   return m ? `AS${m[1]}` : "";
 }
 

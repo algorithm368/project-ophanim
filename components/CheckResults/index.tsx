@@ -1,6 +1,7 @@
 "use client";
 
 import {
+    type AnyCheckResult,
     isDomainResult,
     isHashResult,
     type CheckResult,
@@ -178,7 +179,7 @@ export default function CheckResults({
     onPivot,
     research,
 }: Readonly<{
-    result: CheckResult | DomainCheckResult | HashCheckResult;
+    result: AnyCheckResult;
     onRefresh: () => void;
     /** Launch a fresh check for a related indicator clicked within the result. */
     onPivot?: (value: string) => void;

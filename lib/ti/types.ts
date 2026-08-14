@@ -425,15 +425,22 @@ export interface HashCheckResult {
   scoreBreakdown?: ScoreBreakdown;
 }
 
+/**
+ * Any of the three per-type results. Eight files spelled this union out by hand
+ * before the alias existed, which is what typescript:S4323 objects to: a union
+ * repeated in eight places drifts the moment a fourth indicator type appears.
+ */
+export type AnyCheckResult = CheckResult | DomainCheckResult | HashCheckResult;
+
 /** Narrow a result union by the indicator field unique to each type. */
 export function isDomainResult(
-  r: CheckResult | DomainCheckResult | HashCheckResult,
+  r: AnyCheckResult,
 ): r is DomainCheckResult {
   return "domain" in r;
 }
 
 export function isHashResult(
-  r: CheckResult | DomainCheckResult | HashCheckResult,
+  r: AnyCheckResult,
 ): r is HashCheckResult {
   return "hash" in r;
 }

@@ -148,7 +148,7 @@ describe("assembleHashResult — benign override (B2)", () => {
     expect(r.scoreBreakdown?.benignOverride).toBe("eicar-test-file");
     expect(r.scoreBreakdown?.floorApplied).toBe(false);
     // The AV detections stay visible on the source rows.
-    expect(r.sources.filter((s) => s.malicious).length).toBe(2);
+    expect(r.sources.filter((s) => s.malicious)).toHaveLength(2);
   });
 
   it("scores a non-benign hash normally", () => {

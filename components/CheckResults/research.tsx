@@ -12,11 +12,9 @@ import {
     X,
 } from "lucide-react";
 import {
+    type AnyCheckResult,
     isDomainResult,
     isHashResult,
-    type CheckResult,
-    type DomainCheckResult,
-    type HashCheckResult,
 } from "@/lib/ti/types";
 import {
     researchLinks,
@@ -503,7 +501,7 @@ export function ResearchCard({
     result,
     research,
 }: Readonly<{
-    result: CheckResult | DomainCheckResult | HashCheckResult;
+    result: AnyCheckResult;
     research: ResearchStreamState;
 }>) {
     const [copied, copy] = useCopied();

@@ -261,7 +261,8 @@ function reconcileFlags(inputs: GeoInput[]): GeoResolution["flags"] {
     for (const k of keys) {
       if (geo[k] === true) {
         flags[k] = true;
-        (flags.sources[k] ??= []).push(id);
+        flags.sources[k] ??= [];
+        flags.sources[k].push(id);
       }
     }
   }

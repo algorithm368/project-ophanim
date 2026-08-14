@@ -132,7 +132,7 @@ export async function fetchFreeIpApiGeo(
 
 function intEnv(name: string, fallback: number): number {
   const raw = process.env[name];
-  const n = raw ? Number.parseInt(raw, 10) : NaN;
+  const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 

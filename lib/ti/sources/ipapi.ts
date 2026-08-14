@@ -63,7 +63,7 @@ export const ipApiSource: TiSource = {
         `http://ip-api.com/json/${ip}?fields=${IP_API_FIELDS}`,
         signal,
       );
-      if (!data || data.status !== "success") {
+      if (data?.status !== "success") {
         return {
           status: "error",
           error: data?.message ?? "Lookup failed",

@@ -425,7 +425,7 @@ function Section({
  */
 function humanizeCapability(label: string): string {
     return /^[a-z0-9]+(_[a-z0-9]+)+$/i.test(label)
-        ? label.replace(/_/g, " ")
+        ? label.replaceAll("_", " ")
         : label;
 }
 
@@ -894,7 +894,7 @@ export function HashProfileCard({ result }: Readonly<{ result: HashCheckResult }
                                 key={t}
                                 className="inline-flex items-center rounded-md border border-foreground/15 bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground/75"
                             >
-                                {t.toLowerCase().replace(/_/g, " ")}
+                                {t.toLowerCase().replaceAll("_", " ")}
                             </span>
                         ))}
                     </div>

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type AnyCheckResult,
   isDomainResult,
   isHashResult,
   type CheckResult,
@@ -205,7 +206,7 @@ export default function Checker({
   initialQuery?: string;
   /** A server-fetched cached result for a permalink (/check/<ioc>). When present
    *  it is shown immediately on first paint, skipping the client lookup. */
-  initialResult?: CheckResult | DomainCheckResult | HashCheckResult | null;
+  initialResult?: AnyCheckResult | null;
 }>) {
   const [mode, setMode] = useState<Mode>(
     () => detectIOC(initialQuery ?? "") ?? "ip",
@@ -216,7 +217,7 @@ export default function Checker({
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<CheckError | null>(null);
   const [result, setResult] = useState<
-    CheckResult | DomainCheckResult | HashCheckResult | null
+    AnyCheckResult | null
   >(initialResult ?? null);
   const [bulkRows, setBulkRows] = useState<GeoRow[] | null>(null);
   const [bulkPending, setBulkPending] = useState(0);
@@ -231,7 +232,7 @@ export default function Checker({
   // restore a prior result instantly with no network; seeded from initialResult
   // and written on every completed lookup.
   const resultsCache = useRef<
-    Map<string, CheckResult | DomainCheckResult | HashCheckResult>
+    Map<string, AnyCheckResult>
   >(new Map());
   // The in-flight lookup's AbortController, so a history navigation can cancel it.
   const abortRef = useRef<AbortController | null>(null);
@@ -519,7 +520,7 @@ export default function Checker({
       const decoder = new TextDecoder();
       let buffer = "";
       let finalResult:
-        | (CheckResult | DomainCheckResult | HashCheckResult)
+        | (AnyCheckResult)
         | null = null;
       let streamError: string | null = null;
 
