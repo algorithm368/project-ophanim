@@ -100,7 +100,7 @@ function hostOf(url: string): string {
  *  image fails to load, so a broken tile never collapses to a bare gray box.
  *  Loading is deferred and deprioritized (lazy + async decode + low fetch
  *  priority) so the grid never competes with the main result for bandwidth. */
-function ScanThumb({ item }: { item: UrlScanItem }) {
+function ScanThumb({ item }: Readonly<{ item: UrlScanItem }>) {
     // No screenshot URL at all → skip the request and show the fallback.
     const [status, setStatus] = useState<"loading" | "loaded" | "error">(
         item.screenshot ? "loading" : "error",
@@ -146,10 +146,10 @@ function ScanThumb({ item }: { item: UrlScanItem }) {
 function Lightbox({
     item,
     onClose,
-}: {
+}: Readonly<{
     item: UrlScanItem;
     onClose: () => void;
-}) {
+}>) {
     useEffect(() => {
         function onKey(e: KeyboardEvent) {
             if (e.key === "Escape") onClose();
@@ -233,7 +233,7 @@ function Lightbox({
 /** URLScan submissions as tidy rows: a small screenshot that opens full-screen
  *  on click, the page host + capture metadata, and an outbound link to the full
  *  scan. Compact so many scans read as an orderly list rather than a heavy grid. */
-function UrlScanList({ scans }: { scans: UrlScanItem[] }) {
+function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
     const [zoom, setZoom] = useState<UrlScanItem | null>(null);
 
     return (
@@ -298,7 +298,7 @@ function UrlScanList({ scans }: { scans: UrlScanItem[] }) {
 }
 
 /** Wayback snapshots as a row of dated, deep-linked chips. */
-function WaybackRow({ snapshots }: { snapshots: WaybackSnapshot[] }) {
+function WaybackRow({ snapshots }: Readonly<{ snapshots: WaybackSnapshot[] }>) {
     return (
         <div className="flex flex-wrap gap-1.5">
             {snapshots.map((s, i) => (
@@ -323,7 +323,7 @@ function WaybackRow({ snapshots }: { snapshots: WaybackSnapshot[] }) {
 const CERT_PREVIEW = 5;
 
 /** A compact crt.sh cert list (issuer + validity span), previewed with a toggle. */
-function CertList({ certs }: { certs: ResearchCert[] }) {
+function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
     const [expanded, setExpanded] = useState(false);
     const shown = expanded ? certs : certs.slice(0, CERT_PREVIEW);
     return (
@@ -358,7 +358,7 @@ function CertList({ certs }: { certs: ResearchCert[] }) {
 }
 
 /** One provider's result block: header (name, summary, outbound link) + body. */
-function ProviderBlock({ result }: { result: ResearchResult }) {
+function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
     const { provider, status, summary, error, data, link } = result;
 
     let body: React.ReactNode = null;
@@ -428,7 +428,7 @@ function ProviderBlock({ result }: { result: ResearchResult }) {
 }
 
 /** A labeled placeholder for a provider whose result hasn't streamed in yet. */
-function ProviderSkeleton({ name }: { name: string }) {
+function ProviderSkeleton({ name }: Readonly<{ name: string }>) {
     return (
         <div className="space-y-2 rounded-md border border-foreground/10 bg-muted/20 p-3">
             <div className="flex items-center justify-between gap-2">
@@ -449,7 +449,7 @@ function ProviderSkeleton({ name }: { name: string }) {
  *  so a fast source (URLScan) appears immediately and a slow one (crt.sh) never
  *  blocks it. Renders nothing when there is no live lane for this IOC type
  *  (e.g. a bare hash) and no error. */
-function LiveResearch({ research }: { research: ResearchStreamState }) {
+function LiveResearch({ research }: Readonly<{ research: ResearchStreamState }>) {
     const { metas, results, loading, started, error } = research;
     const visible = metas.filter((m) => results[m.id]?.status !== "skipped");
 
@@ -502,10 +502,10 @@ function LiveResearch({ research }: { research: ResearchStreamState }) {
 export function ResearchCard({
     result,
     research,
-}: {
+}: Readonly<{
     result: CheckResult | DomainCheckResult | HashCheckResult;
     research: ResearchStreamState;
-}) {
+}>) {
     const [copied, copy] = useCopied();
 
     const { indicator, kind } = isHashResult(result)

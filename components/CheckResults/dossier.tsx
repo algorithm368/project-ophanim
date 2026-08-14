@@ -26,11 +26,11 @@ function DossierItem({
     label,
     hint,
     children,
-}: {
+}: Readonly<{
     label: string;
     hint?: string;
     children: ReactNode;
-}) {
+}>) {
     return (
         <div className="flex items-baseline gap-3 py-1">
             <dt
@@ -56,7 +56,7 @@ function DossierItem({
  * renderer over `buildIpDossier` — no scoring or classification lives here.
  * Owns none of the verdict/score/tally, that stays on `VerdictHero` above it.
  */
-export function IpDossierCard({ result }: { result: CheckResult }) {
+export function IpDossierCard({ result }: Readonly<{ result: CheckResult }>) {
     const dossier = buildIpDossier(result);
     const geo = result.geo;
     const flag = flagUrl(geo?.countryCode);

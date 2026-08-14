@@ -20,7 +20,7 @@ export const PivotContext = createContext<((value: string) => void) | null>(null
 
 /** A related indicator rendered as a one-click pivot into its own check.
  *  Falls back to plain text when no pivot handler is provided. */
-export function Pivot({ value, label }: { value: string; label?: string }) {
+export function Pivot({ value, label }: Readonly<{ value: string; label?: string }>) {
     const pivot = useContext(PivotContext);
     const text = label ?? value;
     if (!pivot) return <span className="font-mono text-[13px]">{text}</span>;
@@ -38,7 +38,7 @@ export function Pivot({ value, label }: { value: string; label?: string }) {
 }
 
 /** Wrapping list of pivotable indicators with an expandable "+N more" overflow. */
-export function PivotList({ values, max = 4 }: { values: string[]; max?: number }) {
+export function PivotList({ values, max = 4 }: Readonly<{ values: string[]; max?: number }>) {
     // Dedupe so repeated values (e.g. two IPs sharing a PTR) don't collide as
     // React keys or show as duplicate chips.
     const unique = [...new Set(values)];
@@ -108,7 +108,7 @@ export function useCopied(): [boolean, (value: string) => Promise<void>] {
     return [copied, copy];
 }
 
-export function CopyableSummary({ text }: { text: string }) {
+export function CopyableSummary({ text }: Readonly<{ text: string }>) {
     const [copied, copy] = useCopied();
 
     return (
@@ -146,13 +146,13 @@ export function SectionHeading({
     icon: Icon,
     children,
     action,
-}: {
+}: Readonly<{
     icon: IconType;
     children: ReactNode;
     /** Optional right-aligned content (e.g. the indicator chip) shown on the
      *  same row as the title, above the shared divider. */
     action?: ReactNode;
-}) {
+}>) {
     return (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-foreground/10 pb-3">
             <h2 className="flex items-center gap-2.5">
@@ -178,7 +178,7 @@ export function Field({
     wrap = false,
     tone,
     hint,
-}: {
+}: Readonly<{
     label: string;
     children: ReactNode;
     /** Allow multi-line / wrapping content (e.g. pivot chips, long DNS records)
@@ -189,7 +189,7 @@ export function Field({
     /** Plain-language tooltip for a jargon label (ASN, CAA, SPF, ssdeep, …).
      *  Marks the label with a dotted underline to signal it's explainable. */
     hint?: string;
-}) {
+}>) {
     const labelEl = (
         <dt
             title={hint}
@@ -245,11 +245,11 @@ export function BentoCell({
     label,
     children,
     span = false,
-}: {
+}: Readonly<{
     label: string;
     children: ReactNode;
     span?: boolean;
-}) {
+}>) {
     return (
         <div
             className={cn(
@@ -271,11 +271,11 @@ export function FieldGroup({
     label,
     children,
     span = false,
-}: {
+}: Readonly<{
     label: string;
     children: ReactNode;
     span?: boolean;
-}) {
+}>) {
     return (
         <BentoCell label={label} span={span}>
             <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">

@@ -60,7 +60,7 @@ type Progress = {
  * draws a small filled circle that takes its color from the surrounding text
  * color, so `cls` (text-*) still drives the hue.
  */
-function StatusDot({ className }: { className?: string }) {
+function StatusDot({ className }: Readonly<{ className?: string }>) {
   return (
     <span
       aria-hidden
@@ -201,12 +201,12 @@ function bulkTargets(value: string): ParsedIP[] | null {
 export default function Checker({
   initialQuery,
   initialResult,
-}: {
+}: Readonly<{
   initialQuery?: string;
   /** A server-fetched cached result for a permalink (/check/<ioc>). When present
    *  it is shown immediately on first paint, skipping the client lookup. */
   initialResult?: CheckResult | DomainCheckResult | HashCheckResult | null;
-}) {
+}>) {
   const [mode, setMode] = useState<Mode>(
     () => detectIOC(initialQuery ?? "") ?? "ip",
   );
@@ -864,7 +864,7 @@ export default function Checker({
   );
 }
 
-function BulkProgress({ count }: { count: number }) {
+function BulkProgress({ count }: Readonly<{ count: number }>) {
   return (
     <Card className="sketch-shadow mt-8 overflow-hidden rounded-lg border border-border bg-card">
       <CardContent className="flex items-center gap-3 py-8">
@@ -877,7 +877,7 @@ function BulkProgress({ count }: { count: number }) {
   );
 }
 
-function EmptyState({ detected }: { detected: Mode | null }) {
+function EmptyState({ detected }: Readonly<{ detected: Mode | null }>) {
   // Before a type is recognized (the default on first load), describe all three
   // IOCs so the tool doesn't read as IP-only; once detection has picked a type,
   // tailor the copy to what that lookup will actually return.
@@ -931,12 +931,12 @@ function ErrorState({
   examples,
   onRetry,
   onExample,
-}: {
+}: Readonly<{
   error: CheckError;
   examples: string[];
   onRetry: () => void;
   onExample: (value: string) => void;
-}) {
+}>) {
   const isInput = error.kind === "input";
   const Icon = isInput ? SearchX : ServerCrash;
 
@@ -1033,11 +1033,11 @@ function SearchProgress({
   progress,
   indicator,
   mode,
-}: {
+}: Readonly<{
   progress: Progress | null;
   indicator: string;
   mode: Mode;
-}) {
+}>) {
   const noun =
     mode === "ip" ? "address" : mode === "domain" ? "domain" : "file";
   const total = progress?.total ?? 0;

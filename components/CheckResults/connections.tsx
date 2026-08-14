@@ -29,9 +29,9 @@ import { Pivot, SectionHeading, useCopied } from "./primitives";
 
 export function ConnectionsCard({
     result,
-}: {
+}: Readonly<{
     result: CheckResult | DomainCheckResult | HashCheckResult;
-}) {
+}>) {
     const { related } = relationsFor(result);
     // Drop a file's own other digests; those live in the profile card. (Harmless
     // for IP/domain results, which never produce digest relations.)
@@ -53,7 +53,7 @@ export function ConnectionsCard({
     );
 }
 
-function PivotCount({ n }: { n: number }) {
+function PivotCount({ n }: Readonly<{ n: number }>) {
     return (
         <span className="font-mono text-[11px] tracking-wider text-muted-foreground tabular-nums">
             {n} {n === 1 ? "pivot" : "pivots"}
@@ -90,7 +90,7 @@ const ROW_CAP = 12;
  * are omitted and the full list is capped uniformly. Provenance (`sources`)
  * lets an analyst trust a row without cross-checking every feed.
  */
-function RelationTable({ related }: { related: RelatedIndicator[] }) {
+function RelationTable({ related }: Readonly<{ related: RelatedIndicator[] }>) {
     const [expanded, setExpanded] = useState(false);
     const rows = sortRelationsForTable(related);
     const tiered = rows.some((r) => r.tier);
@@ -165,10 +165,10 @@ function RelationTable({ related }: { related: RelatedIndicator[] }) {
 function RelationTableRow({
     r,
     tiered,
-}: {
+}: Readonly<{
     r: RelatedIndicator;
     tiered: boolean;
-}) {
+}>) {
     const confirmed = r.tier === "confirmed";
     const relation =
         RELATION_SHORT[r.relation] ?? RELATION_META[r.relation]?.label ?? r.relation;
@@ -209,7 +209,7 @@ function RelationTableRow({
     );
 }
 
-function DistributionUrlRow({ url }: { url: string }) {
+function DistributionUrlRow({ url }: Readonly<{ url: string }>) {
     const [copied, copy] = useCopied();
     const host = hostFromUrl(url);
     return (
@@ -249,7 +249,7 @@ function DistributionUrlRow({ url }: { url: string }) {
     );
 }
 
-export function DistributionUrlsCard({ result }: { result: HashCheckResult }) {
+export function DistributionUrlsCard({ result }: Readonly<{ result: HashCheckResult }>) {
     const urls = result.context?.distributionUrls ?? [];
     if (urls.length === 0) return null;
     const shown = urls.slice(0, 8);

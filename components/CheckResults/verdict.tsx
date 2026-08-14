@@ -114,11 +114,11 @@ function VerdictShell({
     result,
     onRefresh,
     narrative,
-}: {
+}: Readonly<{
     result: ResultLike;
     onRefresh: () => void;
     narrative: string;
-}) {
+}>) {
     const style = VERDICT_STYLE[result.verdict];
 
     return (
@@ -199,10 +199,10 @@ function VerdictShell({
 export function VerdictHero({
     result,
     onRefresh,
-}: {
+}: Readonly<{
     result: CheckResult | DomainCheckResult | HashCheckResult;
     onRefresh: () => void;
-}) {
+}>) {
     const narrative = isHashResult(result)
         ? buildHashNarrative(result).join(" ")
         : isDomainResult(result)
@@ -217,7 +217,7 @@ export function VerdictHero({
     );
 }
 
-function ConsensusLine({ result }: { result: ResultLike }) {
+function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
     // Only scoring feeds (weight > 0) are detectors; context-only sources like
     // geolocation (weight 0) can't flag, so excluding them keeps this line
     // consistent with the narrative's "of N TI sources" (issue #8). The tally

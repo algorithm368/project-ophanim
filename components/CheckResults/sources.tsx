@@ -130,7 +130,7 @@ const TONE_LABEL: Record<SourceTone, string> = {
     skipped: "Skipped",
 };
 
-function StatusDot({ tone }: { tone: SourceTone }) {
+function StatusDot({ tone }: Readonly<{ tone: SourceTone }>) {
     return (
         <span
             title={TONE_LABEL[tone]}
@@ -143,11 +143,11 @@ export function SourceBreakdown({
     sources,
     indicator,
     kind,
-}: {
+}: Readonly<{
     sources: SourceResult[];
     indicator: string;
     kind: Mode;
-}) {
+}>) {
     const byRelevance = (a: SourceResult, b: SourceResult) =>
         relevanceRank(a) - relevanceRank(b) || (b.score ?? 0) - (a.score ?? 0);
 
@@ -199,11 +199,11 @@ function SourceRow({
     result,
     indicator,
     kind,
-}: {
+}: Readonly<{
     result: SourceResult;
     indicator: string;
     kind: Mode;
-}) {
+}>) {
     const { source, status } = result;
     const skipped = status === "skipped";
     const errored = status === "error" || status === "timeout";

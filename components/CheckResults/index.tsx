@@ -50,7 +50,7 @@ const HASH_SECTIONS: NavItem[] = [
 ];
 
 /** Anchor wrapper: gives a card a nav target and clears the sticky nav on jump. */
-function Section({ id, children }: { id: string; children: React.ReactNode }) {
+function Section({ id, children }: Readonly<{ id: string; children: React.ReactNode }>) {
     return (
         <section id={id} className="scroll-mt-20">
             {children}
@@ -62,11 +62,11 @@ function Results({
     result,
     onRefresh,
     research,
-}: {
+}: Readonly<{
     result: CheckResult;
     onRefresh: () => void;
     research: ResearchStreamState;
-}) {
+}>) {
     return (
         <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
@@ -99,11 +99,11 @@ function DomainResults({
     result,
     onRefresh,
     research,
-}: {
+}: Readonly<{
     result: DomainCheckResult;
     onRefresh: () => void;
     research: ResearchStreamState;
-}) {
+}>) {
     return (
         <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
@@ -139,11 +139,11 @@ function HashResults({
     result,
     onRefresh,
     research,
-}: {
+}: Readonly<{
     result: HashCheckResult;
     onRefresh: () => void;
     research: ResearchStreamState;
-}) {
+}>) {
     return (
         <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
@@ -177,14 +177,14 @@ export default function CheckResults({
     onRefresh,
     onPivot,
     research,
-}: {
+}: Readonly<{
     result: CheckResult | DomainCheckResult | HashCheckResult;
     onRefresh: () => void;
     /** Launch a fresh check for a related indicator clicked within the result. */
     onPivot?: (value: string) => void;
     /** Progressive live-research state, fetched in parallel with the main check. */
     research: ResearchStreamState;
-}) {
+}>) {
     const body = isHashResult(result) ? (
         <HashResults result={result} onRefresh={onRefresh} research={research} />
     ) : isDomainResult(result) ? (

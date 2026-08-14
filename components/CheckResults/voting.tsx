@@ -36,7 +36,7 @@ const CONF_ICON: Record<Confidence, IconType> = {
 
 /** Confidence as a plain icon plus a fixed three-letter code, all grey mono so
  *  the levels line up wherever they appear. */
-function ConfidenceLevel({ confidence }: { confidence: Confidence }) {
+function ConfidenceLevel({ confidence }: Readonly<{ confidence: Confidence }>) {
     const Icon = CONF_ICON[confidence];
     return (
         <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -49,7 +49,7 @@ function ConfidenceLevel({ confidence }: { confidence: Confidence }) {
 /** Compact resolved-value reference: the field label, the consensus value, and
  *  that field's confidence. Renders three grid cells so the columns line up
  *  across every row. The "answer" the source votes below support. */
-function ResolvedRow({ field }: { field: VoteColumn }) {
+function ResolvedRow({ field }: Readonly<{ field: VoteColumn }>) {
     return (
         <>
             <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -67,7 +67,7 @@ function ResolvedRow({ field }: { field: VoteColumn }) {
  *  so the icon shape, not color, carries the meaning: a check for agreement, a
  *  ring for a scattered point, and a minimal asterisk plus the value for a
  *  dissent (the one that should pop). Absent votes render blank. */
-function VoteMark({ cell }: { cell: VoteCell | undefined }) {
+function VoteMark({ cell }: Readonly<{ cell: VoteCell | undefined }>) {
     if (!cell || cell.status === "absent") return <span aria-hidden />;
     if (cell.status === "scatter")
         return (
@@ -102,7 +102,7 @@ function VoteMark({ cell }: { cell: VoteCell | undefined }) {
 /** Geo-confidence section: a plain header, the resolved values, then a ballot per
  *  TI source showing how each one voted. Minimal, document-style, no masthead or
  *  gauge. No-op when nothing resolved. */
-export function VotingCard({ res }: { res: GeoResolution }) {
+export function VotingCard({ res }: Readonly<{ res: GeoResolution }>) {
     const table = buildVoteTable(res);
     if (!table) return null;
     const confidence = res.overall?.confidence ?? "low";

@@ -28,14 +28,14 @@ export function LocationMap({
     lon,
     caption,
     fill,
-}: {
+}: Readonly<{
     lat: number;
     lon: number;
     caption?: string;
     /** Stretch to the parent's height on sm+ (to line up flush in a bento row)
      *  instead of staying a fixed square. */
     fill?: boolean;
-}) {
+}>) {
     const z = 5; // country / region scale
     const n = 2 ** z;
     const xf = lonToTileX(lon, z);
