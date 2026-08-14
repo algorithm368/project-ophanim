@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, isTimeout, postJson } from "../http";
+import { byCodeUnit } from "../sort";
 
 interface ThreatFoxEntry {
   ioc?: string;
@@ -78,8 +79,8 @@ export const threatFoxSource: TiSource = {
       ).slice(0, 10);
       const lastSeen = entries
         .map((e) => e.last_seen)
-        .filter(Boolean)
-        .sort()
+        .filter((s): s is string => Boolean(s))
+        .sort(byCodeUnit)
         .at(-1);
 
       return {

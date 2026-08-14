@@ -168,10 +168,25 @@ function Lightbox({
             role="dialog"
             aria-modal="true"
             aria-label={`Screenshot of ${item.pageUrl}`}
-            onClick={onClose}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/90 p-4 backdrop-blur-sm sm:p-8"
         >
-            <div className="flex w-full max-w-5xl items-center justify-between gap-3">
+            {/* Click-to-dismiss lives on its own button rather than on the
+                dialog div. A div is neither focusable nor in the tab order, so
+                a click handler there is unreachable by keyboard, which is what
+                typescript:S1082 flags. Making the backdrop a real button also
+                puts it behind the content instead of around it, so the content
+                no longer has to stopPropagation to avoid closing on its own
+                clicks. tabIndex -1 keeps it out of the tab order: Escape and
+                the visible close button are the keyboard paths, and a second
+                "Close" stop would only be noise in a screen reader. */}
+            <button
+                type="button"
+                aria-label="Close"
+                tabIndex={-1}
+                onClick={onClose}
+                className="absolute inset-0 cursor-default"
+            />
+            <div className="relative flex w-full max-w-5xl items-center justify-between gap-3">
                 <div className="min-w-0">
                     <div
                         className="truncate font-mono text-[13px] text-foreground"
@@ -190,7 +205,6 @@ function Lightbox({
                         href={item.scanUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
                         title="Open scan"
                         className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     >
@@ -210,8 +224,7 @@ function Lightbox({
             <img
                 src={item.screenshot}
                 alt={`Screenshot of ${item.pageUrl}`}
-                onClick={(e) => e.stopPropagation()}
-                className="max-h-[80vh] max-w-full rounded-md border border-border object-contain"
+                className="relative max-h-[80vh] max-w-full rounded-md border border-border object-contain"
             />
         </div>
     );

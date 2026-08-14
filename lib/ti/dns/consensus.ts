@@ -1,3 +1,4 @@
+import { byCodeUnit } from "../sort";
 import type { ResolverConsensus } from "../types";
 
 export interface ResolverVote {
@@ -7,7 +8,8 @@ export interface ResolverVote {
 }
 
 /** Canonical, order-insensitive form of an answer set. */
-const canon = (ips: string[]): string => [...ips].sort().join(",");
+const canon = (ips: string[]): string =>
+  [...ips].sort(byCodeUnit).join(",");
 
 /**
  * Fold per-resolver A-record answer sets into a consensus. Non-responders

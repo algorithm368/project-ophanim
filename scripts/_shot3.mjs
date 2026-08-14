@@ -1,5 +1,14 @@
 import { chromium } from "playwright";
-const OUT = "/tmp/claude/shots";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// Screenshots land in the OS temp dir rather than a hardcoded "/tmp". On Linux
+// these resolve to the same place, but "/tmp" is world-writable and spelling it
+// out is what javascript:S5443 flags: another user on the same host can
+// pre-create or symlink a predictable path underneath it. os.tmpdir() also
+// makes the script work on Windows, where /tmp does not exist. Override with
+// SHOT_DIR to write somewhere you control.
+const OUT = process.env.SHOT_DIR || join(tmpdir(), "claude", "shots");
 const BASE = "http://localhost:3000";
 const browser = await chromium.launch();
 const ctx = await browser.newContext({
