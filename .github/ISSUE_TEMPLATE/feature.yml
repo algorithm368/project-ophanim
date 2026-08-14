@@ -1,0 +1,50 @@
+name: Feature or task
+description: Something to build or change
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: What is this for?
+      description: The problem or the itch, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: What does done look like?
+      description: How you will know it is finished. Concrete and checkable.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Add the matching `area:` label after opening.
+      options:
+        - ip
+        - domain
+        - hash
+        - sources
+        - scoring
+        - api
+        - cache
+        - ui
+        - build
+    validations:
+      required: true
+  - type: checkboxes
+    id: source
+    attributes:
+      label: If this adds a TI source
+      options:
+        - label: It is free to query, with no paid tier required for the data being used.
+          required: false
+        - label: A weight is chosen deliberately; context-only sources use 0 so they do not move the score.
+          required: false
+  - type: checkboxes
+    id: size
+    attributes:
+      label: Size
+      options:
+        - label: Big enough to need a spec and a plan under `docs/` before any code. Add the `needs-spec` label.
+          required: false

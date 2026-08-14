@@ -20,6 +20,12 @@ build/
 # typescript
 tsconfig.tsbuildinfo
 
+# coverage report (written by `bun run coverage`, read by the sonar scanner)
+coverage/
+
+# sonar scanner working directory
+.scannerwork/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
