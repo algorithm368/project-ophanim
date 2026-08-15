@@ -96,6 +96,28 @@ export interface ScanDetail {
     community?: ScanVerdictLane;
   };
 
+  /** WHOIS registrar. Cloudflare only. */
+  registrar?: string;
+  /** WHOIS creation date, ISO. Cloudflare only, and a sharper signal than a
+   *  rounded age in days: a domain created hours ago is unmistakable. */
+  domainCreated?: string;
+  /** WHOIS expiry, ISO. Cloudflare only. */
+  domainExpires?: string;
+  /** Authoritative nameservers from WHOIS. Cloudflare only. */
+  nameservers?: string[];
+  /** Cloudflare's own risk categories for the primary domain, e.g.
+   *  "Newly Seen Domains". Cloudflare only. */
+  riskCategories?: string[];
+  /** Radar popularity bucket, e.g. ">200000". Cloudflare only. */
+  radarRankBucket?: string;
+  /** Hash of the DOM structure, for clustering pages built from one kit.
+   *  Cloudflare only. */
+  domStructHash?: string;
+  /** Other hosts named by the site's robots.txt sitemaps. Cloudflare only. */
+  siblingDomains?: string[];
+  /** Whether the first DNS answer validated under DNSSEC. Cloudflare only. */
+  dnssecValid?: boolean;
+
   /** Blocks the scan did not report, named so an empty section is never shown
    *  as if it were an observation of absence. */
   absent: string[];
@@ -103,26 +125,29 @@ export interface ScanDetail {
 
 type Json = Record<string, unknown>;
 
-function obj(value: unknown): Json {
+// The readers below are exported for the Cloudflare adapter, which reads a
+// payload shaped like this one in most blocks and unlike it in a few. Sharing
+// the readers keeps the two adapters honest about producing the same ScanDetail.
+export function obj(value: unknown): Json {
   return value && typeof value === "object" ? (value as Json) : {};
 }
 
-function str(value: unknown): string | undefined {
+export function str(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-function num(value: unknown): number | undefined {
+export function num(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 /** Cap a list, reporting its true length alongside. */
-function capped(value: unknown): { items?: string[]; total?: number } {
+export function capped(value: unknown): { items?: string[]; total?: number } {
   if (!Array.isArray(value) || value.length === 0) return {};
   const items = value.filter((v): v is string => typeof v === "string");
   return { items: items.slice(0, MAX_LISTED), total: items.length };
 }
 
-function lane(value: unknown): ScanVerdictLane | undefined {
+export function lane(value: unknown): ScanVerdictLane | undefined {
   if (!value || typeof value !== "object") return undefined;
   const v = value as Json;
   return {
@@ -138,7 +163,7 @@ function lane(value: unknown): ScanVerdictLane | undefined {
 }
 
 /** Unix seconds to ISO, tolerating the seconds/millis ambiguity in the feed. */
-function certTime(value: unknown): string | undefined {
+export function certTime(value: unknown): string | undefined {
   const seconds = num(value);
   if (seconds === undefined) return undefined;
   return new Date(seconds * 1000).toISOString();

@@ -1,4 +1,5 @@
 import { errorMessage, getJson, isTimeout, postJson } from "../../http";
+import { distillCloudflareResult } from "./cloudflare-detail";
 import type { ActiveScan, ActiveVerdict, ScanVisibility } from "./types";
 
 const BASE = "https://api.cloudflare.com/client/v4/accounts";
@@ -99,7 +100,12 @@ export function cfPollOutcome(
   if (status === 200) {
     const task = obj(obj(data).task);
     if (str(task.status) === "finished") {
-      return { ...scan, status: "done", verdict: cfVerdict(obj(data)) };
+      return {
+        ...scan,
+        status: "done",
+        verdict: cfVerdict(obj(data)),
+        detail: distillCloudflareResult(data),
+      };
     }
     return { ...scan, status: "running" };
   }
