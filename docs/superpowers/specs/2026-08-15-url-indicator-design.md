@@ -145,18 +145,31 @@ therefore displays its own age ("IP layer, cached 3 days ago") with a
 per-layer refresh control. This also satisfies the cache-age half of the
 "Source health / quota visibility" cross-cutting item in the roadmap.
 
-### Reverse-IP suppression on shared infrastructure
+### Co-tenancy on shared infrastructure
 
-When the resolved IP falls in a known CDN or cloud range (the allowlist overlay
-added by the false-positive work), `reverse-ip` is not queried at all and the
-card states that the host sits on shared infrastructure and that co-tenancy is
-not evidence.
+An earlier draft of this section said `reverse-ip` would not be queried at all
+on a CDN address. Reading the code showed that is not achievable, and the
+weaker, correct version is specified here instead.
 
-Payload size is already handled upstream: the source caps its list at
-`MAX_DOMAINS = 40` while retaining the true `domainCount`
-(`lib/ti/sources/reverse-ip.ts:7`). The problems suppression solves are the
-wasted quota and the false impression that "40 domains share this IP" means
-something on an address Cloudflare shares with millions.
+The shared-infrastructure signal is `cloudProvider(asn, org)`
+(`lib/ti/cloud.ts:44`), an **ASN** lookup. The ASN arrives from the geo sources
+inside the same parallel fan-out that runs `reverse-ip`, so there is no moment
+at which the provider is known and the query has not already been dispatched.
+Pre-emptive suppression would require serializing the IP layer into two stages,
+which costs every IP check latency to save a query on a minority of them.
+
+That is an acceptable loss because the two problems separate cleanly:
+
+- **Quota** is solved by layer cache reuse above. The IP layer runs once per
+  address rather than once per URL, which is what kept the HackerTarget budget
+  from draining; suppression was never the mechanism that mattered.
+- **Interpretation** is solved by relabelling. `reverse-ip` already carries
+  `weight: 0` (`lib/ti/sources/reverse-ip.ts:41`) so it never moved the score,
+  and its list is already capped at `MAX_DOMAINS = 40` with the true
+  `domainCount` retained. What misleads is the wording: "40 domains share this
+  IP" reads as evidence on an address Cloudflare shares with millions. When the
+  ASN resolves to a known provider, the row is rewritten to name the provider
+  and say that co-tenancy is not evidence about this URL.
 
 ### Progress accounting
 
