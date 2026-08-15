@@ -185,6 +185,13 @@ function ipv6Scope(groups: number[]): {
   return { isPrivate: false, isReserved: false };
 }
 
+/** The 8 hextets of an IPv6 address as numbers, or null if malformed. Exposed
+ *  for callers that need to do bit arithmetic (CIDR containment, ip6.arpa)
+ *  rather than re-parse the canonical string. */
+export function ipv6Groups(input: string): number[] | null {
+  return expandIPv6(input);
+}
+
 /** Parse and validate an IPv6 address, canonicalized with scope detection. */
 export function parseIPv6(input: string): ParsedIPv6 | null {
   const groups = expandIPv6(input);

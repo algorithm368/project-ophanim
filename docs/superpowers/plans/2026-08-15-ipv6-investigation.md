@@ -54,11 +54,13 @@ Then append:
 
 ```ts
 describe("ipv6ToBigInt", () => {
+  // BigInt literals (0n) need target >= ES2020 and this project targets ES2017,
+  // so construct them with BigInt() instead.
   it("converts an IPv6 address to its 128-bit integer", () => {
-    expect(ipv6ToBigInt("::")).toBe(0n);
-    expect(ipv6ToBigInt("::1")).toBe(1n);
+    expect(ipv6ToBigInt("::")).toBe(BigInt(0));
+    expect(ipv6ToBigInt("::1")).toBe(BigInt(1));
     expect(ipv6ToBigInt("2001:db8::1")).toBe(
-      0x2001_0db8_0000_0000_0000_0000_0000_0001n,
+      BigInt("0x20010db8000000000000000000000001"),
     );
   });
 
@@ -144,16 +146,19 @@ Add `ipv6ToBigInt` below `ipv4ToLong`:
 
 ```ts
 /**
- * IPv6 address -> 128-bit BigInt, or null for anything that isn't a valid
- * IPv6 address. BigInt rather than number because 128 bits does not fit in a
- * JS double, and rather than string comparison because CIDR masking is bitwise.
+ * IPv6 address -> 128-bit BigInt, or null for anything that isn't a valid IPv6
+ * address. BigInt because 128 bits does not fit in a JS double, and because
+ * CIDR containment is bitwise masking rather than string comparison.
+ *
+ * Built with BigInt() calls rather than `0n` literals: those need a compile
+ * target of ES2020 and this project targets ES2017.
  */
 export function ipv6ToBigInt(ip: string): bigint | null {
   const groups = ipv6Groups(ip);
   if (!groups) return null;
-  let value = 0n;
+  let value = BigInt(0);
   for (const group of groups) {
-    value = (value << 16n) | BigInt(group);
+    value = (value << BigInt(16)) | BigInt(group);
   }
   return value;
 }
@@ -183,7 +188,8 @@ export function cidrContains(cidr: string, ip: string): boolean {
     const baseValue = ipv6ToBigInt(base);
     if (ipValue === null || baseValue === null) return false;
     // Masking both sides also normalizes an unaligned base to its block start.
-    const mask = ((1n << BigInt(prefix)) - 1n) << BigInt(128 - prefix);
+    const mask =
+      ((BigInt(1) << BigInt(prefix)) - BigInt(1)) << BigInt(128 - prefix);
     return (ipValue & mask) === (baseValue & mask);
   }
 

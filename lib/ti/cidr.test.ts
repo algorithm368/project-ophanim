@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cidrContains, ipv4ToLong } from "./cidr";
+import { cidrContains, ipv4ToLong, ipv6ToBigInt } from "./cidr";
 
 describe("ipv4ToLong", () => {
   it("converts dotted-quad to a 32-bit integer", () => {
@@ -44,5 +44,69 @@ describe("cidrContains", () => {
     expect(cidrContains("1.2.3.0/33", "1.2.3.4")).toBe(false); // prefix > 32
     expect(cidrContains("not-a-cidr", "1.2.3.4")).toBe(false);
     expect(cidrContains("1.0.0.0/8", "2001:db8::1")).toBe(false); // IPv6 IP
+  });
+});
+
+describe("ipv6ToBigInt", () => {
+  // BigInt literals (0n) need target >= ES2020 and this project targets ES2017,
+  // so construct them with BigInt() instead.
+  it("converts an IPv6 address to its 128-bit integer", () => {
+    expect(ipv6ToBigInt("::")).toBe(BigInt(0));
+    expect(ipv6ToBigInt("::1")).toBe(BigInt(1));
+    expect(ipv6ToBigInt("2001:db8::1")).toBe(
+      BigInt("0x20010db8000000000000000000000001"),
+    );
+  });
+
+  it("accepts any spelling of the same address", () => {
+    // Compressed, expanded, and mixed case must all agree.
+    const expanded = ipv6ToBigInt("2001:0db8:0000:0000:0000:0000:0000:0001");
+    expect(ipv6ToBigInt("2001:DB8::1")).toBe(expanded);
+  });
+
+  it("returns null for non-IPv6 input", () => {
+    expect(ipv6ToBigInt("8.8.8.8")).toBeNull();
+    expect(ipv6ToBigInt("not-an-ip")).toBeNull();
+    // Zone IDs are rejected by the parser.
+    expect(ipv6ToBigInt("fe80::1%eth0")).toBeNull();
+  });
+});
+
+describe("cidrContains — IPv6", () => {
+  it("matches an address inside a /48 block", () => {
+    // The shape Spamhaus drop_v6.json uses.
+    expect(cidrContains("2001:678:254::/48", "2001:678:254::1")).toBe(true);
+    expect(cidrContains("2001:678:254::/48", "2001:678:255::1")).toBe(false);
+  });
+
+  it("respects /64 boundaries", () => {
+    expect(
+      cidrContains("2001:db8:0:1::/64", "2001:db8:0:1:ffff:ffff:ffff:ffff"),
+    ).toBe(true);
+    expect(cidrContains("2001:db8:0:1::/64", "2001:db8:0:2::")).toBe(false);
+  });
+
+  it("handles /128 (single host) and /0 (everything)", () => {
+    expect(cidrContains("2001:db8::1/128", "2001:db8::1")).toBe(true);
+    expect(cidrContains("2001:db8::1/128", "2001:db8::2")).toBe(false);
+    expect(cidrContains("::/0", "2001:db8::1")).toBe(true);
+  });
+
+  it("normalizes an unaligned base to its block start", () => {
+    // 2001:db8::5/64 really means the 2001:db8::/64 block.
+    expect(cidrContains("2001:db8::5/64", "2001:db8::abcd")).toBe(true);
+  });
+
+  it("matches regardless of how either side is spelled", () => {
+    expect(cidrContains("2001:0DB8:0000::/48", "2001:db8::1")).toBe(true);
+  });
+
+  it("returns false for a mixed-family comparison", () => {
+    expect(cidrContains("2001:db8::/32", "8.8.8.8")).toBe(false);
+    expect(cidrContains("1.0.0.0/8", "2001:db8::1")).toBe(false);
+  });
+
+  it("returns false for an out-of-range IPv6 prefix", () => {
+    expect(cidrContains("2001:db8::/129", "2001:db8::1")).toBe(false);
   });
 });
