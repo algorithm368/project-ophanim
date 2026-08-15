@@ -1,5 +1,7 @@
 import { Redis } from "@upstash/redis";
 import type { CheckResult, DomainCheckResult, HashCheckResult } from "./types";
+import type { UrlCheckResult } from "./url/types";
+import type { ActiveScanBatch } from "./url/active/types";
 
 /**
  * Bump when a stored result's *shape or meaning* changes, so entries written by
@@ -14,6 +16,13 @@ const SCHEMA_VERSION = "v2:";
 const KEY_PREFIX = `ti:ip:${SCHEMA_VERSION}`;
 const DOMAIN_KEY_PREFIX = "ti:domain:";
 const HASH_KEY_PREFIX = "ti:hash:";
+// URL entries are versioned from the start, since the layered envelope is new
+// and its shape is the thing most likely to move.
+const URL_KEY_PREFIX = "ti:url:v1:";
+// The active lane keys separately from the passive result on purpose: a scan
+// arrives after the fact and must not rewrite a verdict already cached or
+// already written to the history timeline.
+const SCAN_KEY_PREFIX = "ti:urlscan:v1:";
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 1 week
 
 function ttlSeconds(): number {
@@ -148,6 +157,38 @@ export function setCachedDomainResult(
   result: DomainCheckResult,
 ): Promise<void> {
   return setCached(DOMAIN_KEY_PREFIX, domain, result);
+}
+
+/** Returns the cached result for a URL, or null on miss / when caching is off.
+ *  The key is the canonical URL, so one resource has one entry. */
+export function getCachedUrlResult(
+  url: string,
+): Promise<UrlCheckResult | null> {
+  return getCached<UrlCheckResult>(URL_KEY_PREFIX, url);
+}
+
+/** Stores a URL result with the default TTL. Failures are swallowed. */
+export function setCachedUrlResult(
+  url: string,
+  result: UrlCheckResult,
+): Promise<void> {
+  return setCached(URL_KEY_PREFIX, url, result);
+}
+
+/** Returns the stored active-scan batch for an indicator, or null on miss. */
+export function getCachedScanBatch(
+  indicator: string,
+): Promise<ActiveScanBatch | null> {
+  return getCached<ActiveScanBatch>(SCAN_KEY_PREFIX, indicator);
+}
+
+/** Stores an active-scan batch, so a reload resumes polling instead of
+ *  submitting the same page again and spending the quota twice. */
+export function setCachedScanBatch(
+  indicator: string,
+  batch: ActiveScanBatch,
+): Promise<void> {
+  return setCached(SCAN_KEY_PREFIX, indicator, batch);
 }
 
 /** Returns the cached result for a hash, or null on miss / when caching is off. */

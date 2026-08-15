@@ -392,3 +392,81 @@ support (WannaCry alone has ~19 reported names).
 **All four addressed** in `lib/ti/narrative.ts` — HN-2/HN-3/HN-4 reworded/filtered,
 HN-1 resolved by removing the gap-note clause outright — each locked in by a case
 in `lib/ti/narrative.test.ts` (suite 174; `tsc`/lint clean). Changes uncommitted.
+
+---
+
+# Feature request: the active-scan page
+
+Raised 2026-08-15 by the project owner, recorded here before implementation.
+
+## The ask
+
+A page whose subject is the **active scan**: an indicator is submitted, a
+scanner goes and visits it, and what comes back is presented properly rather
+than as a footnote on an existing result page. The threat-intel readings for
+that same indicator belong on it too, so the scan and the reputation data are
+read together.
+
+## The principle: one page, data complete
+
+> "อยากให้เป็น 1 page data complete"
+
+Everything known about the submitted indicator lives on **one page**, complete.
+No hunting across a result page, a research card, and a scan panel to assemble
+the picture, and no partial view that looks whole. This is a standing constraint
+on the design, not a nice-to-have: it is the reason the page exists.
+
+Concretely that means the page carries, for one indicator, all of:
+
+- what the active scan observed: final URL after redirects, serving IP / ASN /
+  server, contacted domains, screenshot, the scanner's own verdict
+- what the passive TI sources say, with their verdict and score
+- when each part was gathered, since a scan is live and TI rows can be cached
+- what was **not** collected, named explicitly, so an incomplete page cannot be
+  mistaken for a complete one
+
+## Status
+
+🟠 **Open.** The mechanism exists as of `16f5965`: `POST /api/scan-url` submits,
+`GET /api/scan-url` resumes polling, and `ActiveScanCard` renders a batch inline
+on the IP / domain / URL result pages. What is missing is the dedicated page and
+the "complete on one page" presentation.
+
+### Both shape questions are settled
+
+> "อยากให้เป็นหน้าที่จะทำงานช้ากว่าแต่จะรู้ไส้ในเยอะกว่า"
+
+A **separate route**, deliberately slower than `/check/<ioc>` and deliberately
+deeper. The two pages answer different questions and the split is the point:
+`/check` is triage, fast and reputation-led; the scan page is the teardown, and
+an analyst opens it knowing it will take half a minute.
+
+The inline card on the result pages stays. It is the entry point, and it answers
+"is anything obviously wrong" without leaving triage.
+
+### What "deeper" can actually mean, verified
+
+Inventoried against a real completed scan on 2026-08-15, so the page is designed
+against the payload rather than a guess. urlscan returns, beyond the verdict and
+screenshot already surfaced:
+
+| Block | What it carries |
+| --- | --- |
+| `page` | title, HTTP status, MIME type, server banner, city/country, **apex domain age, domain age, TLS issuer, TLS age and validity window**, Umbrella rank |
+| `data.requests` | every request the page made, each with size, resource type, ASN and geoip |
+| `data.redirects` | the full chain, not just the final URL |
+| `data.cookies` | names, domains, and the secure / httpOnly flags |
+| `data.console` | messages logged while loading |
+| `data.links` | every link on the page (100 here), plus `lists.linkDomains` |
+| `lists.certificates` | issuer, subject, validity |
+| `lists.hashes` | a hash per loaded resource |
+| `stats` | secure-request percentage, per-domain / IP / ASN / server / protocol / resource breakdowns |
+| `verdicts` | four separate readings: overall, urlscan, engines, community |
+
+The age fields are the ones worth building around. A domain registered days ago
+serving a certificate issued days ago is the strongest cheap phishing signal
+there is, and nothing in the passive pipeline reports it today.
+
+The stored form must be **distilled, not raw**. A busy page can make hundreds of
+requests, and the pipeline already drops `raw` payloads before caching for
+exactly that reason.

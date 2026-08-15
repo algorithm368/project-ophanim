@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import {
   FileDigit,
   Globe,
+  Link2,
   Loader2,
   Network,
   RefreshCw,
@@ -29,6 +30,8 @@ import { parseDomain } from "@/lib/domain";
 import { parseHash } from "@/lib/hash";
 import { detectIOC, refangIOC, extractIps, iocFromPath, type IOCType } from "@/lib/ioc";
 import type { GeoRow } from "@/lib/ti/geo";
+import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
+import { parseUrl } from "@/lib/url";
 import { useResearchStream } from "@/components/CheckResults/use-research";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -37,13 +40,14 @@ import { Card, CardContent } from "@/components/ui/card";
 
 type IconType = ComponentType<{ className?: string }>;
 
-type Mode = "ip" | "domain" | "hash";
+type Mode = "ip" | "domain" | "hash" | "url";
 
 /** Human label + icon per IOC type, shared by the toggle and detection hint. */
 const MODE_META: Record<Mode, { label: string; icon: IconType }> = {
   ip: { label: "IP address", icon: Network },
   domain: { label: "domain", icon: Globe },
   hash: { label: "file hash", icon: FileDigit },
+  url: { label: "URL", icon: Link2 },
 };
 
 /** "input" = bad/unsupported value the user typed; "request" = lookup failed. */
@@ -151,6 +155,10 @@ function validateInput(value: string, mode: Mode): string | null {
     if (parsed.isReserved) {
       return `${parsed.scopeNote}. This is a special-use name and can't be checked.`;
     }
+  } else if (mode === "url") {
+    if (!parseUrl(value)) {
+      return `"${value}" isn't a checkable URL. Paste an http or https link.`;
+    }
   } else {
     if (!parseHash(value)) {
       return `"${value}" isn't a valid file hash. Paste an MD5, SHA-1, or SHA-256 digest.`;
@@ -170,7 +178,26 @@ function canonicalFor(value: string, detected: Mode | null): string {
   if (detected === "ip") return parseIP(value)?.ip ?? value;
   if (detected === "domain") return parseDomain(value)?.domain ?? value;
   if (detected === "hash") return parseHash(value)?.hash ?? value;
+  if (detected === "url") return parseUrl(value)?.canonical ?? value;
   return value;
+}
+
+/**
+ * What the live-research lane should ask about for a pending indicator. No
+ * research provider declares support for a url kind, so a URL researches its
+ * host as a domain, which is the pivot an analyst wants anyway: certificates,
+ * archived snapshots, and prior scans of the site.
+ */
+function researchTargetFor(
+  value: string,
+): { indicator: string; kind: IOCType } | null {
+  const kind = detectIOC(value);
+  if (!kind) return null;
+  if (kind === "url") {
+    const host = parseUrl(value)?.host;
+    return host ? { indicator: host, kind: "domain" } : null;
+  }
+  return { indicator: value, kind };
 }
 
 /** No NDJSON line for this long means the stream stalled (server bounds each
@@ -212,7 +239,7 @@ export default function Checker({
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<CheckError | null>(null);
   const [result, setResult] = useState<
-    AnyCheckResult | null
+    AnyCheckResult | UrlCheckResult | null
   >(initialResult ?? null);
   const [bulkRows, setBulkRows] = useState<GeoRow[] | null>(null);
   const [bulkPending, setBulkPending] = useState(0);
@@ -460,19 +487,15 @@ export default function Checker({
     // Warm the lazy results chunk while the lookup runs so it renders instantly.
     void loadCheckResults();
 
-    const endpoint =
-      detected === "ip"
-        ? "/api/check"
-        : detected === "domain"
-          ? "/api/check-domain"
-          : "/api/check-hash";
+    const ENDPOINTS: Record<Mode, string> = {
+      ip: "/api/check",
+      domain: "/api/check-domain",
+      hash: "/api/check-hash",
+      url: "/api/check-url",
+    };
+    const endpoint = ENDPOINTS[detected];
     const refreshFlag = opts?.refresh === true;
-    const body =
-      detected === "ip"
-        ? { ip: value, refresh: refreshFlag }
-        : detected === "domain"
-          ? { domain: value, refresh: refreshFlag }
-          : { hash: value, refresh: refreshFlag };
+    const body = { [detected]: value, refresh: refreshFlag };
 
     // Inactivity watchdog: the server streams a source every few seconds and
     // bounds each at ~12s, so a long gap means the stream genuinely stalled.
@@ -602,11 +625,13 @@ export default function Checker({
 
   function refresh() {
     if (!result) return;
-    const indicator = isHashResult(result)
-      ? result.hash
-      : isDomainResult(result)
-        ? result.domain
-        : result.ip;
+    const indicator = isUrlResult(result)
+      ? result.url
+      : isHashResult(result)
+        ? result.hash
+        : isDomainResult(result)
+          ? result.domain
+          : result.ip;
     runCheck(indicator, { refresh: true });
   }
 
@@ -614,23 +639,30 @@ export default function Checker({
   // IOC, or — while a check is still running — the canonical value being looked
   // up (so research streams concurrently with the main TI fan-out, not after).
   // Bulk geo lookups have no single indicator, so the lane stays idle there.
+  // A URL result researches its *host* as a domain: no research provider
+  // supports a url kind, and the host is the pivot an analyst wants anyway
+  // (certificates, archived snapshots, prior scans of the site).
   const activeIndicator: string | null = result
-    ? isHashResult(result)
-      ? result.hash
-      : isDomainResult(result)
-        ? result.domain
-        : result.ip
+    ? isUrlResult(result)
+      ? (parseUrl(result.url)?.host ?? null)
+      : isHashResult(result)
+        ? result.hash
+        : isDomainResult(result)
+          ? result.domain
+          : result.ip
     : loading && !isBulk && pending
-      ? pending
+      ? (researchTargetFor(pending)?.indicator ?? null)
       : null;
   const activeKind: IOCType | null = result
-    ? isHashResult(result)
-      ? "hash"
-      : isDomainResult(result)
-        ? "domain"
-        : "ip"
-    : activeIndicator
-      ? detectIOC(activeIndicator)
+    ? isUrlResult(result)
+      ? "domain"
+      : isHashResult(result)
+        ? "hash"
+        : isDomainResult(result)
+          ? "domain"
+          : "ip"
+    : pending
+      ? (researchTargetFor(pending)?.kind ?? null)
       : null;
   const research = useResearchStream(activeIndicator, activeKind);
 

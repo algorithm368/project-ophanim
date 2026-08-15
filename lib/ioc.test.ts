@@ -91,6 +91,25 @@ describe("extractIps", () => {
   });
 });
 
+describe("detectIOC — urls", () => {
+  it.each([
+    ["evil.com", "domain"],
+    ["evil.com/login", "url"],
+    ["evil.com?a=1", "url"],
+    ["https://evil.com", "url"],
+    ["https://evil.com/login.php?id=abc", "url"],
+    ["hxxps://evil[.]com/a", "url"],
+    ["8.8.8.8", "ip"],
+    ["d41d8cd98f00b204e9800998ecf8427e", "hash"],
+  ])("%s -> %s", (input, expected) => {
+    expect(detectIOC(input)).toBe(expected);
+  });
+
+  it("does not call a scheme-less IP with a path a domain", () => {
+    expect(detectIOC("185.220.101.1/admin")).toBe("url");
+  });
+});
+
 describe("iocFromPath", () => {
   it.each([
     ["/check/8.8.8.8", "8.8.8.8"],
