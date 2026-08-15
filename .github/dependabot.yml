@@ -25,6 +25,32 @@
 #              meaningless apart.
 #   tooling    everything else is build and test machinery: real enough to keep
 #              current, not worth a pull request each.
+#
+# toolchain is the group learned from PR #14, which bumped ten packages at once
+# and failed `bun run lint`. A grouped PR installs as one unit, so a package
+# nothing else is ready for takes the whole group down with it and hides which
+# one broke. Reproducing #14 with one package reverted at a time found two
+# independent breakages, neither of them the eight that came along for the ride:
+#
+#   eslint 9 -> 10      crashes eslint-plugin-react, which arrives via
+#                       eslint-config-next:
+#                       "TypeError: Cannot read properties of undefined
+#                       (reading 'Cjs')"
+#   typescript 5 -> 7   crashes @typescript-eslint/typescript-estree, which
+#                       peers on `typescript >=4.8.4 <6.1.0`. Note that `tsc
+#                       --noEmit` itself passes on 7; it is only the lint that
+#                       cannot load.
+#
+# With just those two held back, the other eight bumps pass lint, typecheck and
+# all 712 tests. So they fail alone, and their majors are ignored outright:
+# neither eslint-plugin-react nor typescript-eslint has published anything that
+# accepts the new major, and a weekly PR that cannot pass is noise. Lift each by
+# re-checking the peer range:
+#
+#   npm view typescript-eslint peerDependencies
+#   npm view eslint-plugin-react peerDependencies
+#
+# Minor and patch updates inside 9.x and 5.x still arrive.
 version: 2
 updates:
   - package-ecosystem: bun
@@ -35,6 +61,13 @@ updates:
     commit-message:
       # Matches the kind:* labels the repo uses on issues.
       prefix: chore
+    ignore:
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+      - dependency-name: eslint
+        update-types:
+          - version-update:semver-major
     groups:
       framework:
         patterns:
@@ -46,6 +79,10 @@ updates:
           - react-dom
           - "@types/react"
           - "@types/react-dom"
+      toolchain:
+        patterns:
+          - typescript
+          - eslint
       tooling:
         patterns:
           - "*"
@@ -56,6 +93,8 @@ updates:
           - react-dom
           - "@types/react"
           - "@types/react-dom"
+          - typescript
+          - eslint
 
   # The CI workflow pins actions by version or SHA; without this they drift
   # untracked until one of them stops working.
