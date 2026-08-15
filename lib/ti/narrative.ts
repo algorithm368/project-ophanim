@@ -7,6 +7,8 @@
  */
 import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { FLAG_THRESHOLD, MALICIOUS_FLOOR } from "./aggregate";
+import { ENGINE_NAME } from "./url/active/engines";
+import type { MergedScan } from "./url/active/merge";
 import type {
   CheckResult,
   CheckStats,
@@ -738,4 +740,173 @@ export function consensusBuckets(result: ResultLike): {
     noKey,
     unsupported: skips.length - noKey,
   };
+}
+
+/** Hostname of a URL, or undefined when it will not parse. */
+function hostOf(url?: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A field label placed mid-sentence. `lowerFirst` alone would turn "HTTP
+ *  status" into "hTTP status", so a leading acronym is left standing. */
+function midSentence(label: string): string {
+  return /^[A-Z]{2,}/.test(label) ? label : lowerFirst(label);
+}
+
+/** "once" / "twice" / "3 times", so the common cases read as English. */
+function countWord(n: number): string {
+  if (n === 1) return "once";
+  if (n === 2) return "twice";
+  return `${n} times`;
+}
+
+/**
+ * The paragraph an analyst pastes into a ticket.
+ *
+ * Every sentence is conditional on the data behind it, and there are no
+ * template slots: a field the scan did not report produces no clause at all
+ * rather than a clause saying "unknown". This is the one place in the feature
+ * where a bug becomes an analyst asserting something false in a case, so the
+ * rule is absolute, and the tests include a property check over every subset of
+ * the inputs.
+ *
+ * Claims about the page are scoped to the page that loaded, never to the site,
+ * because a kit can serve one thing to a scanner and another to a victim.
+ */
+export function buildScanNarrative(merged: MergedScan): string[] {
+  // Nothing finished means nothing was observed. No paragraph is the honest
+  // output; a headline here would be a claim built on no evidence.
+  if (merged.engines.length === 0) return [];
+
+  const d = merged.detail;
+  const cap = merged.capability;
+  const sentences: string[] = [];
+
+  const finalHost = hostOf(d.finalUrl);
+  const targetHost = hostOf(merged.target);
+  const hops = d.redirects?.length ?? 0;
+  const served = d.httpStatus ? `, answering HTTP ${d.httpStatus}` : "";
+
+  // 1. Where it ends up. The redirect is the first thing an analyst needs, and
+  //    a destination under a different name is the finding itself.
+  if (hops > 0 && finalHost) {
+    sentences.push(
+      `This URL redirects ${countWord(hops)}, to ${finalHost}${served}.`,
+    );
+  } else if (finalHost && targetHost && finalHost !== targetHost) {
+    sentences.push(`This URL ends up at ${finalHost}${served}.`);
+  } else if (d.httpStatus) {
+    sentences.push(`This URL answered HTTP ${d.httpStatus} when it was visited.`);
+  }
+
+  // 2. What the page can do, strictly as observed in the captured DOM. When the
+  //    DOM was never read, nothing is said: silence beats a false absence.
+  //    Title and password field share a sentence when both are present, so the
+  //    qualifier "the page that loaded" is stated once rather than drummed.
+  const password = !cap.error && cap.passwordField;
+  if (d.title && password) {
+    sentences.push(
+      `The page that loaded is titled "${d.title}" and carries a password field.`,
+    );
+  } else if (d.title) {
+    sentences.push(`The page that loaded is titled "${d.title}".`);
+  } else if (password) {
+    sentences.push("The page that loaded carries a password field.");
+  }
+
+  if (!cap.error) {
+    const crossDomain = cap.forms.filter((f) => f.crossDomain && f.host);
+    if (crossDomain.length > 0) {
+      const hosts = [...new Set(crossDomain.map((f) => f.host as string))];
+      sentences.push(
+        `Its form posts to ${joinList(hosts)}, a different domain from the one shown.`,
+      );
+    }
+    if (cap.downloadLinks.length > 0) {
+      const count = cap.downloadLinks.length;
+      const shown = cap.downloadLinks.slice(0, 3);
+      const files = shown
+        .map((link) => link.split("/").pop())
+        .filter((name): name is string => Boolean(name));
+      const hosts = [
+        ...new Set(shown.map((link) => hostOf(link)).filter(Boolean)),
+      ] as string[];
+      const from = hosts.length ? `, served from ${joinList(hosts)}` : "";
+      sentences.push(
+        `It links to ${count} file${count === 1 ? "" : "s"} that ${count === 1 ? "executes" : "execute"} when opened, ${joinList(files)}${from}.`,
+      );
+    }
+  }
+
+  // 3. How new the name and the certificate are. An exact WHOIS instant beats a
+  //    rounded age, so it wins when both are present.
+  const created = formatDate(d.domainCreated);
+  if (created) {
+    sentences.push(`Its domain was registered on ${created}.`);
+  } else if (d.domainAgeDays !== undefined) {
+    sentences.push(`Its domain was registered ${formatAge(d.domainAgeDays)}.`);
+  }
+
+  if (d.tlsAgeDays !== undefined || d.tlsIssuer) {
+    const issuer = d.tlsIssuer ? `issued by ${d.tlsIssuer}` : "issued";
+    const age =
+      d.tlsAgeDays !== undefined
+        ? `is ${d.tlsAgeDays} ${d.tlsAgeDays === 1 ? "day" : "days"} old, ${issuer}`
+        : `was ${issuer}`;
+    const valid =
+      d.tlsValidDays !== undefined ? `, valid for ${d.tlsValidDays} days` : "";
+    sentences.push(`Its certificate ${age}${valid}.`);
+  }
+
+  if (d.riskCategories?.length) {
+    sentences.push(
+      `Cloudflare puts the domain in ${joinList(d.riskCategories)}.`,
+    );
+  }
+
+  if (d.siblingDomains?.length) {
+    sentences.push(
+      `Its robots.txt names ${joinList(d.siblingDomains)}, ${d.siblingDomains.length === 1 ? "a sibling domain" : "sibling domains"} worth checking too.`,
+    );
+  }
+
+  // 4. What the scanners concluded, attributed, because an unattributed verdict
+  //    cannot be defended when it is questioned in a ticket.
+  const names = merged.engines.map((e) => ENGINE_NAME[e]);
+  if (d.verdicts.overall.malicious) {
+    const categories = d.verdicts.overall.categories?.length
+      ? ` as ${joinList(d.verdicts.overall.categories)}`
+      : "";
+    sentences.push(`It was flagged${categories} by ${joinList(names)}.`);
+  } else {
+    sentences.push(
+      `Neither ${names.length === 1 ? "the scanner that ran" : "scanner"} flagged it, which is an absence of evidence rather than a clean bill.`,
+    );
+  }
+
+  // 5. Disagreement is itself a finding: a site answering differently by
+  //    visitor is what a kit dodging scanners does.
+  for (const disagreement of merged.disagreements) {
+    const readings = disagreement.values
+      .map((v) => `${ENGINE_NAME[v.engine]} saw ${v.value}`)
+      .join(", ");
+    sentences.push(
+      `The scanners disagree on ${midSentence(disagreement.field)}: ${readings}.`,
+    );
+  }
+
+  // 6. An engine that did not finish is named, so the reading is not mistaken
+  //    for the whole picture.
+  for (const entry of merged.incomplete) {
+    const reason =
+      entry.status === "running" ? "was still scanning" : `did not finish (${entry.error ?? entry.status})`;
+    sentences.push(`${ENGINE_NAME[entry.engine]} ${reason}.`);
+  }
+
+  return sentences;
 }
