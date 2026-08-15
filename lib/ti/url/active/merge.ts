@@ -173,6 +173,31 @@ function mergedCapability(finished: ActiveScan[]): ScanCapability {
   };
 }
 
+/**
+ * Which engines reported a value for one field.
+ *
+ * The merged reading keeps one value per field, so the page needs this to say
+ * where a row came from. A claim carried into a ticket has to be attributable
+ * to the scanner that made it.
+ */
+export function attribution(
+  scans: ActiveScan[],
+  key: keyof ScanDetail,
+): ScanEngine[] {
+  const engines: ScanEngine[] = [];
+  for (const scan of scans) {
+    if (scan.status !== "done" || !scan.detail) continue;
+    const value = scan.detail[key];
+    const empty =
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0);
+    if (!empty && !engines.includes(scan.engine)) engines.push(scan.engine);
+  }
+  return engines;
+}
+
 /** One merged reading per scanned target. */
 export function mergeScans(scans: ActiveScan[]): MergedScan[] {
   const byTarget = new Map<string, ActiveScan[]>();

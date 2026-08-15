@@ -753,8 +753,9 @@ function hostOf(url?: string): string | undefined {
 }
 
 /** A field label placed mid-sentence. `lowerFirst` alone would turn "HTTP
- *  status" into "hTTP status", so a leading acronym is left standing. */
-function midSentence(label: string): string {
+ *  status" into "hTTP status", so a leading acronym is left standing.
+ *  Exported so the scan page writes the same label the paragraph does. */
+export function midSentence(label: string): string {
   return /^[A-Z]{2,}/.test(label) ? label : lowerFirst(label);
 }
 

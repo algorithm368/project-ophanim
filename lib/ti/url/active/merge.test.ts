@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeScans } from "@/lib/ti/url/active/merge";
+import { attribution, mergeScans } from "@/lib/ti/url/active/merge";
 import type { ScanCapability } from "@/lib/ti/url/active/capability";
 import type { ScanDetail } from "@/lib/ti/url/active/detail";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
@@ -126,6 +126,34 @@ describe("mergeScans", () => {
       "http://1.2.3.4/",
       "https://1.2.3.4/",
     ]);
+  });
+});
+
+describe("attribution", () => {
+  it("names only the engines that reported the field", () => {
+    const scans = [
+      scan({ engine: "urlscan", detail: detail({ httpStatus: "200" }) }),
+      scan({ engine: "cloudflare", detail: detail({ registrar: "Dynadot Inc" }) }),
+    ];
+    expect(attribution(scans, "httpStatus")).toEqual(["urlscan"]);
+    expect(attribution(scans, "registrar")).toEqual(["cloudflare"]);
+    expect(attribution(scans, "title")).toEqual([]);
+  });
+
+  it("treats an empty string or empty list as not reported", () => {
+    const scans = [
+      scan({ engine: "urlscan", detail: detail({ tlsIssuer: "", riskCategories: [] }) }),
+    ];
+    expect(attribution(scans, "tlsIssuer")).toEqual([]);
+    expect(attribution(scans, "riskCategories")).toEqual([]);
+  });
+
+  it("ignores an engine that did not finish", () => {
+    const scans = [
+      scan({ engine: "urlscan", status: "running" }),
+      scan({ engine: "cloudflare", detail: detail({ httpStatus: "403" }) }),
+    ];
+    expect(attribution(scans, "httpStatus")).toEqual(["cloudflare"]);
   });
 });
 

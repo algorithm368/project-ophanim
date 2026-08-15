@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, Loader2, Radar, ShieldAlert, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import {
+  ArrowUpRight,
+  ExternalLink,
+  Loader2,
+  Radar,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
 import type { IOCType } from "@/lib/ioc";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
@@ -323,6 +331,18 @@ export function ActiveScanCard({
                 A scan takes about thirty seconds. Leaving this page does not
                 cancel it, the result stays retrievable.
               </p>
+            )}
+            {/* This card is the entry point, not the teardown. The full
+                reading, the evidence, and the copyable case note live on the
+                scan's own page. */}
+            {batch && (
+              <Link
+                href={`/scan/${encodeURIComponent(indicator)}`}
+                className="mt-3 inline-flex items-center gap-1 text-xs text-foreground/60 underline underline-offset-2 hover:text-foreground"
+              >
+                Open the full teardown
+                <ArrowUpRight className="size-3" />
+              </Link>
             )}
           </div>
         )}

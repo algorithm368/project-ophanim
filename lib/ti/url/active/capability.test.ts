@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { analyzeDom, EMPTY_CAPABILITY } from "@/lib/ti/url/active/capability";
+import {
+  analyzeDom,
+  EMPTY_CAPABILITY,
+  refusalReason,
+} from "@/lib/ti/url/active/capability";
 
 const PAGE = "https://secure-login.ms-verify.top/auth/o365";
 
@@ -106,5 +110,39 @@ describe("analyzeDom", () => {
     );
     expect(cap.forms).toHaveLength(1);
     expect(cap.downloadLinks).toHaveLength(1);
+  });
+});
+
+describe("refusalReason", () => {
+  const refusal = (status: number, body: unknown) =>
+    refusalReason(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+  it("prefers the provider's own wording over the status code", async () => {
+    // Verified against the live API 2026-08-15: Cloudflare answers this for an
+    // account whose plan does not expose the DOM. It tells an analyst what to
+    // do about it, which "HTTP 400" does not.
+    await expect(
+      refusal(400, {
+        errors: [{ title: "DOM not available to account.", status: 400 }],
+      }),
+    ).resolves.toBe("DOM not available to account");
+  });
+
+  it("reads a plain message field too", async () => {
+    await expect(refusal(403, { message: "Forbidden" })).resolves.toBe(
+      "Forbidden",
+    );
+  });
+
+  it("falls back to the status when the body says nothing", async () => {
+    await expect(refusal(500, {})).resolves.toBe("DOM unavailable, HTTP 500");
+    await expect(
+      refusalReason(new Response("<html>oops</html>", { status: 502 })),
+    ).resolves.toBe("DOM unavailable, HTTP 502");
   });
 });

@@ -145,6 +145,27 @@ export function analyzeDom(html: string, pageUrl: string): ScanCapability {
 }
 
 /**
+ * Why the scanner would not hand over the DOM, in its own words where it gives
+ * them. Cloudflare answers "DOM not available to account." on plans without the
+ * feature, which tells an analyst what to do; "HTTP 400" does not.
+ */
+export async function refusalReason(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as {
+      message?: string;
+      errors?: { title?: string; message?: string; detail?: string }[];
+    };
+    const first = body.errors?.[0];
+    const said =
+      body.message ?? first?.message ?? first?.title ?? first?.detail;
+    if (said) return said.replace(/\.$/, "");
+  } catch {
+    // Not JSON, or an empty body. The status is all there is to report.
+  }
+  return `DOM unavailable, HTTP ${res.status}`;
+}
+
+/**
  * Fetch the scanner's copy of the rendered DOM and read it.
  *
  * Reading the scanner costs one request and touches the target zero times,
@@ -161,7 +182,10 @@ export async function fetchCapability(
   try {
     const res = await fetch(domUrl, { headers, signal });
     if (!res.ok) {
-      return { ...EMPTY_CAPABILITY, error: `DOM unavailable, HTTP ${res.status}` };
+      return {
+        ...EMPTY_CAPABILITY,
+        error: await refusalReason(res),
+      };
     }
     // Both engines serve the DOM gzipped with Content-Encoding set, so fetch
     // decompresses it before we see it.
