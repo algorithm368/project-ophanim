@@ -220,20 +220,26 @@ export function vtScore(malicious: number, suspicious: number): number {
  * label, e.g. "Information Technology (alphaMountain.ai)". More than one can be
  * present, so this loops.
  *
- * It replaces `/\s*\(.*?\)\s*$/`, whose lazy `.*?` against an end anchor
- * backtracks super-linearly (typescript:S8786). `[^()]*` cannot cross a
- * parenthesis, which makes each pass deterministic. The one behavioural
- * difference is unbalanced input: "Foo (a (b)" used to collapse to "Foo" and
- * now yields "Foo (a", because the inner group is stripped on its own and the
- * dangling "(" is left where it is. VT labels are balanced.
+ * It replaces a regex whose lazy quantifier ran against an end anchor and so
+ * backtracked super-linearly (typescript:S8786). A first attempt at a
+ * deterministic character class was still flagged, because the optional leading
+ * whitespace was rescanned from every offset, so this walks the string instead:
+ * endsWith / lastIndexOf are each one pass.
+ *
+ * The one behavioural difference from the original is unbalanced input:
+ * "Foo (a (b)" used to collapse to "Foo" and now yields "Foo (a", because the
+ * inner group is taken on its own and the dangling "(" is left alone. VT labels
+ * are balanced.
  */
 function stripVendorSuffix(raw: string): string {
-  let out = raw;
-  for (;;) {
-    const next = out.replace(/\s*\([^()]*\)\s*$/, "");
-    if (next === out) return out;
-    out = next;
+  let out = raw.trimEnd();
+  while (out.endsWith(")")) {
+    const open = out.lastIndexOf("(");
+    // No opener, or something nested inside: leave it rather than guess.
+    if (open === -1 || out.slice(open + 1, -1).includes("(")) return out;
+    out = out.slice(0, open).trimEnd();
   }
+  return out;
 }
 
 export function normalizeCategories(map: Record<string, string>): string[] {

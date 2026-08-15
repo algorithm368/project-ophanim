@@ -188,6 +188,42 @@ describe("buildThreatActivity", () => {
     expect(g!.fields.find((f) => f.label === "Command and control")?.value).toContain("Emotet");
     expect(g!.fields.find((f) => f.label === "Blocklist listings")?.value).toContain("IPsum");
     expect(g!.fields.find((f) => f.label === "Reputation history")?.value).toMatch(/Since 2025-11-03/);
+    expect(g!.fields.find((f) => f.label === "Reputation history")?.value).toContain("rising");
+  });
+
+  // The trend string moved out into its own function to get buildThreatActivity
+  // back under the cognitive-complexity limit, so both directions and the
+  // not-enough-history case are pinned rather than just the rising one above.
+  describe("reputation trend", () => {
+    const trendOf = (history: { checkedAt: string; riskScore: number; verdict: "low" | "malicious" }[]) =>
+      buildThreatActivity(
+        mkResult({
+          history,
+          sources: [finding("feodo", { malicious: true, details: { malware: "Emotet" } })],
+        }),
+      )!.fields.find((f) => f.label === "Reputation history")?.value;
+
+    it("calls a falling or flat score stable/declining", () => {
+      expect(
+        trendOf([
+          { checkedAt: "2025-11-03T00:00:00Z", riskScore: 90, verdict: "malicious" },
+          { checkedAt: "2026-07-20T00:00:00Z", riskScore: 20, verdict: "low" },
+        ]),
+      ).toContain("stable/declining");
+      expect(
+        trendOf([
+          { checkedAt: "2025-11-03T00:00:00Z", riskScore: 50, verdict: "low" },
+          { checkedAt: "2026-07-20T00:00:00Z", riskScore: 50, verdict: "low" },
+        ]),
+      ).toContain("stable/declining");
+    });
+
+    it("omits the field entirely below two snapshots", () => {
+      expect(
+        trendOf([{ checkedAt: "2025-11-03T00:00:00Z", riskScore: 90, verdict: "malicious" }]),
+      ).toBeUndefined();
+      expect(trendOf([])).toBeUndefined();
+    });
   });
 
   it("reports a sub-threshold blocklist listing that never crosses a source's own malicious gate", () => {
