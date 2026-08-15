@@ -13,5 +13,17 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["lib/**/*.test.ts"],
+    coverage: {
+      provider: "v8",
+      // lcov is what sonar-project.properties points at; text keeps the number
+      // visible in the terminal without opening a report.
+      reporter: ["text", "lcov"],
+      reportsDirectory: "coverage",
+      // Scoped to lib/ on purpose. That is where the tests live and where the
+      // logic is; app/ and components/ are wiring and JSX, and including them
+      // would blend a real number with a meaningless one.
+      include: ["lib/**/*.ts"],
+      exclude: ["lib/**/*.test.ts"],
+    },
   },
 });

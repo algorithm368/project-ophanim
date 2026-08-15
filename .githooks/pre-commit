@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+# Autofix the staged source files in place and re-stage them, so a mechanical
+# slip fixes itself instead of rejecting the commit and costing a second attempt.
+#   -z / -0           keeps paths containing spaces intact
+#   -r                skips the command entirely when nothing is staged
+#
+# Caveat: a partially staged file (git add -p) is staged in full by the re-add
+# below. Commit those with --no-verify and fix them separately if it matters.
+git diff --cached --name-only --diff-filter=ACM -z -- '*.ts' '*.tsx' '*.mjs' '*.js' |
+	xargs -0 -r bunx eslint --fix --no-warn-ignored
+git diff --cached --name-only --diff-filter=ACM -z -- '*.ts' '*.tsx' '*.mjs' '*.js' |
+	xargs -0 -r git add
+
+# Then the whole project, because a fix in one file can break the lint of
+# another that is not staged.
+bun run lint

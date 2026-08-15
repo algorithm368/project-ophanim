@@ -19,8 +19,10 @@ bun install        # install dependencies (bun.lock is the lockfile)
 bun run dev        # next dev (http://localhost:3000)
 bun run build      # production build
 bun run lint       # eslint (next core-web-vitals + typescript)
+bun run typecheck  # tsc --noEmit
 bun run test       # vitest run (unit tests, no network, ~0.4s)
 bun run test:watch # vitest watch
+bun run coverage   # vitest run --coverage, writes coverage/lcov.info for Sonar
 ```
 
 The toolchain is Bun (package manager + script runner). Next/Vitest/ESLint still
@@ -120,3 +122,32 @@ components/ui/                           shadcn primitives
 3. For UI changes, run `bun run dev` and check the feature in a browser. There
    are Playwright screenshot helpers in `scripts/` (e.g. `node scripts/shot.mjs`)
    used for visual checks. If you cannot verify the UI, say so explicitly.
+
+## Automation
+
+`.github/workflows/ci.yml` runs on every push and pull request. The `check` job
+is `typecheck`, `lint`, `test`, `build`, in that order because the first three
+localize a failure better than a build log does. The `sonar` job is separate and
+not gated on `check`: analysis of broken code is still worth having.
+
+Sonar analyses this repo as `algorithm368_project-ophanim`. Two things about it
+are easy to get wrong:
+
+- **`sonar-project.properties` is not optional.** A local `sonar` scan without it
+  auto-provisions a second project under a bare key, whose issue list then
+  diverges from CI's without ever saying so.
+- **SonarCloud Automatic Analysis must stay off.** It and CI analysis are
+  mutually exclusive, and SonarCloud refuses the CI scan rather than yielding.
+  The `sonar` job skips with a warning when `SONAR_TOKEN` is unset, so a missing
+  secret reads as skipped rather than as clean.
+
+Coverage comes from `bun run coverage`; the vitest coverage settings live in
+`vitest.config.ts` and are scoped to `lib/`, which is where the tests and the
+logic are. The scanner reads `coverage/lcov.info` as it analyses, so a missing
+report is silently 0%.
+
+`.githooks/pre-commit` autofixes and re-stages staged source files, then lints
+the project. `bun install` wires it up via the `prepare` script; if hooks are not
+firing, run `git config core.hooksPath .githooks`. The Claude Code hooks in
+`.claude/settings.json` run the Sonar secret scanner over reads and prompts, and
+skip quietly when the `sonar` CLI is missing or logged out.

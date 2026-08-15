@@ -1,0 +1,62 @@
+name: Bug
+description: Something behaves wrong
+labels: ["kind:fix"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: indicator
+    attributes:
+      label: Which indicator triggers it?
+      description: >
+        The IP, domain or hash you pasted, defanged if you prefer. A result is
+        only reproducible against the indicator that produced it. Redact
+        anything that is not already public.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where was it seen?
+      description: >
+        Local dev usually runs without Upstash credentials, so caching and
+        history are off there and a stale-result bug cannot show up.
+      options:
+        - Local dev (bun run dev)
+        - Vercel preview deployment
+        - Production
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Add the matching `area:` label after opening.
+      options:
+        - ip
+        - domain
+        - hash
+        - sources
+        - scoring
+        - api
+        - cache
+        - ui
+        - build
+    validations:
+      required: true

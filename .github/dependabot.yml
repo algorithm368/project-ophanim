@@ -1,0 +1,59 @@
+# Dependency updates.
+#
+# The `npm` ecosystem is what reads bun.lock; Dependabot has no separate `bun`
+# ecosystem. It updates package.json and the lockfile together, so a PR here is
+# the same shape as one from an npm repo.
+#
+# The grouping exists so a failure is legible. A grouped PR installs as one
+# unit, which means a package nothing else is ready for takes the whole group
+# down with it and hides which one broke.
+#
+#   framework  next and eslint-config-next move in lockstep: the config package
+#              is version-matched to the framework, and package.json pins it
+#              exactly for that reason. Bumping one without the other is how you
+#              get a lint run that disagrees with the build. next is also on a
+#              preview tag right now, so this PR is the one worth reading.
+#   react      react and react-dom are pinned to the same exact version and are
+#              meaningless apart.
+#   tooling    everything else is build and test machinery: real enough to keep
+#              current, not worth a pull request each.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      # Matches the kind:* labels the repo uses on issues.
+      prefix: chore
+    groups:
+      framework:
+        patterns:
+          - next
+          - eslint-config-next
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+      tooling:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - next
+          - eslint-config-next
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+
+  # The CI workflow pins actions by version or SHA; without this they drift
+  # untracked until one of them stops working.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
