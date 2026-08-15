@@ -3,8 +3,12 @@ import { detectIOC, type IOCType } from "@/lib/ioc";
 import { getCachedScanBatch, setCachedScanBatch } from "@/lib/ti/cache";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import { pollScan, submitScan } from "@/lib/ti/url/active/urlscan";
+import {
+  pollCloudflareScan,
+  submitCloudflareScan,
+} from "@/lib/ti/url/active/cloudflare";
 import { urlIndicatorProblem } from "@/lib/ti/url/validate";
-import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
+import type { ActiveScan, ActiveScanBatch } from "@/lib/ti/url/active/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +19,24 @@ const REQUEST_TIMEOUT_MS = 20000;
 
 const MISSING_KEY = {
   error:
-    "Active scanning needs a urlscan.io API key. Set URLSCAN_API_KEY to enable it.",
+    "Active scanning needs urlscan.io or Cloudflare credentials. Set URLSCAN_API_KEY, or CLOUDFLARE_API_TOKEN with CLOUDFLARE_ACCOUNT_ID.",
   keyEnv: "URLSCAN_API_KEY",
 };
+
+/** Each engine is gated on its own credentials, so one configured engine still
+ *  produces a scan and the other is simply absent rather than fatal. */
+function readCredentials() {
+  const urlscanKey = process.env.URLSCAN_API_KEY;
+  const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+  const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID;
+  return {
+    urlscanKey,
+    cfToken,
+    cfAccount,
+    cfReady: Boolean(cfToken && cfAccount),
+    any: Boolean(urlscanKey) || Boolean(cfToken && cfAccount),
+  };
+}
 
 function badRequest(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
@@ -48,8 +67,8 @@ function readIndicator(
  * again.
  */
 export async function POST(request: NextRequest): Promise<Response> {
-  const apiKey = process.env.URLSCAN_API_KEY;
-  if (!apiKey) return Response.json(MISSING_KEY, { status: 503 });
+  const creds = readCredentials();
+  if (!creds.any) return Response.json(MISSING_KEY, { status: 503 });
 
   let body: Record<string, unknown>;
   try {
@@ -85,9 +104,23 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const scans = await Promise.all(
-    targets.map((target) => submitScan(target, apiKey, signal)),
-  );
+  const jobs: Promise<ActiveScan>[] = [];
+  for (const target of targets) {
+    if (creds.urlscanKey) {
+      jobs.push(submitScan(target, creds.urlscanKey, signal));
+    }
+    if (creds.cfReady) {
+      jobs.push(
+        submitCloudflareScan(
+          target,
+          creds.cfToken as string,
+          creds.cfAccount as string,
+          signal,
+        ),
+      );
+    }
+  }
+  const scans = await Promise.all(jobs);
 
   const batch: ActiveScanBatch = {
     indicator,
@@ -108,8 +141,8 @@ export async function POST(request: NextRequest): Promise<Response> {
  * is "not yet".
  */
 export async function GET(request: NextRequest): Promise<Response> {
-  const apiKey = process.env.URLSCAN_API_KEY;
-  if (!apiKey) return Response.json(MISSING_KEY, { status: 503 });
+  const creds = readCredentials();
+  if (!creds.any) return Response.json(MISSING_KEY, { status: 503 });
 
   const raw = request.nextUrl.searchParams.get("indicator");
   const read = readIndicator(raw);
@@ -120,9 +153,20 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const scans = await Promise.all(
-    batch.scans.map((scan) =>
-      scan.status === "running" ? pollScan(scan, apiKey, signal) : scan,
-    ),
+    batch.scans.map((scan) => {
+      if (scan.status !== "running") return scan;
+      if (scan.engine === "cloudflare") {
+        return creds.cfReady
+          ? pollCloudflareScan(
+              scan,
+              creds.cfToken as string,
+              creds.cfAccount as string,
+              signal,
+            )
+          : scan;
+      }
+      return creds.urlscanKey ? pollScan(scan, creds.urlscanKey, signal) : scan;
+    }),
   );
 
   const updated: ActiveScanBatch = { ...batch, scans };
