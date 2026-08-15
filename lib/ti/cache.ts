@@ -1,9 +1,13 @@
 import { Redis } from "@upstash/redis";
 import type { CheckResult, DomainCheckResult, HashCheckResult } from "./types";
+import type { UrlCheckResult } from "./url/types";
 
 const KEY_PREFIX = "ti:ip:";
 const DOMAIN_KEY_PREFIX = "ti:domain:";
 const HASH_KEY_PREFIX = "ti:hash:";
+// URL entries are versioned from the start, since the layered envelope is new
+// and its shape is the thing most likely to move.
+const URL_KEY_PREFIX = "ti:url:v1:";
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 1 week
 
 function ttlSeconds(): number {
@@ -138,6 +142,22 @@ export function setCachedDomainResult(
   result: DomainCheckResult,
 ): Promise<void> {
   return setCached(DOMAIN_KEY_PREFIX, domain, result);
+}
+
+/** Returns the cached result for a URL, or null on miss / when caching is off.
+ *  The key is the canonical URL, so one resource has one entry. */
+export function getCachedUrlResult(
+  url: string,
+): Promise<UrlCheckResult | null> {
+  return getCached<UrlCheckResult>(URL_KEY_PREFIX, url);
+}
+
+/** Stores a URL result with the default TTL. Failures are swallowed. */
+export function setCachedUrlResult(
+  url: string,
+  result: UrlCheckResult,
+): Promise<void> {
+  return setCached(URL_KEY_PREFIX, url, result);
 }
 
 /** Returns the cached result for a hash, or null on miss / when caching is off. */
