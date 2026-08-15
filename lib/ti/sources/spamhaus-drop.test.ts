@@ -38,3 +38,34 @@ describe("matchDrop", () => {
     expect(matchDrop("8.8.8.8", blocks)).toBeNull();
   });
 });
+
+const FEED_V6 = [
+  '{"cidr":"2001:678:254::/48","sblid":"SBL697648","rir":"ripencc"}',
+  '{"cidr":"2001:678:6c0::/48","sblid":"SBL624855","rir":"ripencc"}',
+].join("\n");
+
+describe("matchDrop — IPv6", () => {
+  const blocks = parseDropFeed(FEED_V6);
+
+  it("parses the v6 feed with the same shape as v4", () => {
+    expect(blocks).toEqual([
+      { cidr: "2001:678:254::/48", sblid: "SBL697648" },
+      { cidr: "2001:678:6c0::/48", sblid: "SBL624855" },
+    ]);
+  });
+
+  it("returns the /48 that contains the address", () => {
+    expect(matchDrop("2001:678:254:abcd::1", blocks)).toEqual({
+      cidr: "2001:678:254::/48",
+      sblid: "SBL697648",
+    });
+  });
+
+  it("returns null when no v6 block contains the address", () => {
+    expect(matchDrop("2001:4860:4860::8888", blocks)).toBeNull();
+  });
+
+  it("does not match a v4 address against v6 blocks", () => {
+    expect(matchDrop("8.8.8.8", blocks)).toBeNull();
+  });
+});
