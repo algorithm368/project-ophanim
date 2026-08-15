@@ -205,8 +205,18 @@ one spelling of each address.
 
 `bulkTargets` currently returns a single IPv6 as a bulk target, with a comment
 explaining the pipeline is v4-only. Delete that branch and the comment; bulk now
-means two or more IPs, full stop. The "TI scoring is IPv4-only" note shown on a
-single-row bulk table goes away with it.
+means two or more IPs, full stop.
+
+Two further v4 assumptions in the same file must change with it, or IPv6 never
+reaches the API at all:
+
+- `validateInput` calls `parseIPv4` and rejects v6 client-side with "isn't a
+  valid IPv4 address". Needs `parseIP`, and the message generalized to "IP
+  address".
+- `canonicalFor` calls `parseIPv4` and falls back to the raw input on failure,
+  so a v6 would key the cache and the permalink off whatever the user typed
+  (`2001:DB8::1` and `2001:db8::0:1` would be distinct entries). Needs
+  `parseIP` so both collapse to the RFC 5952 canonical form the route returns.
 
 ### 9. `lib/ti/registry.ts` — register the two unwired sources, and flag families
 
