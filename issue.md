@@ -392,3 +392,52 @@ support (WannaCry alone has ~19 reported names).
 **All four addressed** in `lib/ti/narrative.ts` — HN-2/HN-3/HN-4 reworded/filtered,
 HN-1 resolved by removing the gap-note clause outright — each locked in by a case
 in `lib/ti/narrative.test.ts` (suite 174; `tsc`/lint clean). Changes uncommitted.
+
+---
+
+# Feature request: the active-scan page
+
+Raised 2026-08-15 by the project owner, recorded here before implementation.
+
+## The ask
+
+A page whose subject is the **active scan**: an indicator is submitted, a
+scanner goes and visits it, and what comes back is presented properly rather
+than as a footnote on an existing result page. The threat-intel readings for
+that same indicator belong on it too, so the scan and the reputation data are
+read together.
+
+## The principle: one page, data complete
+
+> "อยากให้เป็น 1 page data complete"
+
+Everything known about the submitted indicator lives on **one page**, complete.
+No hunting across a result page, a research card, and a scan panel to assemble
+the picture, and no partial view that looks whole. This is a standing constraint
+on the design, not a nice-to-have: it is the reason the page exists.
+
+Concretely that means the page carries, for one indicator, all of:
+
+- what the active scan observed: final URL after redirects, serving IP / ASN /
+  server, contacted domains, screenshot, the scanner's own verdict
+- what the passive TI sources say, with their verdict and score
+- when each part was gathered, since a scan is live and TI rows can be cached
+- what was **not** collected, named explicitly, so an incomplete page cannot be
+  mistaken for a complete one
+
+## Status
+
+🟠 **Open.** The mechanism exists as of `16f5965`: `POST /api/scan-url` submits,
+`GET /api/scan-url` resumes polling, and `ActiveScanCard` renders a batch inline
+on the IP / domain / URL result pages. What is missing is the dedicated page and
+the "complete on one page" presentation.
+
+Two questions to settle before building, since they change the shape:
+
+1. **Does the page replace the inline card, or sit alongside it?** A dedicated
+   page argues for removing the card; "one page, complete" argues the card
+   should have been the whole page all along.
+2. **Is the scan page a fourth indicator route (`/scan/<indicator>`), or does
+   `/check/<ioc>` become the one complete page?** The second reading makes the
+   principle a critique of the current result page rather than a request for a
+   new one.
