@@ -432,12 +432,41 @@ Concretely that means the page carries, for one indicator, all of:
 on the IP / domain / URL result pages. What is missing is the dedicated page and
 the "complete on one page" presentation.
 
-Two questions to settle before building, since they change the shape:
+### Both shape questions are settled
 
-1. **Does the page replace the inline card, or sit alongside it?** A dedicated
-   page argues for removing the card; "one page, complete" argues the card
-   should have been the whole page all along.
-2. **Is the scan page a fourth indicator route (`/scan/<indicator>`), or does
-   `/check/<ioc>` become the one complete page?** The second reading makes the
-   principle a critique of the current result page rather than a request for a
-   new one.
+> "อยากให้เป็นหน้าที่จะทำงานช้ากว่าแต่จะรู้ไส้ในเยอะกว่า"
+
+A **separate route**, deliberately slower than `/check/<ioc>` and deliberately
+deeper. The two pages answer different questions and the split is the point:
+`/check` is triage, fast and reputation-led; the scan page is the teardown, and
+an analyst opens it knowing it will take half a minute.
+
+The inline card on the result pages stays. It is the entry point, and it answers
+"is anything obviously wrong" without leaving triage.
+
+### What "deeper" can actually mean, verified
+
+Inventoried against a real completed scan on 2026-08-15, so the page is designed
+against the payload rather than a guess. urlscan returns, beyond the verdict and
+screenshot already surfaced:
+
+| Block | What it carries |
+| --- | --- |
+| `page` | title, HTTP status, MIME type, server banner, city/country, **apex domain age, domain age, TLS issuer, TLS age and validity window**, Umbrella rank |
+| `data.requests` | every request the page made, each with size, resource type, ASN and geoip |
+| `data.redirects` | the full chain, not just the final URL |
+| `data.cookies` | names, domains, and the secure / httpOnly flags |
+| `data.console` | messages logged while loading |
+| `data.links` | every link on the page (100 here), plus `lists.linkDomains` |
+| `lists.certificates` | issuer, subject, validity |
+| `lists.hashes` | a hash per loaded resource |
+| `stats` | secure-request percentage, per-domain / IP / ASN / server / protocol / resource breakdowns |
+| `verdicts` | four separate readings: overall, urlscan, engines, community |
+
+The age fields are the ones worth building around. A domain registered days ago
+serving a certificate issued days ago is the strongest cheap phishing signal
+there is, and nothing in the passive pipeline reports it today.
+
+The stored form must be **distilled, not raw**. A busy page can make hundreds of
+requests, and the pipeline already drops `raw` payloads before caching for
+exactly that reason.
