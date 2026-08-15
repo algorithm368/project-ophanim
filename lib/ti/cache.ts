@@ -1,7 +1,17 @@
 import { Redis } from "@upstash/redis";
 import type { CheckResult, DomainCheckResult, HashCheckResult } from "./types";
 
-const KEY_PREFIX = "ti:ip:";
+/**
+ * Bump when a stored result's *shape or meaning* changes, so entries written by
+ * the previous code are missed rather than rendered under the new reading. v2:
+ * geo coordinates became a cluster vote, which repurposed
+ * `geoResolution.coordinates.alternatives` from "every point, when scattered" to
+ * "the losing clusters". A v1 entry read as v2 reports every provider as an
+ * outlier. Entries under the old prefix are simply left to their TTL.
+ */
+const SCHEMA_VERSION = "v2:";
+
+const KEY_PREFIX = `ti:ip:${SCHEMA_VERSION}`;
 const DOMAIN_KEY_PREFIX = "ti:domain:";
 const HASH_KEY_PREFIX = "ti:hash:";
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 1 week

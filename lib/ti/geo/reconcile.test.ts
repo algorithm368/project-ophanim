@@ -96,18 +96,187 @@ describe("reconcileGeo — coordinates", () => {
     expect(res.coordinates!.value.lat).toBeCloseTo(52.51, 1);
   });
 
-  it("far-apart points drop to low confidence and record alternatives", () => {
+  it("far-apart points drop to low confidence and record the losing cluster", () => {
     const res = reconcileGeo([
       r("a", { lat: 37.77, lon: -122.42 }),
       r("b", { lat: 34.05, lon: -118.24 }),
     ])!;
     expect(res.coordinates!.confidence).toBe("low");
-    expect(res.coordinates!.alternatives!).toHaveLength(2);
+    // One winner, one loser: never a midpoint between the two.
+    expect(res.coordinates!.value.lat).toBeCloseTo(37.77, 2);
+    expect(res.coordinates!.sources).toEqual(["a"]);
+    expect(res.coordinates!.alternatives!).toEqual([
+      { value: { lat: 34.05, lon: -118.24 }, sources: ["b"] },
+    ]);
   });
 
   it("a single coordinate is low confidence", () => {
     const res = reconcileGeo([r("a", { lat: 52.52, lon: 13.405 })])!;
     expect(res.coordinates!.confidence).toBe("low");
+  });
+});
+
+describe("reconcileGeo — coordinates vote rather than average", () => {
+  /** The live reading for 2606:4700:4700::1111 (Cloudflare anycast): two
+   *  providers on Montreal, two on San Francisco. Averaging all four put the
+   *  result in rural Nebraska, ~1,500 km from anything a provider reported. */
+  const anycastV6 = [
+    r("ip-api", {
+      country: "Canada",
+      countryCode: "CA",
+      region: "Quebec",
+      city: "Montreal",
+      lat: 45.5019,
+      lon: -73.5674,
+    }),
+    r("freeipapi", {
+      country: "Canada",
+      countryCode: "CA",
+      region: "Quebec",
+      city: "Montreal",
+      lat: 45.5019,
+      lon: -73.5674,
+    }),
+    r("ipwhois", {
+      country: "United States",
+      countryCode: "US",
+      region: "California",
+      city: "San Francisco",
+      lat: 37.7749113,
+      lon: -122.4185412,
+    }),
+    r("ipgeolocation", {
+      country: "United States",
+      countryCode: "US",
+      region: "California",
+      city: "San Francisco",
+      lat: 37.78035,
+      lon: -122.39059,
+    }),
+    r("ipinfo", { country: "United States", countryCode: "US" }),
+    r("abuseipdb", { countryCode: "US" }),
+  ];
+
+  it("never places the result between two disagreeing clusters", () => {
+    const res = reconcileGeo(anycastV6)!;
+    const { lat, lon } = res.coordinates!.value;
+    // San Francisco, not the Nebraska midpoint the mean produced.
+    expect(lat).toBeCloseTo(37.78, 1);
+    expect(lon).toBeCloseTo(-122.4, 1);
+  });
+
+  it("attributes the winning cluster and keeps the losing one as an alternative", () => {
+    const res = reconcileGeo(anycastV6)!;
+    expect(res.coordinates!.sources.sort()).toEqual(["ipgeolocation", "ipwhois"]);
+    const alt = res.coordinates!.alternatives!;
+    expect(alt).toHaveLength(1);
+    expect(alt[0].sources.sort()).toEqual(["freeipapi", "ip-api"]);
+    expect(alt[0].value.lat).toBeCloseTo(45.5, 1);
+  });
+
+  it("nearby points corroborate into one cluster with no alternatives", () => {
+    const res = reconcileGeo([
+      r("ip-api", { lat: 37.42, lon: -122.08 }),
+      r("ipinfo", { lat: 37.44, lon: -122.14 }),
+    ])!;
+    expect(res.coordinates!.confidence).toBe("high");
+    expect(res.coordinates!.agreement).toBeCloseTo(1);
+    expect(res.coordinates!.alternatives).toBeUndefined();
+  });
+
+  it("the heavier provider wins when two single-point clusters disagree", () => {
+    // ip-api (0.85) against an unlisted provider on the default weight (0.5).
+    const res = reconcileGeo([
+      r("ip-api", { lat: 52.52, lon: 13.405 }),
+      r("nobody", { lat: 1, lon: 1 }),
+    ])!;
+    expect(res.coordinates!.value.lat).toBeCloseTo(52.52, 2);
+    expect(res.coordinates!.sources).toEqual(["ip-api"]);
+  });
+});
+
+describe("reconcileGeo — country coherence", () => {
+  it("keeps city and region inside the winning country", () => {
+    // 4 providers say US, 2 say CA; the CA pair carries more raw city weight.
+    const res = reconcileGeo([
+      r("ip-api", { countryCode: "CA", country: "Canada", region: "Quebec", city: "Montreal" }),
+      r("freeipapi", { countryCode: "CA", country: "Canada", region: "Quebec", city: "Montreal" }),
+      r("ipwhois", {
+        countryCode: "US",
+        country: "United States",
+        region: "California",
+        city: "San Francisco",
+      }),
+      r("ipgeolocation", {
+        countryCode: "US",
+        country: "United States",
+        region: "California",
+        city: "San Francisco",
+      }),
+      r("ipinfo", { countryCode: "US", country: "United States" }),
+      r("abuseipdb", { countryCode: "US" }),
+    ])!;
+    expect(res.country!.value).toBe("United States");
+    expect(res.city!.value).toBe("San Francisco");
+    expect(res.region!.value).toBe("California");
+    // The discounted providers still show as dissent, they are not dropped.
+    expect(res.city!.alternatives).toEqual([
+      { value: "Montreal", sources: ["ip-api", "freeipapi"] },
+    ]);
+  });
+
+  it("reports the real agreement, the discount picks the winner but is not evidence", () => {
+    const res = reconcileGeo([
+      r("ip-api", { countryCode: "CA", country: "Canada", city: "Montreal" }),
+      r("freeipapi", { countryCode: "CA", country: "Canada", city: "Montreal" }),
+      r("ipwhois", { countryCode: "US", country: "United States", city: "San Francisco" }),
+      r("ipgeolocation", {
+        countryCode: "US",
+        country: "United States",
+        city: "San Francisco",
+      }),
+      r("ipinfo", { countryCode: "US", country: "United States" }),
+      r("abuseipdb", { countryCode: "US" }),
+    ])!;
+    expect(res.city!.value).toBe("San Francisco");
+    // Two of the four city providers dissented, so this is a contested reading,
+    // not a corroborated one. Scoring off the discounted weight would call it high.
+    expect(res.city!.confidence).toBe("medium");
+    expect(res.city!.score).toBeLessThan(0.66);
+    expect(res.city!.agreement).toBeCloseTo(0.5);
+  });
+
+  it("does not break a tied country vote in the city's name", () => {
+    // ip-api and ipinfo carry equal country weight, so neither side is decisive
+    // and the city vote is left to stand on its own.
+    const res = reconcileGeo([
+      r("ip-api", { countryCode: "CA", country: "Canada", city: "Montreal" }),
+      r("ipinfo", { countryCode: "US", country: "United States", city: "San Francisco" }),
+      r("freeipapi", { city: "Montreal" }),
+    ])!;
+    expect(res.city!.value).toBe("Montreal");
+  });
+
+  it("a unanimous country leaves the city vote untouched", () => {
+    const res = reconcileGeo([
+      r("ip-api", { countryCode: "DE", country: "Germany", city: "Berlin" }),
+      r("ipinfo", { countryCode: "DE", country: "Germany", city: "Munich" }),
+      r("ipwhois", { countryCode: "DE", country: "Germany", city: "Munich" }),
+    ])!;
+    expect(res.city!.value).toBe("Munich");
+    expect(res.city!.sources.sort()).toEqual(["ipinfo", "ipwhois"]);
+  });
+
+  it("leaves ASN alone, an AS is not contained by a country", () => {
+    const res = reconcileGeo([
+      r("ip-api", { countryCode: "CA", country: "Canada", asn: "AS13335" }),
+      r("freeipapi", { countryCode: "CA", country: "Canada", asn: "AS13335" }),
+      r("ipwhois", { countryCode: "US", country: "United States", asn: "AS13335" }),
+      r("ipinfo", { countryCode: "US", country: "United States", asn: "AS13335" }),
+      r("abuseipdb", { countryCode: "US" }),
+    ])!;
+    expect(res.asn!.sources).toContain("ip-api");
+    expect(res.asn!.confidence).toBe("high");
   });
 });
 

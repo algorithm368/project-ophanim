@@ -44,12 +44,26 @@ export function geoConfidenceReason(res: GeoResolution): string {
   if (res.city && res.city.confidence !== "low") {
     parts.push("city corroborated");
   }
-  if (res.coordinates && res.coordinates.sources.length > 1) {
-    parts.push(
-      res.coordinates.confidence === "high"
-        ? "coordinates tightly clustered"
-        : "coordinates loosely clustered",
+  if (res.coordinates) {
+    // Coordinates are voted over proximity clusters, so an outlying provider is
+    // a losing cluster, not a loose one. Say which it is.
+    const outliers = (res.coordinates.alternatives ?? []).reduce(
+      (n, a) => n + a.sources.length,
+      0,
     );
+    if (outliers > 0) {
+      parts.push(
+        outliers === 1
+          ? "1 provider places it elsewhere"
+          : `${outliers} providers place it elsewhere`,
+      );
+    } else if (res.coordinates.sources.length > 1) {
+      parts.push(
+        res.coordinates.confidence === "high"
+          ? "coordinates tightly clustered"
+          : "coordinates loosely clustered",
+      );
+    }
   }
   return parts.join(", ");
 }
