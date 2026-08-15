@@ -41,6 +41,7 @@ export const shodanInternetDbSource: TiSource = {
     category: "scanner",
     requiresKey: false,
     weight: 0.5,
+    families: [4, 6],
   },
   isEnabled: () => true,
   async check(ip, signal): Promise<SourceFinding> {

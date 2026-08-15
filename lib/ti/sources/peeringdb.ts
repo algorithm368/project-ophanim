@@ -52,6 +52,7 @@ export const peeringDbSource: TiSource = {
     category: "context",
     requiresKey: false,
     weight: 0,
+    families: [4, 6],
     // check() makes two sequential calls (RIPE network-info, then PeeringDB);
     // ripestat.ts already gives the RIPE call alone 12s because stat.ripe.net
     // can be slow under load, so the 8s default here isn't even enough

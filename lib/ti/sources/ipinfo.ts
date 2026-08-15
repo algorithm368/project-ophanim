@@ -107,6 +107,7 @@ export const ipInfoSource: TiSource = {
     category: "context",
     requiresKey: true,
     weight: 0,
+    families: [4, 6],
     keyEnv: "IPINFO_TOKEN",
   },
   isEnabled: () => Boolean(process.env.IPINFO_TOKEN),

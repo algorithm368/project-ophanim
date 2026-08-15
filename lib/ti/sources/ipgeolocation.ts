@@ -39,6 +39,7 @@ export const ipGeolocationSource: TiSource = {
     category: "context",
     requiresKey: true,
     weight: 0,
+    families: [4, 6],
     keyEnv: "IPGEOLOCATION_API_KEY",
   },
   isEnabled: () => Boolean(process.env.IPGEOLOCATION_API_KEY),
