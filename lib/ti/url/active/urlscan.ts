@@ -1,5 +1,6 @@
 import { errorMessage, getJson, isTimeout, postJson } from "../../http";
 import type { ActiveScan, ActiveVerdict, ScanVisibility } from "./types";
+import { distillResult } from "./detail";
 
 const SUBMIT_URL = "https://urlscan.io/api/v1/scan/";
 const RESULT_URL = "https://urlscan.io/api/v1/result";
@@ -81,7 +82,12 @@ export function pollOutcome(
   data: ResultResponse | null,
 ): ActiveScan {
   if (status === 200 && data) {
-    return { ...scan, status: "done", verdict: verdictFromResult(data) };
+    return {
+      ...scan,
+      status: "done",
+      verdict: verdictFromResult(data),
+      detail: distillResult(data),
+    };
   }
   if (status === 404) return { ...scan, status: "running" };
   return { ...scan, status: "running", error: `HTTP ${status}` };

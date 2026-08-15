@@ -1,3 +1,5 @@
+import type { ScanDetail } from "./detail";
+
 /** Visibility the submission was accepted at. Never "public": a public scan is
  *  searchable by anyone, including whoever sent the phish. */
 export type ScanVisibility = "private" | "unlisted";
@@ -23,6 +25,9 @@ export interface ActiveScan {
   resultUrl?: string;
   /** Populated once the scan completes. */
   verdict?: ActiveVerdict;
+  /** The teardown, distilled. Drives the dedicated scan page; the inline card
+   *  reads only `verdict`. */
+  detail?: ScanDetail;
   error?: string;
 }
 
