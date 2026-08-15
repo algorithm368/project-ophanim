@@ -1,51 +1,11 @@
 import type { SourceFinding, TiSource } from "../../types";
-import { errorMessage, getText, isTimeout } from "../../http";
+import { errorMessage, isTimeout } from "../../http";
+import { hostOf, loadOpenphishFeed } from "../../feeds/openphish";
 
-// openphish.com/feed.txt redirects here; use the canonical source directly.
-const FEED_URL =
-  "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt";
-const TTL_MS = 30 * 60 * 1000; // 30 minutes
-
-interface Cache {
-  hosts: Set<string>;
-  fetchedAt: number;
-}
-
-let cache: Cache | null = null;
-let inflight: Promise<Cache> | null = null;
-
-export function hostOf(url: string): string | null {
-  try {
-    return new URL(url.trim()).hostname.toLowerCase().replace(/\.$/, "");
-  } catch {
-    return null;
-  }
-}
-
-async function loadFeed(signal: AbortSignal): Promise<Cache> {
-  if (cache && Date.now() - cache.fetchedAt < TTL_MS) return cache;
-  if (inflight) return inflight;
-
-  inflight = (async () => {
-    const { ok, status, text } = await getText(FEED_URL, signal);
-    if (!ok || !text) {
-      throw new Error(`feed unavailable (HTTP ${status})`);
-    }
-    const hosts = new Set<string>();
-    for (const line of text.split("\n")) {
-      const host = hostOf(line);
-      if (host) hosts.add(host);
-    }
-    cache = { hosts, fetchedAt: Date.now() };
-    return cache;
-  })();
-
-  try {
-    return await inflight;
-  } finally {
-    inflight = null;
-  }
-}
+// The feed loader and its cache live in lib/ti/feeds/openphish.ts, shared with
+// the URL-level source so one download serves both. Re-exported here because
+// this module's tests, and its callers, already know hostOf by this path.
+export { hostOf };
 
 /** OpenPhish - community phishing URL feed (no key, cached download). */
 export const openPhishSource: TiSource = {
@@ -60,7 +20,7 @@ export const openPhishSource: TiSource = {
   isEnabled: () => true,
   async check(domain, signal): Promise<SourceFinding> {
     try {
-      const { hosts } = await loadFeed(signal);
+      const { hosts } = await loadOpenphishFeed(signal);
       if (!hosts.has(domain)) {
         return { status: "ok", score: 0, summary: "Not in the phishing feed" };
       }
