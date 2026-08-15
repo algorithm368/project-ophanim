@@ -38,7 +38,7 @@ export default async function ScanPage({ params }: Readonly<PageProps>) {
   // send. Say which, rather than serving an empty scan page.
   if (!kind || targets.length === 0) {
     return (
-      <main className="mx-auto max-w-3xl space-y-3 px-4 py-16">
+      <main className="mx-auto w-full max-w-5xl space-y-3 px-4 py-16">
         <h1 className="font-mono text-lg break-all">{decoded}</h1>
         <p className="text-sm text-foreground/75">
           {kind === "hash"
@@ -58,7 +58,9 @@ export default async function ScanPage({ params }: Readonly<PageProps>) {
   const initialBatch = await getCachedScanBatch(decoded);
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
+    // Same container as Checker on /check, so the scan page and the result page
+    // are the same width and the banner rule lines up across both.
+    <main className="mx-auto w-full max-w-5xl px-4 py-6">
       <ScanReport
         indicator={decoded}
         kind={kind}

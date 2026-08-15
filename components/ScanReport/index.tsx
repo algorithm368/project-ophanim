@@ -12,6 +12,10 @@ import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/CheckResults/primitives";
+import {
+  ActiveModeButton,
+  ArmedPanel,
+} from "@/components/CheckResults/active-mode";
 import { TargetReport } from "./target";
 
 /** Re-poll while anything is queued. A scan takes roughly half a minute, so
@@ -256,52 +260,20 @@ export function ScanReport({
               {targets.length === 1 ? "this address" : "these addresses"} now and
               reports what {targets.length === 1 ? "it serves" : "they serve"}.
             </p>
-            <Button
-              type="button"
-              size="sm"
+            <ActiveModeButton
               disabled={running}
               onClick={() => setConfirming(true)}
-            >
-              Run an active scan
-            </Button>
+            />
           </div>
         )}
 
         {confirming && (
-          <div className="space-y-3">
-            {/* The cost is stated, not implied: two engines mean the target is
-                visited twice, by two third parties. */}
-            <p className="text-sm text-foreground/75">
-              This sends the following to urlscan.io and to Cloudflare. Each
-              loads {targets.length === 1 ? "it" : "them"} from its own
-              infrastructure, so{" "}
-              {targets.length === 1
-                ? "the address is visited twice"
-                : "every address is visited twice"}
-              , by two third parties. Check the query string before continuing,
-              phishing links often carry a token identifying the victim.
-            </p>
-            <ul className="space-y-1 rounded border border-foreground/12 bg-muted/40 p-2">
-              {targets.map((target) => (
-                <li key={target} className="truncate font-mono text-xs">
-                  {target}
-                </li>
-              ))}
-            </ul>
-            <div className="flex gap-2">
-              <Button type="button" size="sm" onClick={() => void submit(false)}>
-                Send {targets.length === 1 ? "it" : `all ${targets.length}`}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setConfirming(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
+          <ArmedPanel
+            targets={targets}
+            submitting={running}
+            onEngage={() => void submit(false)}
+            onCancel={() => setConfirming(false)}
+          />
         )}
 
         {pending && (

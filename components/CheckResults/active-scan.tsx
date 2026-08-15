@@ -16,8 +16,8 @@ import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import { mergeScans, type MergedScan } from "@/lib/ti/url/active/merge";
 import type { ActiveScan, ActiveScanBatch } from "@/lib/ti/url/active/types";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { SectionHeading } from "./primitives";
+import { ActiveModeButton, ArmedPanel } from "./active-mode";
 
 /** How often to re-poll while a scan is on the provider's queue. A urlscan run
  *  takes roughly 30 seconds, so this is a handful of requests, not a spin. */
@@ -256,54 +256,16 @@ export function ActiveScanCard({
               reports what {targets.length === 1 ? "it serves" : "they serve"}.
             </p>
             {message && <p className="text-xs text-orange-500">{message}</p>}
-            <Button type="button" size="sm" onClick={() => setPhase("confirming")}>
-              Run an active scan
-            </Button>
+            <ActiveModeButton onClick={() => setPhase("confirming")} />
           </div>
         )}
 
         {phase === "confirming" && (
-          <div className="space-y-3">
-            {/* Two engines means the target is visited twice, by two third
-                parties. That cost is stated here rather than implied, because
-                it is the one thing the analyst cannot take back. */}
-            <p className="text-sm text-foreground/75">
-              This sends the following to urlscan.io and to Cloudflare. Each
-              loads {targets.length === 1 ? "it" : "them"} from its own
-              infrastructure, so{" "}
-              {targets.length === 1
-                ? "the address is visited twice"
-                : "every address is visited twice"}
-              , by two third parties. Check the query string before continuing,
-              phishing links often carry a token identifying the victim.
-            </p>
-            <ul className="space-y-1 rounded border border-foreground/12 bg-muted/40 p-2">
-              {targets.map((target) => (
-                <li key={target} className="truncate font-mono text-xs">
-                  {target}
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-foreground/60">
-              Never submitted public. urlscan.io gets it private, so only this
-              account can see the result, falling back to unlisted if the private
-              quota for today is spent. Cloudflare offers no private tier, so
-              unlisted is the tightest it takes.
-            </p>
-            <div className="flex gap-2">
-              <Button type="button" size="sm" onClick={() => void submit()}>
-                Send {targets.length === 1 ? "it" : `all ${targets.length}`}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setPhase("idle")}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
+          <ArmedPanel
+            targets={targets}
+            onEngage={() => void submit()}
+            onCancel={() => setPhase("idle")}
+          />
         )}
 
         {phase === "nokey" && (
