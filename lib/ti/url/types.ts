@@ -1,4 +1,5 @@
 import type {
+  AnyCheckResult,
   CheckStats,
   HistorySnapshot,
   ScoreBreakdown,
@@ -60,4 +61,15 @@ export interface UrlCheckResult {
   stats: CheckStats;
   history?: HistorySnapshot[];
   cached?: boolean;
+}
+
+/**
+ * A URL result is the only one carrying layers, so the presence of both fields
+ * identifies it. Kept here rather than in the component so callers that only
+ * need the narrowing do not pull in React.
+ */
+export function isUrlResult(
+  result: AnyCheckResult | UrlCheckResult,
+): result is UrlCheckResult {
+  return "layers" in result && "headlineLayer" in result;
 }

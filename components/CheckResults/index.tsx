@@ -8,7 +8,9 @@ import {
     type DomainCheckResult,
     type HashCheckResult,
 } from "@/lib/ti/types";
+import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
 import { PivotContext } from "./primitives";
+import { LayerStack } from "./layers";
 import { VerdictHero } from "./verdict";
 import { SourceBreakdown } from "./sources";
 import { SourceHealthNotice } from "./activity";
@@ -136,6 +138,63 @@ function DomainResults({
     );
 }
 
+const URL_SECTIONS: NavItem[] = [
+    { id: "layers", label: "Layers" },
+    { id: "research", label: "Research" },
+    { id: "sources", label: "Sources" },
+];
+
+/**
+ * A URL result leads with the layer stack rather than a single hero, because
+ * the headline is meaningless without the layer it came from. Sources are
+ * grouped per layer for the same reason: forty rows in one list would hide
+ * which of the three indicators each row is actually about.
+ */
+function UrlResults({
+    result,
+    onRefresh,
+    research,
+}: Readonly<{
+    result: UrlCheckResult;
+    onRefresh: () => void;
+    research: ResearchStreamState;
+}>) {
+    const LAYER_TITLE = {
+        url: "the URL",
+        domain: "the host",
+        ip: "the address",
+    } as const;
+    return (
+        <div className="mt-5 space-y-5">
+            <Section id="layers">
+                <LayerStack result={result} onRefresh={onRefresh} />
+            </Section>
+            <SectionNav items={URL_SECTIONS} />
+            <Section id="research">
+                <ResearchCard result={result} research={research} />
+            </Section>
+            <Section id="sources">
+                <div className="space-y-8">
+                    {result.layers
+                        .filter((layer) => layer.sources.length > 0)
+                        .map((layer) => (
+                            <div key={layer.kind}>
+                                <p className="mb-3 font-mono text-[11px] tracking-[0.14em] text-foreground/55 uppercase">
+                                    Sources for {LAYER_TITLE[layer.kind]}
+                                </p>
+                                <SourceBreakdown
+                                    sources={layer.sources}
+                                    indicator={layer.indicator}
+                                    kind={layer.kind}
+                                />
+                            </div>
+                        ))}
+                </div>
+            </Section>
+        </div>
+    );
+}
+
 function HashResults({
     result,
     onRefresh,
@@ -179,14 +238,18 @@ export default function CheckResults({
     onPivot,
     research,
 }: Readonly<{
-    result: AnyCheckResult;
+    result: AnyCheckResult | UrlCheckResult;
     onRefresh: () => void;
     /** Launch a fresh check for a related indicator clicked within the result. */
     onPivot?: (value: string) => void;
     /** Progressive live-research state, fetched in parallel with the main check. */
     research: ResearchStreamState;
 }>) {
-    const body = isHashResult(result) ? (
+    // Checked first: a URL result is the most specific shape, and the other
+    // guards would not recognize it.
+    const body = isUrlResult(result) ? (
+        <UrlResults result={result} onRefresh={onRefresh} research={research} />
+    ) : isHashResult(result) ? (
         <HashResults result={result} onRefresh={onRefresh} research={research} />
     ) : isDomainResult(result) ? (
         <DomainResults result={result} onRefresh={onRefresh} research={research} />

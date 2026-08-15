@@ -16,6 +16,8 @@ import {
     isDomainResult,
     isHashResult,
 } from "@/lib/ti/types";
+import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
+import { parseUrl } from "@/lib/url";
 import {
     researchLinks,
     type ResearchCert,
@@ -501,16 +503,24 @@ export function ResearchCard({
     result,
     research,
 }: Readonly<{
-    result: AnyCheckResult;
+    result: AnyCheckResult | UrlCheckResult;
     research: ResearchStreamState;
 }>) {
     const [copied, copy] = useCopied();
 
-    const { indicator, kind } = isHashResult(result)
-        ? { indicator: result.hash, kind: "hash" as const }
-        : isDomainResult(result)
-          ? { indicator: result.domain, kind: "domain" as const }
-          : { indicator: result.ip, kind: "ip" as const };
+    // A URL researches its host as a domain: no provider supports a url kind,
+    // and this keeps the card's header and links agreeing with the stream the
+    // page actually requested.
+    const { indicator, kind } = isUrlResult(result)
+        ? {
+              indicator: parseUrl(result.url)?.host ?? result.url,
+              kind: "domain" as const,
+          }
+        : isHashResult(result)
+          ? { indicator: result.hash, kind: "hash" as const }
+          : isDomainResult(result)
+            ? { indicator: result.domain, kind: "domain" as const }
+            : { indicator: result.ip, kind: "ip" as const };
 
     const sections = researchLinks(indicator, kind);
 
