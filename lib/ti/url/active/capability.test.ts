@@ -1,0 +1,110 @@
+import { describe, expect, it } from "vitest";
+import { analyzeDom, EMPTY_CAPABILITY } from "@/lib/ti/url/active/capability";
+
+const PAGE = "https://secure-login.ms-verify.top/auth/o365";
+
+describe("analyzeDom", () => {
+  it("finds a password field however the attribute is written", () => {
+    for (const markup of [
+      '<input type="password" name="p">',
+      "<input type='password'>",
+      "<input type=password>",
+      '<input NAME="p" TYPE="PASSWORD" class="x">',
+    ]) {
+      expect(analyzeDom(markup, PAGE).passwordField).toBe(true);
+    }
+  });
+
+  it("reports no password field rather than guessing when there is none", () => {
+    const cap = analyzeDom('<input type="text" name="q">', PAGE);
+    expect(cap.passwordField).toBe(false);
+  });
+
+  it("names a form that posts to a different site", () => {
+    const cap = analyzeDom(
+      '<form action="https://collect.ru/gate.php" method="post"></form>',
+      PAGE,
+    );
+    expect(cap.forms).toEqual([
+      { action: "https://collect.ru/gate.php", host: "collect.ru", crossDomain: true },
+    ]);
+  });
+
+  it("does not call a subdomain of the same site cross-domain", () => {
+    // api.example.com receiving a post from www.example.com is one site, and
+    // calling it cross-domain would cry wolf on ordinary architecture.
+    const cap = analyzeDom(
+      '<form action="https://api.example.com/login"></form>',
+      "https://www.example.com/signin",
+    );
+    expect(cap.forms[0].crossDomain).toBe(false);
+  });
+
+  it("resolves relative and protocol-relative actions against the page", () => {
+    const cap = analyzeDom(
+      '<form action="/submit"></form><form action="//evil.test/x"></form>',
+      PAGE,
+    );
+    expect(cap.forms[0]).toEqual({
+      action: "https://secure-login.ms-verify.top/submit",
+      host: "secure-login.ms-verify.top",
+      crossDomain: false,
+    });
+    expect(cap.forms[1].crossDomain).toBe(true);
+  });
+
+  it("treats a form with no action as posting to itself", () => {
+    const cap = analyzeDom("<form method=post></form>", PAGE);
+    expect(cap.forms[0].crossDomain).toBe(false);
+    expect(cap.forms[0].action).toBe(PAGE);
+  });
+
+  it("keeps a non-http action visible without claiming it is cross-domain", () => {
+    // A mailto: action is worth showing, but "cross-domain" is a claim about
+    // hosts and there is no host here to compare.
+    const cap = analyzeDom('<form action="mailto:drop@evil.test"></form>', PAGE);
+    expect(cap.forms[0]).toEqual({
+      action: "mailto:drop@evil.test",
+      crossDomain: false,
+    });
+  });
+
+  it("collects links to files that execute when opened", () => {
+    const cap = analyzeDom(
+      `<a href="https://cdn.evil.test/invoice.exe">invoice</a>
+       <a href="/setup.msi">setup</a>
+       <a href="https://evil.test/pay.apk?v=2">apk</a>
+       <a href="https://good.test/report.pdf">pdf</a>
+       <a href="/about">about</a>`,
+      PAGE,
+    );
+    expect(cap.downloadLinks).toEqual([
+      "https://cdn.evil.test/invoice.exe",
+      "https://secure-login.ms-verify.top/setup.msi",
+      "https://evil.test/pay.apk?v=2",
+    ]);
+  });
+
+  it("makes no claims about an empty document", () => {
+    // The page loaded and held nothing we look for. That is different from the
+    // DOM being unreadable, which carries an error instead.
+    expect(analyzeDom("", PAGE)).toEqual(EMPTY_CAPABILITY);
+  });
+
+  it("survives markup that does not parse as anything", () => {
+    const cap = analyzeDom("<<>><form action=", PAGE);
+    expect(cap.passwordField).toBe(false);
+    expect(cap.error).toBeUndefined();
+  });
+
+  it("deduplicates repeated form targets and download links", () => {
+    const cap = analyzeDom(
+      `<form action="https://collect.ru/a"></form>
+       <form action="https://collect.ru/a"></form>
+       <a href="https://evil.test/x.exe"></a><a href="https://evil.test/x.exe"></a>`,
+      PAGE,
+    );
+    expect(cap.forms).toHaveLength(1);
+    expect(cap.downloadLinks).toHaveLength(1);
+  });
+});

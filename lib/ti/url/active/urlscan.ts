@@ -1,6 +1,7 @@
 import { errorMessage, getJson, isTimeout, postJson } from "../../http";
 import type { ActiveScan, ActiveVerdict, ScanVisibility } from "./types";
 import { distillResult } from "./detail";
+import { fetchCapability } from "./capability";
 
 const SUBMIT_URL = "https://urlscan.io/api/v1/scan/";
 const RESULT_URL = "https://urlscan.io/api/v1/result";
@@ -27,7 +28,7 @@ interface ResultResponse {
   };
   page?: { url?: string; ip?: string; asn?: string; server?: string };
   lists?: { domains?: string[] };
-  task?: { screenshotURL?: string };
+  task?: { screenshotURL?: string; domURL?: string };
 }
 
 /** Read a completed scan's payload. Absent blocks mean "not reported", which is
@@ -142,7 +143,22 @@ export async function pollScan(
       signal,
       { "API-Key": apiKey },
     );
-    return pollOutcome(scan, status, data);
+    const outcome = pollOutcome(scan, status, data);
+    // Read the DOM once, at the moment the scan completes. It does not change
+    // afterwards, and reading the scanner's copy touches the target zero times.
+    const domUrl = data?.task?.domURL;
+    if (outcome.status === "done" && domUrl) {
+      return {
+        ...outcome,
+        capability: await fetchCapability(
+          domUrl,
+          outcome.verdict?.finalUrl ?? scan.target,
+          { "API-Key": apiKey },
+          signal,
+        ),
+      };
+    }
+    return outcome;
   } catch (err) {
     // Still running, with the uuid intact: a network hiccup while polling says
     // nothing about the scan itself.

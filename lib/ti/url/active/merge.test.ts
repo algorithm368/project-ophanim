@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeScans } from "@/lib/ti/url/active/merge";
+import type { ScanCapability } from "@/lib/ti/url/active/capability";
 import type { ScanDetail } from "@/lib/ti/url/active/detail";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
 
@@ -125,5 +126,81 @@ describe("mergeScans", () => {
       "http://1.2.3.4/",
       "https://1.2.3.4/",
     ]);
+  });
+});
+
+describe("mergeScans capability", () => {
+  const cap = (over: Partial<ScanCapability> = {}): ScanCapability => ({
+    passwordField: false,
+    forms: [],
+    downloadLinks: [],
+    ...over,
+  });
+
+  it("says the DOM was not read rather than reporting nothing found", () => {
+    // The difference the spec insists on: "form analysis unavailable", never
+    // "no password field", when nobody managed to look.
+    const [merged] = mergeScans([
+      scan({ engine: "urlscan", detail: detail() }),
+    ]);
+    expect(merged.capability.passwordField).toBe(false);
+    expect(merged.capability.error).toBeTruthy();
+  });
+
+  it("takes a password field seen by either engine as seen", () => {
+    // One engine rendering the form and the other not is exactly what a kit
+    // that fingerprints its visitor produces. Presence is the finding.
+    const [merged] = mergeScans([
+      scan({ engine: "urlscan", detail: detail(), capability: cap({ passwordField: true }) }),
+      scan({ engine: "cloudflare", detail: detail(), capability: cap() }),
+    ]);
+    expect(merged.capability.passwordField).toBe(true);
+    expect(merged.capability.error).toBeUndefined();
+  });
+
+  it("unions form targets and download links, without duplicates", () => {
+    const [merged] = mergeScans([
+      scan({
+        engine: "urlscan",
+        detail: detail(),
+        capability: cap({
+          forms: [{ action: "https://collect.ru/a", host: "collect.ru", crossDomain: true }],
+          downloadLinks: ["https://evil.test/x.exe"],
+        }),
+      }),
+      scan({
+        engine: "cloudflare",
+        detail: detail(),
+        capability: cap({
+          forms: [
+            { action: "https://collect.ru/a", host: "collect.ru", crossDomain: true },
+            { action: "https://evil.test/b", host: "evil.test", crossDomain: true },
+          ],
+          downloadLinks: ["https://evil.test/x.exe"],
+        }),
+      }),
+    ]);
+    expect(merged.capability.forms.map((f) => f.action)).toEqual([
+      "https://collect.ru/a",
+      "https://evil.test/b",
+    ]);
+    expect(merged.capability.downloadLinks).toEqual(["https://evil.test/x.exe"]);
+  });
+
+  it("drops one engine's DOM error when the other engine read it", () => {
+    const [merged] = mergeScans([
+      scan({ engine: "urlscan", detail: detail(), capability: cap({ error: "DOM unavailable, HTTP 404" }) }),
+      scan({ engine: "cloudflare", detail: detail(), capability: cap({ passwordField: true }) }),
+    ]);
+    expect(merged.capability.error).toBeUndefined();
+    expect(merged.capability.passwordField).toBe(true);
+  });
+
+  it("keeps the error when every engine failed to read the DOM", () => {
+    const [merged] = mergeScans([
+      scan({ engine: "urlscan", detail: detail(), capability: cap({ error: "DOM unavailable, HTTP 404" }) }),
+      scan({ engine: "cloudflare", detail: detail(), capability: cap({ error: "DOM fetch timed out" }) }),
+    ]);
+    expect(merged.capability.error).toBe("DOM unavailable, HTTP 404");
   });
 });

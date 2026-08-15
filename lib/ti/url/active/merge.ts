@@ -1,3 +1,4 @@
+import type { FormTarget, ScanCapability } from "./capability";
 import type { ScanDetail } from "./detail";
 import type { ScanEngine } from "./engines";
 import type { ActiveScan } from "./types";
@@ -19,6 +20,10 @@ export interface MergedScan {
   /** Engines that produced a finished scan. */
   engines: ScanEngine[];
   detail: ScanDetail;
+  /** What the captured page can do, across both engines. Carries an error when
+   *  no engine managed to read a DOM, so the UI can say the analysis is
+   *  unavailable instead of reporting an absence it never observed. */
+  capability: ScanCapability;
   disagreements: EngineDisagreement[];
   /** Engines that ran but did not finish, named rather than dropped. */
   incomplete: { engine: ScanEngine; status: string; error?: string }[];
@@ -128,6 +133,46 @@ function mergedDetail(finished: Finished[]): ScanDetail {
   return out as unknown as ScanDetail;
 }
 
+/**
+ * Fold the per-engine DOM readings into one.
+ *
+ * A password field either engine rendered counts as seen: a kit that shows its
+ * form to one visitor and not another is the case this whole feature exists to
+ * catch, so presence beats absence. An error survives only when nobody looked
+ * successfully, because one engine's failed fetch says nothing about a page the
+ * other engine read.
+ */
+function mergedCapability(finished: ActiveScan[]): ScanCapability {
+  const readings = finished
+    .map((scan) => scan.capability)
+    .filter((c): c is ScanCapability => Boolean(c));
+
+  if (readings.length === 0) {
+    return {
+      passwordField: false,
+      forms: [],
+      downloadLinks: [],
+      error: "The page DOM was not read.",
+    };
+  }
+
+  const forms: FormTarget[] = [];
+  const seenForms = new Set<string>();
+  for (const form of readings.flatMap((r) => r.forms)) {
+    if (seenForms.has(form.action)) continue;
+    seenForms.add(form.action);
+    forms.push(form);
+  }
+
+  const succeeded = readings.filter((r) => !r.error);
+  return {
+    passwordField: readings.some((r) => r.passwordField),
+    forms,
+    downloadLinks: [...new Set(readings.flatMap((r) => r.downloadLinks))],
+    ...(succeeded.length === 0 ? { error: readings[0].error } : {}),
+  };
+}
+
 /** One merged reading per scanned target. */
 export function mergeScans(scans: ActiveScan[]): MergedScan[] {
   const byTarget = new Map<string, ActiveScan[]>();
@@ -136,9 +181,11 @@ export function mergeScans(scans: ActiveScan[]): MergedScan[] {
   }
 
   return [...byTarget.entries()].map(([target, group]) => {
-    const finished: Finished[] = group
-      .filter((s) => s.status === "done" && s.detail)
-      .map((s) => ({ engine: s.engine, detail: s.detail as ScanDetail }));
+    const done = group.filter((s) => s.status === "done" && s.detail);
+    const finished: Finished[] = done.map((s) => ({
+      engine: s.engine,
+      detail: s.detail as ScanDetail,
+    }));
     const incomplete = group
       .filter((s) => s.status !== "done" || !s.detail)
       .map((s) => ({
@@ -151,6 +198,7 @@ export function mergeScans(scans: ActiveScan[]): MergedScan[] {
       target,
       engines: finished.map((f) => f.engine),
       detail: mergedDetail(finished),
+      capability: mergedCapability(done),
       disagreements: disagreementsIn(finished),
       incomplete,
     };

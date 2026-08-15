@@ -1,5 +1,6 @@
 import { errorMessage, getJson, isTimeout, postJson } from "../../http";
 import { distillCloudflareResult } from "./cloudflare-detail";
+import { fetchCapability } from "./capability";
 import type { ActiveScan, ActiveVerdict, ScanVisibility } from "./types";
 
 const BASE = "https://api.cloudflare.com/client/v4/accounts";
@@ -150,7 +151,22 @@ export async function pollCloudflareScan(
       signal,
       { Authorization: `Bearer ${token}` },
     );
-    return cfPollOutcome(scan, status, data);
+    const outcome = cfPollOutcome(scan, status, data);
+    // Cloudflare's domURL is an authenticated API endpoint, so it is read here
+    // with the token rather than handed to the browser.
+    const domUrl = str(obj(obj(data).task).domURL);
+    if (outcome.status === "done" && domUrl) {
+      return {
+        ...outcome,
+        capability: await fetchCapability(
+          domUrl,
+          outcome.verdict?.finalUrl ?? scan.target,
+          { Authorization: `Bearer ${token}` },
+          signal,
+        ),
+      };
+    }
+    return outcome;
   } catch (err) {
     return { ...scan, status: "running", error: errorMessage(err) };
   }

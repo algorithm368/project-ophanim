@@ -1,3 +1,4 @@
+import type { ScanCapability } from "./capability";
 import type { ScanDetail } from "./detail";
 import type { ScanEngine } from "./engines";
 
@@ -32,6 +33,10 @@ export interface ActiveScan {
   /** The teardown, distilled. Drives the dedicated scan page; the inline card
    *  reads only `verdict`. */
   detail?: ScanDetail;
+  /** What the captured page can do. Computed once, server-side, when the scan
+   *  completes, because the DOM does not change afterwards and re-reading it on
+   *  every page view would cost a round trip for no new information. */
+  capability?: ScanCapability;
   error?: string;
 }
 
