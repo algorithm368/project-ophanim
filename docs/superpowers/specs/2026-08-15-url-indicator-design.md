@@ -239,6 +239,27 @@ lives at `POST /api/scan-url` under its own `ti:urlscan:v1:` cache prefix, and i
 does not modify the three passive layers' scores. A cached result and a history entry that silently change
 meaning after the fact would be worse than a second, clearly labelled verdict.
 
+### Where it can be triggered
+
+An earlier draft put the button on URL results only. It belongs on all three,
+because the question "what does this actually serve right now" is asked just as
+often of a bare domain or address as of a full URL, and the passive layers
+cannot answer it for any of them.
+
+| Result page | What gets submitted |
+| --- | --- |
+| URL | the canonical URL itself |
+| Domain | `https://<domain>/` |
+| IP | `http://<ip>/` **and** `https://<ip>/`, as two scans |
+
+The IP case submits both because a bare address has no scheme to infer one
+from, and the two ports routinely serve different things: a redirect stub on 80
+and the real application on 443, or a default vhost on 443 while 80 hosts the
+payload. Submitting only one would report half the host and look complete.
+
+Each submission still spends quota, so the two IP scans are one confirmation and
+two entries, not two prompts.
+
 Consent and OPSEC:
 
 - The confirmation card shows the exact string that will be sent, **including
