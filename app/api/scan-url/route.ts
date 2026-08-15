@@ -7,6 +7,7 @@ import {
   pollCloudflareScan,
   submitCloudflareScan,
 } from "@/lib/ti/url/active/cloudflare";
+import { rememberBatch } from "@/lib/ti/url/active/scan-history";
 import { urlIndicatorProblem } from "@/lib/ti/url/validate";
 import type { ActiveScan, ActiveScanBatch } from "@/lib/ti/url/active/types";
 
@@ -81,9 +82,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (read instanceof Response) return read;
   const { indicator, kind } = read;
 
-  if (body.force !== true) {
-    const existing = await getCachedScanBatch(indicator);
-    if (existing) return Response.json({ ...existing, reused: true });
+  const existing = await getCachedScanBatch(indicator);
+  if (existing && body.force !== true) {
+    return Response.json({ ...existing, reused: true });
   }
 
   const targets = scanTargetsFor(indicator, kind);
@@ -122,11 +123,15 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
   const scans = await Promise.all(jobs);
 
-  const batch: ActiveScanBatch = {
+  // A rescan is the only thing that discards a stored scan, so this is where
+  // the reading being replaced gets its one chance to survive as a history
+  // line. A phishing site changes fast, and "it said something different three
+  // days ago" is evidence in its own right.
+  const batch = rememberBatch(existing, {
     indicator,
     submittedAt: new Date().toISOString(),
     scans,
-  };
+  });
   // Stored even when every submission failed, so a retry is a deliberate act
   // rather than something a page refresh does on the analyst's behalf.
   await setCachedScanBatch(indicator, batch);

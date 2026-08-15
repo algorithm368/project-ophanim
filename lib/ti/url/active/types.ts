@@ -56,9 +56,25 @@ export interface ActiveVerdict {
   server?: string;
 }
 
+/**
+ * An earlier scan, kept as a line rather than an archive.
+ *
+ * A phishing site changes fast, so "scanned before, and it said something
+ * different then" is itself evidence. Only what a history line needs is kept:
+ * when, what it said, and how to reopen the provider's report.
+ */
+export interface PastScan {
+  at: string;
+  malicious: boolean;
+  engines: ScanEngine[];
+  reports: { engine: ScanEngine; uuid?: string; resultUrl?: string }[];
+}
+
 /** One submission batch: an indicator, and the scans it produced. */
 export interface ActiveScanBatch {
   indicator: string;
   submittedAt: string;
   scans: ActiveScan[];
+  /** Earlier scans of this indicator, newest first. Only a rescan adds one. */
+  previous?: PastScan[];
 }
