@@ -1,3 +1,4 @@
+import { byCodeUnit } from "./sort";
 import type {
   CertificateRecord,
   PassiveDnsRecord,
@@ -60,7 +61,7 @@ export function collectSubdomains(
   const uniq = [
     ...new Set(all.map((s) => s.trim().toLowerCase()).filter(Boolean)),
   ];
-  uniq.sort();
+  uniq.sort(byCodeUnit);
   return uniq.slice(0, MAX_SUBDOMAINS);
 }
 

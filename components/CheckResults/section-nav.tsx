@@ -45,7 +45,7 @@ function jumpTo(e: MouseEvent<HTMLAnchorElement>, id: string) {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+function NavLink({ item, active }: Readonly<{ item: NavItem; active: boolean }>) {
     const Icon = ICONS[item.id] ?? Circle;
     return (
         <a
@@ -73,7 +73,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
  * icon strip so it never overlaps the content column. Result cards self-hide
  * when empty, so items whose section rendered nothing are pruned.
  */
-export function SectionNav({ items }: { items: NavItem[] }) {
+export function SectionNav({ items }: Readonly<{ items: NavItem[] }>) {
     const candidateKey = items.map((i) => i.id).join(",");
     const [present, setPresent] = useState<NavItem[]>(items);
     const [active, setActive] = useState<string | null>(items[0]?.id ?? null);

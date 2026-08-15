@@ -196,6 +196,26 @@ function blocklistEvidence(result: CheckResult): string[] {
   return out;
 }
 
+/**
+ * "Since <date> <sparkline> rising|stable/declining", or "" when there are
+ * fewer than two snapshots to draw a trend from.
+ *
+ * Lifted out of buildThreatActivity, which the endpoint guards pushed to a
+ * cognitive complexity of 16 against a limit of 15 (typescript:S3776). Naming
+ * the direction also unnests the ternary that used to sit inside the template
+ * literal (typescript:S3358).
+ */
+function reputationTrend(history: CheckResult["history"]): string {
+  const snapshots = history ?? [];
+  const oldest = snapshots[0];
+  const newest = snapshots.at(-1);
+  if (snapshots.length < 2 || !oldest || !newest) return "";
+  const direction =
+    newest.riskScore > oldest.riskScore ? "rising" : "stable/declining";
+  const spark = sparkline(snapshots.map((h) => h.riskScore));
+  return `Since ${isoDate(oldest.checkedAt)} ${spark} ${direction}`;
+}
+
 export function buildThreatActivity(result: CheckResult): DossierGroup | null {
   const gn = findFinding(result, "greynoise");
   const scanning =
@@ -224,13 +244,7 @@ export function buildThreatActivity(result: CheckResult): DossierGroup | null {
   const { threat: shodanThreatTags } = shodanTagSplit(result);
   const hostTags = shodanThreatTags.length ? shodanThreatTags.join(", ") : "";
 
-  const history = result.history ?? [];
-  const rep =
-    history.length >= 2
-      ? `Since ${isoDate(history[0].checkedAt)} ${sparkline(history.map((h) => h.riskScore))} ${
-          history[history.length - 1].riskScore > history[0].riskScore ? "rising" : "stable/declining"
-        }`
-      : "";
+  const rep = reputationTrend(result.history);
 
   return group("threat", "Threat activity", [
     scanning ? { label: "Observed activity", value: scanning } : null,

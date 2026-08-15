@@ -39,7 +39,7 @@ import type { IconType } from "./types";
 /** A flat group of related fields: a small uppercase label over hairline-
  *  separated rows. The minimal, borderless replacement for the old bento cell —
  *  the profile reads as one document instead of a grid of boxes. */
-function Group({ label, children }: { label: string; children: ReactNode }) {
+function Group({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
     return (
         <div className="space-y-1">
             <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
@@ -64,12 +64,12 @@ function IdentityHeader({
     label,
     desc,
     tone,
-}: {
+}: Readonly<{
     icon?: IconType;
     label: string;
     desc?: string;
     tone?: string;
-}) {
+}>) {
     return (
         <div className="flex items-start gap-3">
             {Icon && (
@@ -101,7 +101,7 @@ function IdentityHeader({
     );
 }
 
-export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
+export function DomainProfileCard({ result }: Readonly<{ result: DomainCheckResult }>) {
     const ctx = result.context;
     const resolves =
         (ctx?.resolvedIps?.length ?? 0) > 0 || (ctx?.ipv6?.length ?? 0) > 0;
@@ -283,7 +283,7 @@ export function DomainProfileCard({ result }: { result: DomainCheckResult }) {
     );
 }
 
-function CopyHashButton({ value }: { value: string }) {
+function CopyHashButton({ value }: Readonly<{ value: string }>) {
     const [copied, copy] = useCopied();
     return (
         <Button
@@ -308,9 +308,9 @@ function CopyHashButton({ value }: { value: string }) {
  *  hollow ring for an unknown one, so the verdict reads at a glance. */
 export function StatusDot({
     kind,
-}: {
+}: Readonly<{
     kind: "malicious" | "clean" | "known" | "unknown";
-}) {
+}>) {
     return (
         <span
             aria-hidden
@@ -335,7 +335,7 @@ export function HashRow({
     narrow = false,
     action,
     children,
-}: {
+}: Readonly<{
     label: string;
     hint?: string;
     mono?: boolean;
@@ -344,7 +344,7 @@ export function HashRow({
     narrow?: boolean;
     action?: ReactNode;
     children: ReactNode;
-}) {
+}>) {
     // Fixed row height so parallel columns (Identity / Fingerprints) share the
     // same horizontal gridlines even when only some rows carry a copy button.
     return (
@@ -375,7 +375,7 @@ export function HashRow({
 }
 
 /** Small uppercase mono lead for a sub-section inside the identity card. */
-function SubLabel({ children }: { children: ReactNode }) {
+function SubLabel({ children }: Readonly<{ children: ReactNode }>) {
     return (
         <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             {children}
@@ -394,12 +394,12 @@ function Section({
     count,
     defaultOpen = false,
     children,
-}: {
+}: Readonly<{
     title: string;
     count?: number;
     defaultOpen?: boolean;
     children: ReactNode;
-}) {
+}>) {
     return (
         <details open={defaultOpen} className="group">
             <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 [&::-webkit-details-marker]:hidden">
@@ -425,7 +425,7 @@ function Section({
  */
 function humanizeCapability(label: string): string {
     return /^[a-z0-9]+(_[a-z0-9]+)+$/i.test(label)
-        ? label.replace(/_/g, " ")
+        ? label.replaceAll("_", " ")
         : label;
 }
 
@@ -441,7 +441,7 @@ function mitreUrl(id: string): string {
 }
 
 /** A technique id that links out to its MITRE ATT&CK page. */
-function MitreLink({ id, className }: { id: string; className?: string }) {
+function MitreLink({ id, className }: Readonly<{ id: string; className?: string }>) {
     return (
         <a
             href={mitreUrl(id)}
@@ -466,11 +466,11 @@ function ExpandableList<T>({
     items,
     cap,
     children,
-}: {
+}: Readonly<{
     items: T[];
     cap: number;
     children: (shown: T[]) => ReactNode;
-}) {
+}>) {
     const [expanded, setExpanded] = useState(false);
     const shown = expanded ? items : items.slice(0, cap);
     const extra = items.length - shown.length;
@@ -495,7 +495,7 @@ function ExpandableList<T>({
  * so analysts can lift the IOC. (Pivoting contacted infra lives on the Related
  * indicators card; here we keep the readout plain.)
  */
-function RuntimeLine({ item }: { item: string }) {
+function RuntimeLine({ item }: Readonly<{ item: string }>) {
     const [copied, copy] = useCopied();
     return (
         <li className="group flex min-w-0 items-center gap-1.5">
@@ -592,7 +592,7 @@ const RUNTIME_GROUPS: {
  * annotated with what it is for, so imports read as capabilities. Static PE data
  * (present even when the sandbox report is thin), capability-revealing DLLs first.
  */
-function DllImports({ dlls }: { dlls: { name: string; count?: number }[] }) {
+function DllImports({ dlls }: Readonly<{ dlls: { name: string; count?: number }[] }>) {
     return (
         <ExpandableList items={dlls} cap={8}>
             {(shown) => (
@@ -629,9 +629,9 @@ function DllImports({ dlls }: { dlls: { name: string; count?: number }[] }) {
 /** "What it did when it ran": VT sandbox artifacts as a compact grouped readout. */
 function RuntimeBehavior({
     behavior,
-}: {
+}: Readonly<{
     behavior: NonNullable<HashContext["sandboxBehavior"]>;
-}) {
+}>) {
     const groups = RUNTIME_GROUPS.map((g) => ({
         ...g,
         items: behavior[g.key],
@@ -721,7 +721,7 @@ function deriveCategories(labels: string[]): string[] {
 }
 
 /** `N of M flagged` engines chip, shown in the identity header. */
-function EnginesChip({ malicious, total }: { malicious: number; total: number }) {
+function EnginesChip({ malicious, total }: Readonly<{ malicious: number; total: number }>) {
     return (
         <code className="ml-auto shrink-0 rounded-sm border border-foreground/15 bg-muted/60 px-2 py-0.5 font-mono text-[11px] font-semibold tracking-tight text-foreground/80">
             {malicious} / {total} flagged
@@ -729,7 +729,7 @@ function EnginesChip({ malicious, total }: { malicious: number; total: number })
     );
 }
 
-export function HashProfileCard({ result }: { result: HashCheckResult }) {
+export function HashProfileCard({ result }: Readonly<{ result: HashCheckResult }>) {
     const ctx = result.context;
     const hasData = result.sources.some(
         (s) => s.status === "ok" && s.score !== undefined,
@@ -894,7 +894,7 @@ export function HashProfileCard({ result }: { result: HashCheckResult }) {
                                 key={t}
                                 className="inline-flex items-center rounded-md border border-foreground/15 bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground/75"
                             >
-                                {t.toLowerCase().replace(/_/g, " ")}
+                                {t.toLowerCase().replaceAll("_", " ")}
                             </span>
                         ))}
                     </div>

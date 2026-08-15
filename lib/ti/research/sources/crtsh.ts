@@ -1,4 +1,5 @@
 import { errorMessage, getJson, isTimeout } from "../../http";
+import { byCodeUnit } from "../../sort";
 import type {
   ResearchCert,
   ResearchData,
@@ -58,7 +59,7 @@ export function parseCrtsh(
 
   return {
     certs,
-    subdomains: [...subdomains].sort().slice(0, MAX_SUBDOMAINS),
+    subdomains: [...subdomains].sort(byCodeUnit).slice(0, MAX_SUBDOMAINS),
   };
 }
 

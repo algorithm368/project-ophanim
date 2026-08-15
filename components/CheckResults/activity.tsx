@@ -8,7 +8,7 @@ import { type ResultLike } from "@/lib/ti/narrative";
  * source that attempted a request failed. Without this the verdict reads
  * "inconclusive/clean" and looks like a real result rather than an outage.
  */
-export function SourceHealthNotice({ result }: { result: ResultLike }) {
+export function SourceHealthNotice({ result }: Readonly<{ result: ResultLike }>) {
     const okCount = result.sources.filter((s) => s.status === "ok").length;
     if (okCount > 0 || result.stats.queried === 0) return null;
 

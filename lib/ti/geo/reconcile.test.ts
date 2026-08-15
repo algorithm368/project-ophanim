@@ -102,7 +102,7 @@ describe("reconcileGeo — coordinates", () => {
       r("b", { lat: 34.05, lon: -118.24 }),
     ])!;
     expect(res.coordinates!.confidence).toBe("low");
-    expect(res.coordinates!.alternatives!.length).toBe(2);
+    expect(res.coordinates!.alternatives!).toHaveLength(2);
   });
 
   it("a single coordinate is low confidence", () => {
@@ -281,7 +281,7 @@ describe("reconcileGeo — city proximity clustering", () => {
       r("ip-api", { city: "Berlin", lat: 52.52, lon: 13.4 }),
       r("ipinfo", { city: "Munich", lat: 48.14, lon: 11.58 }),
     ])!;
-    expect(res.city!.alternatives!.length).toBe(1);
+    expect(res.city!.alternatives!).toHaveLength(1);
   });
 });
 

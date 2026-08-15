@@ -1,4 +1,5 @@
 import type {
+  AnyCheckResult,
   CheckResult,
   DomainCheckResult,
   HashCheckResult,
@@ -20,13 +21,13 @@ function isRoutableRelation(r: RelatedIndicator): boolean {
 export type { IndicatorType, RelatedIndicator };
 
 function isDomainResult(
-  r: CheckResult | DomainCheckResult | HashCheckResult,
+  r: AnyCheckResult,
 ): r is DomainCheckResult {
   return "domain" in r;
 }
 
 function isHashResult(
-  r: CheckResult | DomainCheckResult | HashCheckResult,
+  r: AnyCheckResult,
 ): r is HashCheckResult {
   return "hash" in r;
 }
@@ -157,7 +158,7 @@ export function hashRelations(result: HashCheckResult): RelatedIndicator[] {
 
 /** Relations contributed by each source's lookup (e.g. VirusTotal resolutions). */
 function sourceRelations(
-  result: CheckResult | DomainCheckResult | HashCheckResult,
+  result: AnyCheckResult,
 ): RelatedIndicator[] {
   const out: RelatedIndicator[] = [];
   for (const s of result.sources) {
@@ -169,7 +170,7 @@ function sourceRelations(
 
 /** The focused indicator's own value + type, plus every indicator it links to. */
 export function relationsFor(
-  result: CheckResult | DomainCheckResult | HashCheckResult,
+  result: AnyCheckResult,
 ): { value: string; type: IndicatorType; related: RelatedIndicator[] } {
   let value: string;
   let type: IndicatorType;

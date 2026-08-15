@@ -59,7 +59,7 @@ export function parseFamilyFromDetections(names: string[]): string | undefined {
 
   const entries = [...stats.values()];
   const pick = (pool: typeof entries) =>
-    pool.sort(
+    pool.toSorted(
       (a, b) =>
         b.count - a.count ||
         b.original.length - a.original.length ||
@@ -78,6 +78,6 @@ export function parseFamilyFromDetections(names: string[]): string | undefined {
  * parse it out of the unioned detection labels.
  */
 export function resolveFamily(ctx: HashContext): string | undefined {
-  if (ctx.malwareFamily && ctx.malwareFamily.trim()) return ctx.malwareFamily.trim();
+  if (ctx.malwareFamily?.trim()) return ctx.malwareFamily.trim();
   return parseFamilyFromDetections(ctx.detectionNames ?? []);
 }

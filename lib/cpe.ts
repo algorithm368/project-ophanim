@@ -18,7 +18,7 @@ function clean(part?: string): string | undefined {
     if (!part) return undefined;
     const v = part
         .replace(/\\(.)/g, "$1")
-        .replace(/_/g, " ")
+        .replaceAll("_", " ")
         .trim();
     return v === "" || v === "*" || v === "-" ? undefined : v;
 }

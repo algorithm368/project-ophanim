@@ -25,13 +25,20 @@ export function normalizeMxHosts(mx: string[]): string[] {
  * returned unchanged, as is anything that fails to parse.
  */
 export function decodeCaa(record: string): string {
-  const m = record.match(/^\\#\s+\d+\s+([0-9a-fA-F\s]+)$/);
+  const m = /^\\#\s+\d+\s+([0-9a-fA-F][0-9a-fA-F\s]*)$/.exec(record);
   if (!m) return record;
-  const bytes = m[1].trim().split(/\s+/).map((h) => parseInt(h, 16));
-  if (bytes.length < 2 || bytes.some((b) => Number.isNaN(b))) return record;
+  const bytes = m[1]
+    .trim()
+    .split(/\s+/)
+    .map((h) => Number.parseInt(h, 16));
+  // Every element must be a real byte. NaN is covered by isInteger, and the
+  // upper bound matters because String.fromCodePoint below throws on values
+  // above 0x10FFFF where the old fromCharCode silently truncated them.
+  if (bytes.length < 2 || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255))
+    return record;
   const tagLen = bytes[1];
-  const tag = String.fromCharCode(...bytes.slice(2, 2 + tagLen));
-  const value = String.fromCharCode(...bytes.slice(2 + tagLen));
+  const tag = String.fromCodePoint(...bytes.slice(2, 2 + tagLen));
+  const value = String.fromCodePoint(...bytes.slice(2 + tagLen));
   const decoded = `${tag} ${value}`.trim();
   return decoded || record;
 }

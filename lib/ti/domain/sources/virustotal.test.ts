@@ -131,6 +131,15 @@ describe("normalizeCategories", () => {
     ).toEqual(["Search engines"]);
   });
 
+  // VT can append more than one vendor annotation. Pinned because the strip is
+  // a loop now rather than one lazy regex, and a single pass would leave the
+  // outer one behind.
+  it("strips every trailing vendor annotation, not just the last", () => {
+    expect(
+      normalizeCategories({ a: "Business (Forcepoint) (BitDefender)" }),
+    ).toEqual(["Business"]);
+  });
+
   it("capitalizes unknown labels and drops blanks", () => {
     expect(normalizeCategories({ a: "weather" })).toEqual(["Weather"]);
     expect(normalizeCategories({ a: "", b: "  " })).toEqual([]);

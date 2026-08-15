@@ -45,7 +45,7 @@ export function ipInfoToGeo(data: IpInfoResponse): GeoContext {
     }
   }
   if (data.org) {
-    const m = data.org.match(/^(AS\d+)\s+(.*)$/);
+    const m = /^(AS\d+)\s+(.*)$/.exec(data.org);
     if (m) {
       geo.asn = m[1];
       geo.asnOrg = m[2];

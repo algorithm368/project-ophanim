@@ -128,11 +128,11 @@ const API = "https://tria.ge/api/v0";
 export function bareHost(raw: string): string {
   const noScheme = raw.replace(/^\w+:\/\//, "").split("/")[0].trim();
   // IPv6 in brackets, optionally with a port: "[2001:db8::1]:443" -> "2001:db8::1".
-  const v6 = noScheme.match(/^\[([^\]]+)\]/);
+  const v6 = /^\[([^\]]+)\]/.exec(noScheme);
   if (v6) return v6[1];
   // host:port (IPv4 or domain; single colon) -> drop the trailing :port.
   // An unbracketed IPv6 has multiple colons and is left intact by [^:]+.
-  const hostPort = noScheme.match(/^([^:]+):\d{1,5}$/);
+  const hostPort = /^([^:]+):\d{1,5}$/.exec(noScheme);
   return hostPort ? hostPort[1] : noScheme;
 }
 
@@ -205,7 +205,7 @@ export const triageSource: TiSource = {
           [
             data.sample?.target,
             ...(data.targets ?? []).map((t) => t.target),
-          ].filter((n): n is string => Boolean(n && n.trim())),
+          ].filter((n): n is string => Boolean(n?.trim())),
         ),
       ];
 

@@ -17,7 +17,7 @@ const LABEL: Record<Confidence, string> = {
 };
 
 /** Small inline chip indicating how trustworthy a reconciled field is. */
-export function ConfidenceChip({ confidence }: { confidence: Confidence }) {
+export function ConfidenceChip({ confidence }: Readonly<{ confidence: Confidence }>) {
   return (
     <span
       title={LABEL[confidence]}
@@ -55,7 +55,7 @@ export function geoConfidenceReason(res: GeoResolution): string {
 }
 
 /** Tappable disclosure of which providers disagreed on a field. */
-export function Disagreement<T>({ field }: { field: ResolvedField<T> }) {
+export function Disagreement<T>({ field }: Readonly<{ field: ResolvedField<T> }>) {
   const [open, setOpen] = useState(false);
   const alts = field.alternatives;
   if (!alts || alts.length === 0) return null;

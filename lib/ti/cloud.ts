@@ -50,7 +50,7 @@ export function cloudProvider(
     // `as` field straight through), so pull just the leading digits rather than
     // `Number()`-parsing the whole string, which yields NaN on that shape.
     const canon = canonicalAsn(asn);
-    const n = canon ? Number(canon.slice(2)) : NaN;
+    const n = canon ? Number(canon.slice(2)) : Number.NaN;
     if (Number.isFinite(n) && CLOUD_BY_ASN[n]) {
       return { name: CLOUD_BY_ASN[n] };
     }

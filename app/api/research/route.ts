@@ -5,7 +5,7 @@ import { runResearch, researchMetasFor } from "@/lib/ti/research/run";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const KINDS: IOCType[] = ["ip", "domain", "hash"];
+const KINDS = new Set<IOCType>(["ip", "domain", "hash"]);
 
 const STREAM_HEADERS = {
   "Content-Type": "application/x-ndjson; charset=utf-8",
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   if (!indicator) {
     return Response.json({ error: "Missing 'indicator'" }, { status: 400 });
   }
-  if (!kind || !KINDS.includes(kind as IOCType)) {
+  if (!kind || !KINDS.has(kind as IOCType)) {
     return Response.json({ error: "Invalid 'kind'" }, { status: 400 });
   }
   const iocKind = kind as IOCType;

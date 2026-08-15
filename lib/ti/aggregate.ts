@@ -58,8 +58,13 @@ function computeFloor(results: SourceResult[]): {
   );
   if (malicious.length === 0) return null;
 
-  const strongest = malicious.reduce((a, b) =>
-    (b.source.weight ?? 1) > (a.source.weight ?? 1) ? b : a,
+  // Seeded with the first element rather than left bare. The guard above
+  // already makes the empty case unreachable, so this changes no behaviour, but
+  // a bare reduce() throws on an empty array and that guard is one edit away
+  // from someone else's refactor.
+  const strongest = malicious.reduce(
+    (a, b) => ((b.source.weight ?? 1) > (a.source.weight ?? 1) ? b : a),
+    malicious[0],
   );
   const highWeight = (strongest.source.weight ?? 1) >= FLOOR_MIN_WEIGHT;
 

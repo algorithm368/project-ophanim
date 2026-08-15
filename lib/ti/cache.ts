@@ -14,6 +14,21 @@ function ttlSeconds(): number {
 // `undefined` = not yet resolved, `null` = no credentials (cache disabled).
 let client: Redis | null | undefined;
 
+/**
+ * Cut an Upstash config error at its "Received: <the url>" tail. That tail is
+ * the part that must never reach the log, because a rediss:// string embeds the
+ * password.
+ *
+ * Exported for its test. It replaces a regex that matched an optional leading
+ * whitespace run before the literal, then everything after it. Scanned from
+ * every offset, that leading run costs quadratic time on a long message with no
+ * tail (typescript:S8786); indexOf does the same job in one pass.
+ */
+export function truncateAtReceived(message: string): string {
+  const at = message.indexOf("Received:");
+  return at === -1 ? message : message.slice(0, at).trimEnd();
+}
+
 /** First value that is set and non-blank; treats "" the same as unset. */
 function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
   for (const value of values) {
@@ -61,7 +76,7 @@ function getClient(): Redis | null {
     const message = err instanceof Error ? err.message : String(err);
     console.error(
       "[ti] cache disabled - invalid Redis config:",
-      message.replace(/\s*Received:[\s\S]*/, ""),
+      truncateAtReceived(message),
     );
     client = null;
   }

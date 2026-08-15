@@ -55,4 +55,17 @@ describe("decodeCaa", () => {
   it("leaves already-textual records unchanged", () => {
     expect(decodeCaa('0 issue "letsencrypt.org"')).toBe('0 issue "letsencrypt.org"');
   });
+
+  // The guard used to reject only NaN, so a token wider than a byte reached
+  // String.fromCharCode and was silently truncated mod 65536. It now has to be
+  // rejected outright, because String.fromCodePoint would throw RangeError on
+  // anything above 0x10FFFF.
+  it("rejects hex tokens that are not bytes rather than truncating them", () => {
+    expect(decodeCaa("\\# 4 00 05 1FFFFFFF 41")).toBe("\\# 4 00 05 1FFFFFFF 41");
+    expect(() => decodeCaa("\\# 4 00 05 1FFFFFFF 41")).not.toThrow();
+  });
+
+  it("still rejects malformed hex", () => {
+    expect(decodeCaa("\\# 2 zz zz")).toBe("\\# 2 zz zz");
+  });
 });

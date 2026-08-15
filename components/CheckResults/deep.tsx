@@ -28,7 +28,7 @@ const EXPANDER =
 
 const CERT_PREVIEW = 6;
 
-function CertificateTable({ certs }: { certs: CertificateRecord[] }) {
+function CertificateTable({ certs }: Readonly<{ certs: CertificateRecord[] }>) {
     const [expanded, setExpanded] = useState(false);
     const shown = expanded ? certs : certs.slice(0, CERT_PREVIEW);
     return (
@@ -71,7 +71,7 @@ function CertificateTable({ certs }: { certs: CertificateRecord[] }) {
 }
 
 /** Certificate transparency + derived subdomains (domain results, crt.sh). */
-export function CertificatesCard({ result }: { result: DomainCheckResult }) {
+export function CertificatesCard({ result }: Readonly<{ result: DomainCheckResult }>) {
     const certs = result.certificates ?? [];
     const subs = result.subdomains ?? [];
     if (certs.length === 0 && subs.length === 0) return null;
@@ -118,9 +118,9 @@ const PDNS_PREVIEW = 8;
  *  "—" columns. */
 export function PassiveDnsCard({
     result,
-}: {
+}: Readonly<{
     result: CheckResult | DomainCheckResult;
-}) {
+}>) {
     const records = result.passiveDns ?? [];
     const [expanded, setExpanded] = useState(false);
     if (records.length === 0) return null;
@@ -182,12 +182,12 @@ function PassiveDnsTable({
     isIp,
     expanded,
     onToggle,
-}: {
+}: Readonly<{
     records: NonNullable<CheckResult["passiveDns"]>;
     isIp: boolean;
     expanded: boolean;
     onToggle: () => void;
-}) {
+}>) {
     const shown = expanded ? records : records.slice(0, PDNS_PREVIEW);
     return (
         <div className="space-y-1.5">

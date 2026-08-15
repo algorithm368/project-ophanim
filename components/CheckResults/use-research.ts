@@ -103,7 +103,7 @@ export function useResearchStream(
                     }
                 }
                 // Mark complete if the stream ended without an explicit done event.
-                setStore((s) => (s && s.key === key && !s.done ? { ...s, done: true } : s));
+                setStore((s) => (s?.key === key && !s.done ? { ...s, done: true } : s));
             } catch {
                 if (!ctrl.signal.aborted) snapshot(true, true);
             }
@@ -117,7 +117,7 @@ export function useResearchStream(
     return {
         metas: current?.metas ?? [],
         results: current?.results ?? {},
-        loading: !current || !current.done,
+        loading: !current?.done,
         started: current != null,
         error: current?.error ?? false,
     };

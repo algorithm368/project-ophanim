@@ -160,6 +160,43 @@ describe("sandboxRuntime", () => {
     expect(isBenignNetHost(undefined)).toBe(false);
   });
 
+  // The host list used to be one alternation with optional groups:
+  // microsoft(\.com)?, google(\.com)?, cloudflare(-dns)?\.com,
+  // akamai(edge|technologies)?\.net, edge(key|suite)\.net and
+  // (global)?g?cdn\.co. Expanding those by hand is the part that could have
+  // dropped a domain, so every variant they generated is pinned here.
+  it("keeps every domain the old optional groups expanded to", () => {
+    for (const host of [
+      "microsoft",
+      "microsoft.com",
+      "google",
+      "google.com",
+      "cloudflare.com",
+      "cloudflare-dns.com",
+      "akamai.net",
+      "akamaiedge.net",
+      "akamaitechnologies.net",
+      "edgekey.net",
+      "edgesuite.net",
+      "cdn.co",
+      "gcdn.co",
+      "globalcdn.co",
+      "globalgcdn.co",
+    ]) {
+      expect(isBenignNetHost(host), host).toBe(true);
+      expect(isBenignNetHost(`sub.${host}`), `sub.${host}`).toBe(true);
+    }
+  });
+
+  // A benign domain as a *prefix* is not a benign host: the old regex anchored
+  // each alternative with (^|\.) and $, and the parent-walk has to match that.
+  it("does not match a benign domain used as a prefix or lookalike", () => {
+    expect(isBenignNetHost("microsoft.com.evil.tld")).toBe(false);
+    expect(isBenignNetHost("notmicrosoft.com")).toBe(false);
+    expect(isBenignNetHost("xcdn.co")).toBe(false);
+    expect(isBenignNetHost("akamai.com")).toBe(false);
+  });
+
   it("caps each group at 8", () => {
     const data: VtBehaviourSummary["data"] = {
       command_executions: Array.from({ length: 20 }, (_, i) => `cmd${i}`),

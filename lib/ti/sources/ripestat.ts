@@ -85,7 +85,7 @@ export const ripeStatSource: TiSource = {
 
       const finding = ripestatFinding(data.data);
       // +1 best-effort call: validate the prefix's RPKI origin for the AS.
-      const asn = (data.data?.asns ?? []).filter(Boolean)[0];
+      const asn = (data.data?.asns ?? []).find(Boolean);
       const prefix = data.data?.prefix;
       const rpkiStatus =
         asn && prefix ? await fetchRpkiStatus(asn, prefix, signal) : undefined;

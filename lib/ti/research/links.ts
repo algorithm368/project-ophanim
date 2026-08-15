@@ -28,7 +28,7 @@ function google(query: string, verbatim = false): string {
  *  `1[.]2[.]3[.]4`). `refangIOC` undoes this on input; here we re-apply it so a
  *  search also catches report mentions that were defanged before publishing. */
 function defang(value: string): string {
-    return value.replace(/\./g, "[.]");
+    return value.replaceAll(".", "[.]");
 }
 
 /** A quoted exact-match group that hits the indicator whether a source wrote it
@@ -47,7 +47,7 @@ function exactGroup(value: string): string {
 function pulsedive(value: string): string {
     const bytes = new TextEncoder().encode(value);
     let bin = "";
-    for (const b of bytes) bin += String.fromCharCode(b);
+    for (const b of bytes) bin += String.fromCodePoint(b);
     return `https://pulsedive.com/indicator/?ioc=${encodeURIComponent(btoa(bin))}`;
 }
 

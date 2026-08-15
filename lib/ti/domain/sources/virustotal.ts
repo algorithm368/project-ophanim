@@ -215,10 +215,37 @@ export function vtScore(malicious: number, suspicious: number): number {
   return Math.min(100, malicious * 10 + suspicious * 3);
 }
 
+/**
+ * Drop the trailing "(vendor)" annotations VirusTotal appends to a category
+ * label, e.g. "Information Technology (alphaMountain.ai)". More than one can be
+ * present, so this loops.
+ *
+ * It replaces a regex whose lazy quantifier ran against an end anchor and so
+ * backtracked super-linearly (typescript:S8786). A first attempt at a
+ * deterministic character class was still flagged, because the optional leading
+ * whitespace was rescanned from every offset, so this walks the string instead:
+ * endsWith / lastIndexOf are each one pass.
+ *
+ * The one behavioural difference from the original is unbalanced input:
+ * "Foo (a (b)" used to collapse to "Foo" and now yields "Foo (a", because the
+ * inner group is taken on its own and the dangling "(" is left alone. VT labels
+ * are balanced.
+ */
+function stripVendorSuffix(raw: string): string {
+  let out = raw.trimEnd();
+  while (out.endsWith(")")) {
+    const open = out.lastIndexOf("(");
+    // No opener, or something nested inside: leave it rather than guess.
+    if (open === -1 || out.slice(open + 1, -1).includes("(")) return out;
+    out = out.slice(0, open).trimEnd();
+  }
+  return out;
+}
+
 export function normalizeCategories(map: Record<string, string>): string[] {
   const counts = new Map<string, { label: string; n: number }>();
   for (const raw of Object.values(map)) {
-    const cleaned = raw.replace(/\s*\(.*?\)\s*$/, "").trim().toLowerCase();
+    const cleaned = stripVendorSuffix(raw).trim().toLowerCase();
     if (!cleaned) continue;
     const key = cleaned.replace(/[^a-z0-9]/g, "");
     const label =

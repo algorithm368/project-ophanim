@@ -10,7 +10,7 @@ import { ConfidenceChip } from "@/components/CheckResults/confidence";
 import { originReport, sameCountryNote } from "@/lib/ti/geo/summary";
 
 /** A short note that appears only when every located address shares one country. */
-function SameCountryNote({ rows }: { rows: GeoRow[] }) {
+function SameCountryNote({ rows }: Readonly<{ rows: GeoRow[] }>) {
   const note = sameCountryNote(rows);
   if (!note) return null;
   return (
@@ -30,7 +30,7 @@ function SameCountryNote({ rows }: { rows: GeoRow[] }) {
 /** Origin summary as a selectable, report-style paragraph: coverage, then each
  *  country with its addresses and cities. The prose rendered here and the text
  *  copied are the same string, from `originReport`. */
-function Origins({ rows }: { rows: GeoRow[] }) {
+function Origins({ rows }: Readonly<{ rows: GeoRow[] }>) {
   const report = originReport(rows);
   const [copied, copy] = useCopied();
   if (!report) return null;
@@ -76,7 +76,7 @@ function placeOf(row: GeoRow): string {
   return [g.city, g.region].filter(Boolean).join(", ") || "—";
 }
 
-export default function BulkGeoResults({ rows }: { rows: GeoRow[] }) {
+export default function BulkGeoResults({ rows }: Readonly<{ rows: GeoRow[] }>) {
   if (!rows.length) return null;
   return (
     <Card className="sketch-shadow mt-8 overflow-hidden rounded-lg border border-border bg-card">

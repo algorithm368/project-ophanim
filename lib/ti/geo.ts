@@ -42,7 +42,7 @@ export function mapBatchResults(
 ): GeoRow[] {
   return ips.map((parsed, i) => {
     const entry = entries[i];
-    if (!entry || entry.status !== "success") {
+    if (entry?.status !== "success") {
       return {
         ip: parsed.ip,
         version: parsed.version,
