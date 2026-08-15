@@ -256,11 +256,18 @@ export function ActiveScanCard({
 
         {phase === "confirming" && (
           <div className="space-y-3">
+            {/* Two engines means the target is visited twice, by two third
+                parties. That cost is stated here rather than implied, because
+                it is the one thing the analyst cannot take back. */}
             <p className="text-sm text-foreground/75">
-              This sends the following to urlscan.io and Cloudflare, which will
-              each load {targets.length === 1 ? "it" : "them"} from their own
-              infrastructure. Check the query string before continuing, phishing
-              links often carry a token identifying the victim.
+              This sends the following to urlscan.io and to Cloudflare. Each
+              loads {targets.length === 1 ? "it" : "them"} from its own
+              infrastructure, so{" "}
+              {targets.length === 1
+                ? "the address is visited twice"
+                : "every address is visited twice"}
+              , by two third parties. Check the query string before continuing,
+              phishing links often carry a token identifying the victim.
             </p>
             <ul className="space-y-1 rounded border border-foreground/12 bg-muted/40 p-2">
               {targets.map((target) => (
