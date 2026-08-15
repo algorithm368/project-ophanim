@@ -179,12 +179,23 @@ Verified by probe on 2026-08-15 rather than assumed from documentation.
 **Honest consequence:** with no keys configured the URL layer has exactly one
 network source (OpenPhish) plus heuristics. That is a thin panel, and the UI must
 show it as thin rather than let a quiet "nothing found" read as "clean". The
-existing key-gated source UX already communicates this.
+existing key-gated source UX already communicates this. On the current install
+both keys are present, so the layer runs at full width; the thin case still has
+to render honestly for a fresh clone.
 
-Cloudflare Radar's URL Scanner is the intended active-lane provider, and it
-requires a Cloudflare API token and account id. That was **not** probed, having
-no credentials to probe with, and the implementation plan must verify it before
-committing to it.
+### Active-lane providers, verified
+
+Both active providers were probed against the configured credentials on
+2026-08-15, read-only, with no scan submitted and no submission quota spent.
+
+| Provider | Env | Evidence |
+| --- | --- | --- |
+| urlscan.io | `URLSCAN_API_KEY` | `GET /user/quotas/` returns the submission limits quoted below |
+| Cloudflare Radar URL Scanner | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | `GET /accounts/<id>/urlscanner/v2/search?limit=1` returns 200 with results. Note the path: `v2/search` is correct, `v2/scans` is 404 |
+
+The two are kept as separate engines rather than one, because they render and
+classify independently, so a disagreement between them is itself a signal. No
+new credentials are required for either.
 
 ## Offline heuristics
 
@@ -221,8 +232,15 @@ Consent and OPSEC:
   the full query string**, before anything is transmitted. Phishing URLs
   routinely carry a victim-identifying token in the query; the analyst has to be
   able to see what they are about to hand a third party.
-- Submissions are always **unlisted**, never public. A public submission is
-  searchable by anyone, including whoever sent the phish.
+- Submissions are **private by default, falling back to unlisted** when the
+  private quota is spent, and never public. A public submission is searchable by
+  anyone, including whoever sent the phish; unlisted is unindexed but readable by
+  anyone holding the link; private is visible only to the submitting account.
+  The confirmation card names which visibility this submission will use.
+
+  Probed on the configured account, 2026-08-15: private allows 50/day (5/min),
+  unlisted 1000/day (60/min), public 5000/day. Fifty private scans a day is
+  ample for one analyst, so private is the default rather than an option.
 - `userinfo` is stripped before the URL is handed to any external service. It is
   a heuristic signal, not something to forward to a third party.
 
@@ -286,9 +304,9 @@ This is one design but two implementation plans, in order:
    useful on its own, and it needs no new credentials beyond the abuse.ch and
    Safe Browsing keys the project already recognizes.
 2. **Active.** The consent card, the submission and polling route, and the
-   fourth-layer panel. Gated on verifying the Cloudflare Radar URL Scanner
-   contract first, since that provider is the one claim in this design that was
-   not probed.
+   fourth-layer panel. Both providers and both sets of credentials are verified,
+   so this phase is unblocked; it is sequenced second only because the passive
+   result is what the consent decision is made against.
 
 ## Follow-ups, deliberately out of this design
 
