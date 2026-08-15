@@ -1,6 +1,6 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, isTimeout } from "../http";
-import { RESOLVERS, answers, dohQuery, type RecordType } from "../dns/doh";
+import { RESOLVERS, answers, dohQuery } from "../dns/doh";
 import { verifyFcrdns } from "../dns/fcrdns";
 
 /** FCrDNS for an IP via Cloudflare DoH (no key). Context only, no risk score. */
@@ -16,8 +16,8 @@ export const reverseDnsSource: TiSource = {
   isEnabled: () => true,
   async check(ip, signal): Promise<SourceFinding> {
     try {
-      const resolve = async (name: string, type: "PTR" | "A") =>
-        answers(await dohQuery(RESOLVERS.cloudflare, name, type as RecordType, signal));
+      const resolve = async (name: string, type: "PTR" | "A" | "AAAA") =>
+        answers(await dohQuery(RESOLVERS.cloudflare, name, type, signal));
 
       const fcrdns = await verifyFcrdns(ip, resolve);
       if (!fcrdns) {
