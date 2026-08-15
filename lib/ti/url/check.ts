@@ -8,6 +8,7 @@ import { runAll } from "../orchestrate";
 import type { SourceResult } from "../types";
 import { selectHeadline } from "./layers";
 import { urlSources } from "./registry";
+import { annotateSharedHost } from "./shared-host";
 import type { LayerKind, UrlCheckResult, UrlLayer } from "./types";
 
 /** Seams for the tests, so composition can be driven without a network. Nothing
@@ -194,9 +195,11 @@ export async function checkUrl(
     );
   } else {
     const hit = await cachedIp(first);
-    ipLayer = hit
-      ? layerFromResult("ip", first, hit, hit.checkedAt)
-      : layerFromResult("ip", first, await runIp(first, onSettled));
+    ipLayer = annotateSharedHost(
+      hit
+        ? layerFromResult("ip", first, hit, hit.checkedAt)
+        : layerFromResult("ip", first, await runIp(first, onSettled)),
+    );
   }
 
   const layers = [urlLayer, hostLayer, ipLayer];
