@@ -1,8 +1,16 @@
 # Dependency updates.
 #
-# The `npm` ecosystem is what reads bun.lock; Dependabot has no separate `bun`
-# ecosystem. It updates package.json and the lockfile together, so a PR here is
-# the same shape as one from an npm repo.
+# The ecosystem must be `bun`, not `npm`. This was `npm` first, on the wrong
+# assumption that it was the thing reading bun.lock, and the result was three
+# pull requests (#8, #9, #10) that edited package.json and left the lockfile
+# untouched. Every one of them failed CI on the first step:
+#
+#     error: lockfile had changes, but lockfile is frozen
+#
+# Dependabot has supported bun since February 2025 and reads the text-based
+# bun.lock (Bun 1.1.39+, which is what this repo has; the old binary bun.lockb
+# is not supported). Under `bun` it updates the manifest and the lockfile
+# together, which is what --frozen-lockfile in CI requires.
 #
 # The grouping exists so a failure is legible. A grouped PR installs as one
 # unit, which means a package nothing else is ready for takes the whole group
@@ -19,7 +27,7 @@
 #              current, not worth a pull request each.
 version: 2
 updates:
-  - package-ecosystem: npm
+  - package-ecosystem: bun
     directory: /
     schedule:
       interval: weekly
