@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import {
   FileDigit,
   Globe,
+  Link2,
   Loader2,
   Network,
   RefreshCw,
@@ -37,13 +38,14 @@ import { Card, CardContent } from "@/components/ui/card";
 
 type IconType = ComponentType<{ className?: string }>;
 
-type Mode = "ip" | "domain" | "hash";
+type Mode = "ip" | "domain" | "hash" | "url";
 
 /** Human label + icon per IOC type, shared by the toggle and detection hint. */
 const MODE_META: Record<Mode, { label: string; icon: IconType }> = {
   ip: { label: "IP address", icon: Network },
   domain: { label: "domain", icon: Globe },
   hash: { label: "file hash", icon: FileDigit },
+  url: { label: "URL", icon: Link2 },
 };
 
 /** "input" = bad/unsupported value the user typed; "request" = lookup failed. */

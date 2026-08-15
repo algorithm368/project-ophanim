@@ -1,8 +1,9 @@
 import { parseIP, type ParsedIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
 import { parseHash } from "@/lib/hash";
+import { looksLikeUrl, parseUrl } from "@/lib/url";
 
-export type IOCType = "ip" | "domain" | "hash";
+export type IOCType = "ip" | "domain" | "hash" | "url";
 
 /**
  * Undo the common "defang" conventions analysts use so an IOC isn't clickable
@@ -41,6 +42,10 @@ export function detectIOC(input: string): IOCType | null {
   const value = refangIOC(input);
   if (!value) return null;
   if (parseHash(value)) return "hash";
+  // Before ip and domain: parseDomain accepts URL-shaped input and strips the
+  // scheme, path and query, so a URL tested later silently becomes its host and
+  // the part carrying the phishing verdict is thrown away.
+  if (looksLikeUrl(value) && parseUrl(value)) return "url";
   if (parseIP(value)) return "ip";
   if (parseDomain(value)) return "domain";
   return null;
