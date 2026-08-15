@@ -36,7 +36,12 @@ describe("submissionOutcome", () => {
 });
 
 describe("pollOutcome", () => {
-  const pending = { target: "https://evil.com/a", status: "running" as const, uuid: "abc" };
+  const pending = {
+    target: "https://evil.com/a",
+    engine: "urlscan" as const,
+    status: "running" as const,
+    uuid: "abc",
+  };
 
   it("treats 404 as still running, never as failure", () => {
     // The scan is queued and the quota is already spent. Reporting an error

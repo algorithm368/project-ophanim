@@ -1,4 +1,5 @@
 import type { ScanDetail } from "./detail";
+import type { ScanEngine } from "./engines";
 
 /** Visibility the submission was accepted at. Never "public": a public scan is
  *  searchable by anyone, including whoever sent the phish. */
@@ -17,6 +18,9 @@ export type ScanStatus = "running" | "done" | "error";
 export interface ActiveScan {
   /** The URL that was submitted, canonical and without userinfo. */
   target: string;
+  /** Which scanner produced this record. A batch holds one per engine per
+   *  target, so every consumer must read this rather than assume urlscan. */
+  engine: ScanEngine;
   status: ScanStatus;
   /** Provider's scan id, kept even on a poll timeout so it can be resumed. */
   uuid?: string;

@@ -57,6 +57,7 @@ export function submissionOutcome(
   if (status === 200 && data?.uuid) {
     return {
       target,
+      engine: "urlscan",
       status: "running",
       uuid: data.uuid,
       visibility,
@@ -64,7 +65,7 @@ export function submissionOutcome(
     };
   }
   const reason = data?.message ?? data?.description ?? `HTTP ${status}`;
-  return { target, status: "error", error: reason };
+  return { target, engine: "urlscan", status: "error", error: reason };
 }
 
 /**
@@ -118,13 +119,14 @@ export async function submitScan(
     } catch (err) {
       last = {
         target,
+        engine: "urlscan",
         status: "error",
         error: isTimeout(err) ? "Submission timed out" : errorMessage(err),
       };
       return last;
     }
   }
-  return last ?? { target, status: "error", error: "Submission failed" };
+  return last ?? { target, engine: "urlscan", status: "error", error: "Submission failed" };
 }
 
 /** Poll one submitted scan once. */
