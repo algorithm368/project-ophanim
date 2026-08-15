@@ -42,8 +42,11 @@ describe("cidrContains", () => {
   it("returns false for malformed CIDR or non-IPv4 IPs", () => {
     expect(cidrContains("1.2.3.0", "1.2.3.4")).toBe(false); // no prefix
     expect(cidrContains("1.2.3.0/33", "1.2.3.4")).toBe(false); // prefix > 32
+    expect(cidrContains("1.2.3.0/-1", "1.2.3.4")).toBe(false); // negative prefix
     expect(cidrContains("not-a-cidr", "1.2.3.4")).toBe(false);
     expect(cidrContains("1.0.0.0/8", "2001:db8::1")).toBe(false); // IPv6 IP
+    expect(cidrContains("1.0.0.0/8", "not-an-ip")).toBe(false); // unparseable IP
+    expect(cidrContains("not-an-ip/8", "1.2.3.4")).toBe(false); // unparseable base
   });
 });
 
