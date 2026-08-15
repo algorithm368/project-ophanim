@@ -53,6 +53,16 @@ function getClient(): Redis | null {
     client = null;
     return client;
   }
+  // Upstash appends a "Received: <the url>" tail to its config errors, which is
+  // exactly the part that must not reach the log. Cutting at indexOf does that
+  // in one pass; the regex it replaces (`/\s*Received:[\s\S]*/`) rescanned a
+  // leading `\s*` from every offset, which is quadratic on a long message
+  // (typescript:S8786).
+  function truncateAtReceived(message: string): string {
+    const at = message.indexOf("Received:");
+    return at === -1 ? message : message.slice(0, at).trimEnd();
+  }
+
   // Any other malformed URL makes `new Redis` throw; degrade to "no cache"
   // rather than crashing the page. Log only the message head, never the URL.
   try {
@@ -61,7 +71,7 @@ function getClient(): Redis | null {
     const message = err instanceof Error ? err.message : String(err);
     console.error(
       "[ti] cache disabled - invalid Redis config:",
-      message.replace(/\s*Received:[\s\S]*/, ""),
+      truncateAtReceived(message),
     );
     client = null;
   }

@@ -215,10 +215,31 @@ export function vtScore(malicious: number, suspicious: number): number {
   return Math.min(100, malicious * 10 + suspicious * 3);
 }
 
+/**
+ * Drop the trailing "(vendor)" annotations VirusTotal appends to a category
+ * label, e.g. "Information Technology (alphaMountain.ai)". More than one can be
+ * present, so this loops.
+ *
+ * It replaces `/\s*\(.*?\)\s*$/`, whose lazy `.*?` against an end anchor
+ * backtracks super-linearly (typescript:S8786). `[^()]*` cannot cross a
+ * parenthesis, which makes each pass deterministic. The one behavioural
+ * difference is unbalanced input: "Foo (a (b)" used to collapse to "Foo" and
+ * now yields "Foo (a", because the inner group is stripped on its own and the
+ * dangling "(" is left where it is. VT labels are balanced.
+ */
+function stripVendorSuffix(raw: string): string {
+  let out = raw;
+  for (;;) {
+    const next = out.replace(/\s*\([^()]*\)\s*$/, "");
+    if (next === out) return out;
+    out = next;
+  }
+}
+
 export function normalizeCategories(map: Record<string, string>): string[] {
   const counts = new Map<string, { label: string; n: number }>();
   for (const raw of Object.values(map)) {
-    const cleaned = raw.replace(/\s*\(.*?\)\s*$/, "").trim().toLowerCase();
+    const cleaned = stripVendorSuffix(raw).trim().toLowerCase();
     if (!cleaned) continue;
     const key = cleaned.replace(/[^a-z0-9]/g, "");
     const label =

@@ -19,7 +19,7 @@ export function refangIOC(input: string): string {
     .replace(/h[xt]{2}p/gi, "http")
     // Bracketed / parenthesized / worded dot separators -> "."
     .replace(/[[({]\s*(?:\.|dot|punto)\s*[\])}]/gi, ".")
-    .replace(/\s+dot\s+/gi, ".")
+    .replace(/(?<!\s)\s+dot\s+/gi, ".")
     // Escaped dots from some CSV / log exports.
     .replaceAll("\\.", ".")
     // Defanged scheme + "@" separators.

@@ -121,10 +121,51 @@ export function isBenignRegKey(key: string): boolean {
   return /\\(User )?Shell Folders\\/i.test(key);
 }
 
-/** OS / CDN / dev-library hosts that sandboxes hit as background noise, not the
- *  sample's own C2 or distribution. Matched against a URL or a bare hostname. */
-const BENIGN_NET_HOSTS =
-  /(^|\.)(microsoft(\.com)?|windows\.com|windowsupdate\.com|msftconnecttest\.com|msftncsi\.com|msn\.com|bing\.com|office\.com|live\.com|azureedge\.net|azure\.com|google(\.com)?|gstatic\.com|googleapis\.com|gvt1\.com|github\.com|githubusercontent\.com|python\.org|pythonhosted\.org|stackoverflow\.com|mozilla\.org|digicert\.com|sectigo\.com|letsencrypt\.org|lencr\.org|verisign\.com|cloudflare(-dns)?\.com|fastly\.net|akamai(edge|technologies)?\.net|akadns\.net|akahost\.net|edge(key|suite)\.net|cloudfront\.net|amazonaws\.com|(global)?g?cdn\.co|in-addr\.arpa|root-servers\.net)$/i;
+/**
+ * OS / CDN / dev-library domains that sandboxes hit as background noise, not
+ * the sample's own C2 or distribution. A host matches when it equals one of
+ * these or is a subdomain of one.
+ *
+ * This was a single 35-branch alternation with nested optional groups, which
+ * Sonar scored at complexity 54 against a limit of 20 (typescript:S5843). The
+ * groups are expanded here: `microsoft(\.com)?` was two domains, and
+ * `(global)?g?cdn\.co` was four. A set of plain strings is also the thing you
+ * can actually add an entry to without re-reading the whole pattern.
+ */
+const BENIGN_NET_DOMAINS = new Set([
+  // Microsoft / Windows telemetry and update endpoints.
+  "microsoft", "microsoft.com", "windows.com", "windowsupdate.com",
+  "msftconnecttest.com", "msftncsi.com", "msn.com", "bing.com", "office.com",
+  "live.com", "azureedge.net", "azure.com",
+  // Google.
+  "google", "google.com", "gstatic.com", "googleapis.com", "gvt1.com",
+  // Developer ecosystem.
+  "github.com", "githubusercontent.com", "python.org", "pythonhosted.org",
+  "stackoverflow.com", "mozilla.org",
+  // Certificate authorities and revocation checking.
+  "digicert.com", "sectigo.com", "letsencrypt.org", "lencr.org",
+  "verisign.com",
+  // CDNs and resolvers.
+  "cloudflare.com", "cloudflare-dns.com", "fastly.net", "akamai.net",
+  "akamaiedge.net", "akamaitechnologies.net", "akadns.net", "akahost.net",
+  "edgekey.net", "edgesuite.net", "cloudfront.net", "amazonaws.com",
+  "cdn.co", "gcdn.co", "globalcdn.co", "globalgcdn.co",
+  // Infrastructure zones.
+  "in-addr.arpa", "root-servers.net",
+]);
+
+/** True when `host` is one of BENIGN_NET_DOMAINS or sits underneath one. Walks
+ *  the parent domains rather than testing a regex, so cost is one set lookup
+ *  per label. */
+function isBenignDomain(host: string): boolean {
+  let rest = host;
+  for (;;) {
+    if (BENIGN_NET_DOMAINS.has(rest)) return true;
+    const dot = rest.indexOf(".");
+    if (dot === -1) return false;
+    rest = rest.slice(dot + 1);
+  }
+}
 
 export function isBenignNetHost(urlOrHost: string | undefined): boolean {
   if (!urlOrHost) return false;
@@ -132,7 +173,7 @@ export function isBenignNetHost(urlOrHost: string | undefined): boolean {
     .replace(/^[a-z]+:\/\//i, "")
     .split(/[/:?#]/)[0]
     .toLowerCase();
-  return BENIGN_NET_HOSTS.test(host);
+  return isBenignDomain(host);
 }
 
 /** VT severity string → rank (higher = more severe) for ordering techniques. */

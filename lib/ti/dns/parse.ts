@@ -25,7 +25,7 @@ export function normalizeMxHosts(mx: string[]): string[] {
  * returned unchanged, as is anything that fails to parse.
  */
 export function decodeCaa(record: string): string {
-  const m = /^\\#\s+\d+\s+([0-9a-fA-F\s]+)$/.exec(record);
+  const m = /^\\#\s+\d+\s+([0-9a-fA-F][0-9a-fA-F\s]*)$/.exec(record);
   if (!m) return record;
   const bytes = m[1]
     .trim()
