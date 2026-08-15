@@ -14,6 +14,21 @@ function ttlSeconds(): number {
 // `undefined` = not yet resolved, `null` = no credentials (cache disabled).
 let client: Redis | null | undefined;
 
+/**
+ * Cut an Upstash config error at its "Received: <the url>" tail. That tail is
+ * the part that must never reach the log, because a rediss:// string embeds the
+ * password.
+ *
+ * Exported for its test. It replaces a regex that matched an optional leading
+ * whitespace run before the literal, then everything after it. Scanned from
+ * every offset, that leading run costs quadratic time on a long message with no
+ * tail (typescript:S8786); indexOf does the same job in one pass.
+ */
+export function truncateAtReceived(message: string): string {
+  const at = message.indexOf("Received:");
+  return at === -1 ? message : message.slice(0, at).trimEnd();
+}
+
 /** First value that is set and non-blank; treats "" the same as unset. */
 function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
   for (const value of values) {
@@ -53,16 +68,6 @@ function getClient(): Redis | null {
     client = null;
     return client;
   }
-  // Upstash appends a "Received: <the url>" tail to its config errors, which is
-  // exactly the part that must not reach the log. Cutting at indexOf does that
-  // in one pass; the regex it replaces (`/\s*Received:[\s\S]*/`) rescanned a
-  // leading `\s*` from every offset, which is quadratic on a long message
-  // (typescript:S8786).
-  function truncateAtReceived(message: string): string {
-    const at = message.indexOf("Received:");
-    return at === -1 ? message : message.slice(0, at).trimEnd();
-  }
-
   // Any other malformed URL makes `new Redis` throw; degrade to "no cache"
   // rather than crashing the page. Log only the message head, never the URL.
   try {

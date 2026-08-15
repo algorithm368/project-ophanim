@@ -194,3 +194,39 @@ describe("sameCountryNote", () => {
     ).toBe("All 2 located addresses resolve to the same country, United States (US).");
   });
 });
+
+describe("originReport unlocated list", () => {
+  const failed = (ip: string): GeoRow => ({
+    ip,
+    version: 4,
+    status: "error",
+    error: "Lookup failed",
+  });
+
+  // Three or more unlocated addresses take joinAnd's comma-plus-"and" branch,
+  // which the one- and two-address cases below never reach.
+  it("joins three or more unlocated addresses with commas and a final and", () => {
+    const report = originReport([
+      named("8.8.8.8", "United States", "US"),
+      failed("203.0.113.7"),
+      failed("203.0.113.8"),
+      failed("203.0.113.9"),
+    ]);
+    expect(report).toContain(
+      "3 addresses could not be geolocated: 203.0.113.7, 203.0.113.8 and 203.0.113.9.",
+    );
+  });
+
+  it("uses a bare and for two, and no separator for one", () => {
+    expect(
+      originReport([
+        named("8.8.8.8", "United States", "US"),
+        failed("203.0.113.7"),
+        failed("203.0.113.8"),
+      ]),
+    ).toContain("2 addresses could not be geolocated: 203.0.113.7 and 203.0.113.8.");
+    expect(
+      originReport([named("8.8.8.8", "United States", "US"), failed("203.0.113.7")]),
+    ).toContain("1 address could not be geolocated: 203.0.113.7.");
+  });
+});

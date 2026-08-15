@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
-import { fetchFreeIpApiGeo, fetchRdapCountries, selectUncertainIps, transposeByIp } from "./bulk";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  bulkRdapMax,
+  fetchFreeIpApiGeo,
+  fetchRdapCountries,
+  selectUncertainIps,
+  transposeByIp,
+} from "./bulk";
 import { getJson } from "../http";
 
 vi.mock("../http", async (importOriginal) => {
@@ -110,5 +116,35 @@ describe("fetchFreeIpApiGeo", () => {
     vi.mocked(getJson).mockRejectedValue(new Error("ECONNRESET"));
     const out = await fetchFreeIpApiGeo(["1.1.1.1"], new AbortController().signal, 2);
     expect(out.size).toBe(0);
+  });
+});
+
+// intEnv backs all four of these knobs and is the line the Number.NaN fix
+// touched, so the fallback path needs to be exercised, not just the happy one.
+describe("bulk limits from the environment", () => {
+  const KEY = "BULK_RDAP_MAX";
+  const original = process.env[KEY];
+  afterEach(() => {
+    if (original === undefined) delete process.env[KEY];
+    else process.env[KEY] = original;
+  });
+
+  it("reads a valid override", () => {
+    process.env[KEY] = "7";
+    expect(bulkRdapMax()).toBe(7);
+  });
+
+  it("falls back when unset, non-numeric or negative", () => {
+    delete process.env[KEY];
+    expect(bulkRdapMax()).toBe(25);
+    process.env[KEY] = "not-a-number";
+    expect(bulkRdapMax()).toBe(25);
+    process.env[KEY] = "-3";
+    expect(bulkRdapMax()).toBe(25);
+  });
+
+  it("accepts zero as a real value rather than a fallback", () => {
+    process.env[KEY] = "0";
+    expect(bulkRdapMax()).toBe(0);
   });
 });

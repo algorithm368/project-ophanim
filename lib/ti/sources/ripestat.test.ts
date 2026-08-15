@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { ripestatFinding, rpkiCategories } from "./ripestat";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ripeStatSource, ripestatFinding, rpkiCategories } from "./ripestat";
+import { getJson } from "../http";
 
 describe("rpkiCategories", () => {
   it("tags only an invalid RPKI origin", () => {
@@ -28,5 +29,47 @@ describe("ripestatFinding", () => {
     const f = ripestatFinding({ prefix: undefined, asns: [] });
     expect(f.summary).toBe("Not announced in BGP");
     expect(f.geo).toBeUndefined();
+  });
+});
+
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
+// The ASN picked for the follow-up RPKI call comes off the announced-prefix
+// response. It used to be filter(Boolean)[0] and is find(Boolean) now, so the
+// case that matters is a list whose first entry is falsy.
+describe("ripeStatSource.check ASN selection", () => {
+  const mockGetJson = vi.mocked(getJson);
+  afterEach(() => mockGetJson.mockReset());
+
+  const prefixResponse = (asns: unknown[]) =>
+    ({
+      ok: true,
+      status: 200,
+      data: { data: { prefix: "27.254.104.0/23", asns } },
+    }) as Awaited<ReturnType<typeof getJson>>;
+
+  it("skips falsy entries and validates RPKI for the first real ASN", async () => {
+    mockGetJson
+      .mockResolvedValueOnce(prefixResponse(["", "4750"]))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { data: { status: "valid" } },
+      } as Awaited<ReturnType<typeof getJson>>);
+
+    const finding = await ripeStatSource.check("27.254.104.1", new AbortController().signal);
+    expect(finding.status).toBe("ok");
+    // Second call is the RPKI validation, and it must carry the real ASN.
+    expect(mockGetJson.mock.calls[1][0]).toContain("4750");
+  });
+
+  it("skips the RPKI call when no ASN is announced", async () => {
+    mockGetJson.mockResolvedValueOnce(prefixResponse([]));
+    const finding = await ripeStatSource.check("27.254.104.1", new AbortController().signal);
+    expect(finding.status).toBe("ok");
+    expect(mockGetJson).toHaveBeenCalledTimes(1);
   });
 });
