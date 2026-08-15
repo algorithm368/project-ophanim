@@ -18,6 +18,7 @@ import {
   COORD_HIGH_KM,
   COORD_MEDIUM_KM,
   CORROBORATION_TARGET,
+  COUNTRY_MISMATCH_WEIGHT,
   getWeight,
   HIGH_SCORE,
   MEDIUM_SCORE,
@@ -29,6 +30,12 @@ export interface GeoInput {
   geo: GeoContext;
 }
 
+/** Per-provider multiplier applied on top of the static reliability weight.
+ *  Used to discount providers that already lost the country vote. */
+type Scale = (id: string) => number;
+
+const NO_SCALE: Scale = () => 1;
+
 function tierFromScore(score: number): Confidence {
   if (score >= HIGH_SCORE) return "high";
   if (score >= MEDIUM_SCORE) return "medium";
@@ -39,11 +46,19 @@ interface WVote {
   key: string;
   value: string;
   ids: string[];
+  /** ranking weight: reliability x any coherence discount. Picks the winner. */
   weight: number;
+  /** undiscounted reliability weight. Scores the winner. */
+  raw: number;
 }
 
 /** Rank weighted votes, derive confidence + score, collect alternatives.
- *  `authorityFor(weightField)` forces high when it backs the winner. */
+ *  `authorityFor(weightField)` forces high when it backs the winner.
+ *
+ *  Ranking uses the discounted weight, scoring uses the raw one: a coherence
+ *  discount is a reason to prefer one value over another, not evidence that more
+ *  providers backed it. Scoring off the discounted weight would report a 2-vs-2
+ *  split as near-unanimous. */
 function finalizeVotes(
   votes: WVote[],
   reporting: number,
@@ -61,7 +76,7 @@ function finalizeVotes(
   const coverage = Math.min(1, reportingWeight / CORROBORATION_TARGET);
   // score stays a weight-ratio measure even when an authority forces the tier
   // high, so consumers can still see how corroborated the winning value was.
-  const score = (winner.weight / reportingWeight) * coverage;
+  const score = (winner.raw / reportingWeight) * coverage;
   const confidence: Confidence = authoritativeVote ? "high" : tierFromScore(score);
   const alternatives = votes
     .filter((v) => v !== winner)
@@ -83,6 +98,7 @@ function tally(
   field: keyof GeoContext,
   weightField: GeoField,
   normalize: (v: string) => string,
+  scale: Scale = NO_SCALE,
 ): ResolvedField<string> | undefined {
   const votes = new Map<string, WVote>();
   let reporting = 0;
@@ -93,15 +109,23 @@ function tally(
     if (typeof raw !== "string" || raw.trim() === "") continue;
     const key = normalize(raw);
     if (key === "") continue;
-    const w = getWeight(id, weightField);
+    const rawWeight = getWeight(id, weightField);
+    const w = rawWeight * scale(id);
     reporting++;
-    reportingWeight += w;
+    reportingWeight += rawWeight;
     const existing = votes.get(key);
     if (existing) {
       existing.ids.push(id);
       existing.weight += w;
+      existing.raw += rawWeight;
     } else {
-      votes.set(key, { key, value: raw.trim(), ids: [id], weight: w });
+      votes.set(key, {
+        key,
+        value: raw.trim(),
+        ids: [id],
+        weight: w,
+        raw: rawWeight,
+      });
     }
   }
 
@@ -112,7 +136,10 @@ function tally(
 interface CityCand {
   value: string;
   ids: string[];
+  /** ranking weight (coherence-discounted) */
   weight: number;
+  /** undiscounted weight, used for the reported score */
+  raw: number;
   lat?: number;
   lon?: number;
   coordCount: number;
@@ -122,7 +149,10 @@ interface CityCand {
  *  coordinates fall within CITY_CLUSTER_KM collapse into one, so adjacent place
  *  names corroborate instead of splitting. Falls back to string grouping when a
  *  provider has no coordinates. */
-function reconcileCity(inputs: GeoInput[]): ResolvedField<string> | undefined {
+function reconcileCity(
+  inputs: GeoInput[],
+  scale: Scale = NO_SCALE,
+): ResolvedField<string> | undefined {
   const byKey = new Map<string, CityCand>();
   let reporting = 0;
   let reportingWeight = 0;
@@ -132,17 +162,19 @@ function reconcileCity(inputs: GeoInput[]): ResolvedField<string> | undefined {
     if (typeof raw !== "string" || raw.trim() === "") continue;
     const key = normalizeKey(raw);
     if (key === "") continue;
-    const w = getWeight(id, "city");
+    const rawWeight = getWeight(id, "city");
+    const w = rawWeight * scale(id);
     reporting++;
-    reportingWeight += w;
+    reportingWeight += rawWeight;
     const hasCoord = typeof geo.lat === "number" && typeof geo.lon === "number";
     let c = byKey.get(key);
     if (!c) {
-      c = { value: raw.trim(), ids: [], weight: 0, coordCount: 0 };
+      c = { value: raw.trim(), ids: [], weight: 0, raw: 0, coordCount: 0 };
       byKey.set(key, c);
     }
     c.ids.push(id);
     c.weight += w;
+    c.raw += rawWeight;
     if (hasCoord) {
       const n = c.coordCount;
       c.lat = ((c.lat ?? 0) * n + (geo.lat as number)) / (n + 1);
@@ -179,6 +211,7 @@ function reconcileCity(inputs: GeoInput[]): ResolvedField<string> | undefined {
         total;
       near.ids = [...near.ids, ...cand.ids];
       near.weight += cand.weight;
+      near.raw += cand.raw;
       near.coordCount = total;
     } else {
       merged.push({ ...cand });
@@ -186,67 +219,150 @@ function reconcileCity(inputs: GeoInput[]): ResolvedField<string> | undefined {
   }
 
   return finalizeVotes(
-    merged.map((c) => ({ key: c.value, value: c.value, ids: c.ids, weight: c.weight })),
+    merged.map((c) => ({
+      key: c.value,
+      value: c.value,
+      ids: c.ids,
+      weight: c.weight,
+      raw: c.raw,
+    })),
     reporting,
     reportingWeight,
     "city",
   );
 }
 
+interface CoordPoint {
+  id: string;
+  lat: number;
+  lon: number;
+  /** ranking weight (coherence-discounted) */
+  w: number;
+  /** undiscounted weight, used for the reported score and the centroid */
+  raw: number;
+}
+
+interface CoordCluster {
+  ids: string[];
+  weight: number;
+  raw: number;
+  /** weighted centroid of the member points */
+  lat: number;
+  lon: number;
+  points: CoordPoint[];
+}
+
+/** Group points into proximity clusters (same rule the city vote uses), so
+ *  providers pointing at the same place corroborate instead of each standing
+ *  alone. Single-link: a point joins the first cluster it is within range of. */
+function clusterPoints(points: CoordPoint[]): CoordCluster[] {
+  const clusters: CoordCluster[] = [];
+  for (const p of points) {
+    const near = clusters.find(
+      (c) => haversineKm({ lat: c.lat, lon: c.lon }, p) <= CITY_CLUSTER_KM,
+    );
+    if (near) {
+      // The centroid is placed by raw reliability, so a coherence discount moves
+      // which cluster wins, never where the winning cluster sits.
+      const total = near.raw + p.raw;
+      near.lat = (near.lat * near.raw + p.lat * p.raw) / total;
+      near.lon = (near.lon * near.raw + p.lon * p.raw) / total;
+      near.raw = total;
+      near.weight += p.w;
+      near.ids.push(p.id);
+      near.points.push(p);
+    } else {
+      clusters.push({
+        ids: [p.id],
+        weight: p.w,
+        raw: p.raw,
+        lat: p.lat,
+        lon: p.lon,
+        points: [p],
+      });
+    }
+  }
+  return clusters;
+}
+
+/**
+ * Coordinates are voted, not averaged. Points cluster by proximity, the clusters
+ * are ranked by summed provider weight, and the winning cluster's centroid is
+ * the answer; losing clusters become alternatives.
+ *
+ * Averaging every point (the previous behaviour) reports a location no provider
+ * claimed as soon as they disagree, and the error grows with the disagreement.
+ * On 2606:4700:4700::1111 — two providers on Montreal, two on San Francisco —
+ * the mean landed in rural Nebraska, ~1,500 km from either, while the city vote
+ * next to it on the page said Montreal. IPv6 hits this constantly: geo DBs have
+ * far thinner v6 coverage, so they fall back to the allocation's registered
+ * address and scatter across continents.
+ */
 function reconcileCoordinates(
   inputs: GeoInput[],
+  scale: Scale = NO_SCALE,
 ): ResolvedField<{ lat: number; lon: number }> | undefined {
-  const points = inputs
+  const points: CoordPoint[] = inputs
     .filter((i) => typeof i.geo.lat === "number" && typeof i.geo.lon === "number")
-    .map((i) => ({
-      id: i.id,
-      lat: i.geo.lat as number,
-      lon: i.geo.lon as number,
-      w: getWeight(i.id, "coords"),
-    }));
+    .map((i) => {
+      const raw = getWeight(i.id, "coords");
+      return {
+        id: i.id,
+        lat: i.geo.lat as number,
+        lon: i.geo.lon as number,
+        w: raw * scale(i.id),
+        raw,
+      };
+    });
 
   if (points.length === 0) return undefined;
 
-  const totalW = points.reduce((s, p) => s + p.w, 0) || points.length;
-  const centroid = {
-    lat: points.reduce((s, p) => s + p.lat * p.w, 0) / totalW,
-    lon: points.reduce((s, p) => s + p.lon * p.w, 0) / totalW,
-  };
-  const coverage = Math.min(1, totalW / CORROBORATION_TARGET);
+  const reportingWeight = points.reduce((s, p) => s + p.raw, 0) || points.length;
+  const coverage = Math.min(1, reportingWeight / CORROBORATION_TARGET);
 
-  let confidence: Confidence;
-  let agreement: number;
   if (points.length === 1) {
-    confidence = points[0].w >= 0.7 ? "medium" : "low";
-    agreement = 1;
-  } else {
-    const spread = Math.max(...points.map((p) => haversineKm(centroid, p)));
-    if (spread <= COORD_HIGH_KM) {
-      confidence = "high";
-      agreement = 1;
-    } else if (spread <= COORD_MEDIUM_KM) {
-      confidence = "medium";
-      agreement = 0.6;
-    } else {
-      confidence = "low";
-      agreement = 0.2;
-    }
+    const [only] = points;
+    return {
+      value: { lat: only.lat, lon: only.lon },
+      confidence: only.raw >= 0.7 ? "medium" : "low",
+      score: coverage,
+      agreement: 1,
+      sources: [only.id],
+    };
   }
 
-  const result: ResolvedField<{ lat: number; lon: number }> = {
+  const clusters = clusterPoints(points);
+  // Callers always pass a freshly built array, so the in-place sort is safe.
+  clusters.sort((a, b) => b.weight - a.weight || b.ids.length - a.ids.length);
+  const [winner, ...losers] = clusters;
+
+  const centroid = { lat: winner.lat, lon: winner.lon };
+  const score = (winner.raw / reportingWeight) * coverage;
+  const agreement = winner.ids.length / points.length;
+
+  // The tier follows the vote share, then the winning cluster's own spread caps
+  // it: a cluster can chain wider than CITY_CLUSTER_KM, and a loosely held
+  // agreement is not a precise one.
+  const spread = Math.max(...winner.points.map((p) => haversineKm(centroid, p)));
+  let confidence = tierFromScore(score);
+  if (spread > COORD_MEDIUM_KM) confidence = "low";
+  else if (spread > COORD_HIGH_KM && confidence === "high") confidence = "medium";
+
+  return {
     value: centroid,
     confidence,
-    score: agreement * coverage,
+    score,
     agreement,
-    sources: points.map((p) => p.id),
+    sources: winner.ids,
+    ...(losers.length
+      ? {
+          alternatives: losers.map((c) => ({
+            value: { lat: c.lat, lon: c.lon },
+            sources: c.ids,
+          })),
+        }
+      : {}),
   };
-  if (confidence === "low" && points.length > 1) {
-    result.alternatives = points.map((p) => ({
-      value: { lat: p.lat, lon: p.lon },
-      sources: [p.id],
-    }));
-  }
-  return result;
 }
 
 function reconcileFlags(inputs: GeoInput[]): GeoResolution["flags"] {
@@ -274,6 +390,10 @@ function reconcileFlags(inputs: GeoInput[]): GeoResolution["flags"] {
 function reconcileCountry(inputs: GeoInput[]): {
   field?: ResolvedField<string>;
   code?: string;
+  /** providers that named a different country than the winner */
+  dissenters: Set<string>;
+  /** the winner outweighs the runner-up, rather than winning a coin-flip tie */
+  decisive: boolean;
 } {
   interface CVote {
     code: string;
@@ -311,7 +431,8 @@ function reconcileCountry(inputs: GeoInput[]): {
     }
   }
 
-  if (reporting === 0 || reportingWeight === 0) return {};
+  if (reporting === 0 || reportingWeight === 0)
+    return { dissenters: new Set(), decisive: false };
 
   const authority = authorityFor("country");
   const ranked = [...votes.values()].sort(
@@ -325,9 +446,11 @@ function reconcileCountry(inputs: GeoInput[]): {
   const coverage = Math.min(1, reportingWeight / CORROBORATION_TARGET);
   const score = (winner.weight / reportingWeight) * coverage;
   const confidence: Confidence = authoritativeVote ? "high" : tierFromScore(score);
-  const alternatives = ranked
-    .filter((v) => v !== winner)
-    .map((v) => ({ value: v.name || v.code, sources: v.ids }));
+  const losers = ranked.filter((v) => v !== winner);
+  const alternatives = losers.map((v) => ({
+    value: v.name || v.code,
+    sources: v.ids,
+  }));
 
   const field: ResolvedField<string> = {
     value: winner.name || winner.code,
@@ -337,7 +460,35 @@ function reconcileCountry(inputs: GeoInput[]): {
     sources: winner.ids,
     ...(alternatives.length ? { alternatives } : {}),
   };
-  return { field, code: winner.code || undefined };
+  return {
+    field,
+    code: winner.code || undefined,
+    dissenters: new Set(losers.flatMap((v) => v.ids)),
+    decisive: losers.length === 0 || winner.weight > losers[0].weight,
+  };
+}
+
+/**
+ * Discount the finer-grained location votes of providers that already lost the
+ * country vote, so region/city/coordinates cannot settle on a place outside the
+ * country the rest of the providers agreed on.
+ *
+ * Without this the fields vote independently and can contradict each other:
+ * 2606:4700:4700::1111 resolved to country "United States" (4 providers) while
+ * region and city read "Quebec" / "Montreal", because the two providers holding
+ * Canada happened to carry slightly more city weight. The map pin, the OG image
+ * and the history entry all inherited that impossible pair.
+ *
+ * Skipped when the country vote was a tie: the winner is then arbitrary, and
+ * propagating an arbitrary choice into three more fields would be a coin flip
+ * dressed up as a correction.
+ */
+function countryCoherence(country: {
+  dissenters: Set<string>;
+  decisive: boolean;
+}): Scale {
+  if (!country.decisive || country.dissenters.size === 0) return NO_SCALE;
+  return (id) => (country.dissenters.has(id) ? COUNTRY_MISMATCH_WEIGHT : 1);
 }
 
 /** Blend the located fields into one overall confidence, importance-weighted
@@ -369,15 +520,19 @@ export function reconcileGeoInputs(
   if (inputs.length === 0) return undefined;
 
   const country = reconcileCountry(inputs);
+  // Country is settled first; the fields that sit *inside* a country are then
+  // voted with the losers discounted. ASN/ISP are not geographic containments
+  // (an AS spans countries), so they vote unscaled.
+  const coherent = countryCoherence(country);
   const resolution: GeoResolution = {
     country: country.field,
     countryCode: country.code,
-    region: tally(inputs, "region", "region", normalizeKey),
-    city: reconcileCity(inputs),
+    region: tally(inputs, "region", "region", normalizeKey, coherent),
+    city: reconcileCity(inputs, coherent),
     asn: tally(inputs, "asn", "asn", canonicalAsn),
     asnOrg: tally(inputs, "asnOrg", "asn", normalizeKey),
     isp: tally(inputs, "isp", "isp", normalizeKey),
-    coordinates: reconcileCoordinates(inputs),
+    coordinates: reconcileCoordinates(inputs, coherent),
     flags: reconcileFlags(inputs),
     providerCount: inputs.length,
   };

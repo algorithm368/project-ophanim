@@ -44,5 +44,12 @@ export const CORROBORATION_TARGET = 1.5; // summed weight that counts as fully c
 export const HIGH_SCORE = 0.66;
 export const MEDIUM_SCORE = 0.45;
 export const CITY_CLUSTER_KM = 25; // merge same-area cities into one candidate
+// Weight multiplier for a provider whose country contradicts the reconciled
+// country. A provider that places the IP in the wrong country is rarely right
+// about the city or the coordinates, so its vote on the finer-grained location
+// fields is discounted rather than dropped: it still counts, and still shows as
+// dissent in the vote table, but it no longer drags region/city/coords away
+// from the country the majority agreed on.
+export const COUNTRY_MISMATCH_WEIGHT = 0.35;
 export const COORD_HIGH_KM = 25; // multi-point spread bands
 export const COORD_MEDIUM_KM = 75;

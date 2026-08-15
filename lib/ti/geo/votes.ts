@@ -90,20 +90,31 @@ function stringColumn(
   };
 }
 
-/** Coordinates are cluster-based: reconcile only records per-point dissent when
- *  the cluster is low, so we show clustered/win vs scattered/scatter, never a
- *  fabricated per-provider distance. */
+/** RESULT-row wording for the coords column. "clustered" only when every
+ *  reporting provider landed in the winning cluster. */
+function coordsWinnerLabel(clustered: boolean, outliers: number): string {
+  if (!clustered) return "scattered";
+  return outliers === 0 ? "clustered" : `clustered, ${outliers} outlying`;
+}
+
+/** Coordinates are cluster-based: reconcile votes over proximity clusters, so a
+ *  provider either backs the winning cluster or sits in a losing one. We show
+ *  clustered/win vs scattered/scatter, never a fabricated per-provider distance. */
 function coordsColumn(field: GeoResolution["coordinates"]): VoteColumn | null {
   if (!field) return null;
+  const outliers = (field.alternatives ?? []).flatMap((a) => a.sources);
   const clustered = field.confidence !== "low";
   const cells: Record<string, VoteCell> = {};
   for (const id of field.sources) {
     cells[id] = { status: clustered ? "win" : "scatter" };
   }
+  // Providers in a losing cluster read as scattered rather than absent: they did
+  // report a point, it just lost.
+  for (const id of outliers) cells[id] = { status: "scatter" };
   return {
     key: "coordinates",
     label: "COORDS",
-    winner: clustered ? "clustered" : "scattered",
+    winner: coordsWinnerLabel(clustered, outliers.length),
     confidence: field.confidence,
     cells,
     backers: clustered ? field.sources : [],
