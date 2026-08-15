@@ -1,8 +1,9 @@
 "use client";
 
-import { Globe, Link2, Network, RefreshCw } from "lucide-react";
+import { useContext } from "react";
+import { Globe, Link2, Network, RefreshCw, Search } from "lucide-react";
 import type { LayerKind, UrlCheckResult, UrlLayer } from "@/lib/ti/url/types";
-import { SectionHeading } from "./primitives";
+import { PivotContext, SectionHeading } from "./primitives";
 import { VERDICT_STYLE } from "./verdict";
 import type { IconType } from "./types";
 
@@ -19,6 +20,40 @@ const ATTRIBUTION: Record<LayerKind, string> = {
   domain: "This verdict comes from the host, not the URL itself.",
   ip: "This verdict comes from the host's address, not the URL itself.",
 };
+
+/** Wording for the button that opens a layer's indicator as its own check. */
+const SCAN_LABEL: Partial<Record<LayerKind, string>> = {
+  domain: "Scan the domain",
+  ip: "Scan the address",
+};
+
+/**
+ * Run a layer's indicator as a standalone check.
+ *
+ * The URL page shows each layer's verdict and its source rows, but not the
+ * type-specific cards, so the host's certificates, DNS records and registration
+ * and the address's dossier are only reachable from their own result page. This
+ * is the way there. The URL layer gets no button, since that check is the page
+ * you are already on.
+ */
+function ScanLayerButton({ layer }: Readonly<{ layer: UrlLayer }>) {
+  const pivot = useContext(PivotContext);
+  const label = SCAN_LABEL[layer.kind];
+  // Nothing to scan when the layer had no subject (an IP-literal URL has no
+  // host) or never resolved one.
+  if (!pivot || !label || layer.status !== "ok") return null;
+  return (
+    <button
+      type="button"
+      onClick={() => pivot(layer.indicator)}
+      title={`Check ${layer.indicator} on its own`}
+      className="group inline-flex items-center gap-1 rounded-sm border border-border bg-muted/50 px-1.5 py-0.5 text-[11px] text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
+    >
+      {label}
+      <Search className="size-3 shrink-0 opacity-40 transition-opacity group-hover:opacity-100" />
+    </button>
+  );
+}
 
 function relativeAge(iso: string): string {
   const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
@@ -79,6 +114,7 @@ function LayerRow({
                 {relativeAge(layer.cachedAt)}
               </button>
             )}
+            <ScanLayerButton layer={layer} />
           </>
         ) : (
           // Deliberately not a verdict chip. An absent layer is not a cleared
