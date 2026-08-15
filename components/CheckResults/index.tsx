@@ -11,6 +11,7 @@ import {
 import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
 import { PivotContext } from "./primitives";
 import { LayerStack } from "./layers";
+import { ActiveScanCard } from "./active-scan";
 import { VerdictHero } from "./verdict";
 import { SourceBreakdown } from "./sources";
 import { SourceHealthNotice } from "./activity";
@@ -32,6 +33,7 @@ const IP_SECTIONS: NavItem[] = [
     { id: "dns", label: "DNS" },
     { id: "related", label: "Related" },
     { id: "research", label: "Research" },
+    { id: "scan", label: "Scan" },
     { id: "sources", label: "Sources" },
 ];
 
@@ -41,6 +43,7 @@ const DOMAIN_SECTIONS: NavItem[] = [
     { id: "dns", label: "DNS" },
     { id: "related", label: "Related" },
     { id: "research", label: "Research" },
+    { id: "scan", label: "Scan" },
     { id: "sources", label: "Sources" },
 ];
 
@@ -87,6 +90,9 @@ function Results({
             <Section id="research">
                 <ResearchCard result={result} research={research} />
             </Section>
+            <Section id="scan">
+                <ActiveScanCard indicator={result.ip} kind="ip" />
+            </Section>
             <Section id="sources">
                 <SourceBreakdown
                     sources={result.sources}
@@ -127,6 +133,9 @@ function DomainResults({
             <Section id="research">
                 <ResearchCard result={result} research={research} />
             </Section>
+            <Section id="scan">
+                <ActiveScanCard indicator={result.domain} kind="domain" />
+            </Section>
             <Section id="sources">
                 <SourceBreakdown
                     sources={result.sources}
@@ -141,6 +150,7 @@ function DomainResults({
 const URL_SECTIONS: NavItem[] = [
     { id: "layers", label: "Layers" },
     { id: "research", label: "Research" },
+    { id: "scan", label: "Scan" },
     { id: "sources", label: "Sources" },
 ];
 
@@ -172,6 +182,9 @@ function UrlResults({
             <SectionNav items={URL_SECTIONS} />
             <Section id="research">
                 <ResearchCard result={result} research={research} />
+            </Section>
+            <Section id="scan">
+                <ActiveScanCard indicator={result.url} kind="url" />
             </Section>
             <Section id="sources">
                 <div className="space-y-8">
