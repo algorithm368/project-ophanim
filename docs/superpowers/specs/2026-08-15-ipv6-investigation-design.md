@@ -1,7 +1,7 @@
 # IPv6 in the full TI pipeline — design
 
 **Date:** 2026-08-15
-**Status:** Approved (pending spec review)
+**Status:** Implemented
 **Supersedes:** the "IPv6 in the full TI pipeline" non-goal in
 `2026-05-29-bulk-geolocation-ipv6-design.md`
 
@@ -304,3 +304,29 @@ Manual, end to end (every source involved is keyless):
   Shodan InternetDB plus Spamhaus DROP, two sources. IPv6 verdicts will read
   `unknown` more often than IPv4 ones. This reflects real feed coverage and
   should not be papered over by inventing confidence the data does not support.
+
+## Implementation notes
+
+Two things surfaced during implementation that the design did not anticipate.
+
+**BigInt literals are unavailable.** The project targets ES2017 in
+`tsconfig.json`, and `0n` syntax requires ES2020. `cidr.ts` therefore builds
+its values with `BigInt()` calls. Bare `bigint` types and operators are fine at
+ES2017, so only the literal syntax was affected. Bumping the project's compile
+target was deliberately left out of scope as a shared-config decision.
+
+**Skipped did not mean "no key".** The consensus line in
+`components/CheckResults/verdict.tsx` hardcoded the label "no key" for every
+skipped detector. Once family gating landed, an IPv6 lookup reported "10 no
+key" for sources that were skipped for not supporting IPv6, which would send an
+analyst after credentials that could not help. `consensusBuckets` now splits the
+bucket on `enabled`: a key-gated source that never ran is disabled, a
+family-skipped one is enabled and simply cannot answer. This was found by
+looking at the rendered page during verification, not by a test.
+
+Verified end to end on 2026-08-15: an address inside `2001:678:254::/48`
+returns the Spamhaus DROP hit, `2001:4860:4860::8888` returns geo, RDAP,
+the RIPEstat prefix, PeeringDB, forward-confirmed PTR `dns.google`, and
+InternetDB ports, and the permalink round-trips both raw and percent-encoded.
+A DROP-listed IPv4 scores 13 against the IPv6's 12, confirming parity: the low
+score for a netblock listing is pre-existing IPv4 behavior, not a v6 defect.
