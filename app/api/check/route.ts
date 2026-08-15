@@ -1,4 +1,4 @@
-import { parseIPv4 } from "@/lib/ip";
+import { parseIP } from "@/lib/ip";
 import { checkIp } from "@/lib/ti/check";
 import { sources } from "@/lib/ti/registry";
 import { getCachedResult, setCachedResult } from "@/lib/ti/cache";
@@ -8,17 +8,19 @@ import type { CheckResult } from "@/lib/ti/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Validate the IP up front, returning the clean IP or an error Response. */
-function validateIp(raw: string | null): Validated<string> {
+/** Validate the IP up front, returning the clean IP or an error Response.
+ *  Accepts either family; the returned value is canonical (RFC 5952 for v6)
+ *  so one address cannot key the cache under two spellings. */
+export function validateIp(raw: string | null): Validated<string> {
   if (!raw) {
     return {
       error: Response.json({ error: "Missing 'ip' parameter" }, { status: 400 }),
     };
   }
-  const parsed = parseIPv4(raw);
+  const parsed = parseIP(raw);
   if (!parsed) {
     return {
-      error: Response.json({ error: "Invalid IPv4 address" }, { status: 400 }),
+      error: Response.json({ error: "Invalid IP address" }, { status: 400 }),
     };
   }
   if (parsed.isPrivate || parsed.isReserved) {

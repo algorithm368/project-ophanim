@@ -611,6 +611,40 @@ describe("buildNarrative — unclassified type is hedged (issue #10)", () => {
   });
 });
 
+describe("consensusBuckets — separates key-gated skips from unsupported ones", () => {
+  it("counts a disabled source as no-key and a family-skipped one as unsupported", () => {
+    // A key-gated source that never ran: enabled false.
+    const noKey = makeSource({
+      name: "VirusTotal",
+      status: "skipped",
+      enabled: false,
+      summary: "Set VIRUSTOTAL_API_KEY to enable",
+    });
+    // A source skipped because it cannot answer for this IP family: enabled
+    // true, because nothing is wrong with its configuration.
+    const unsupported = makeSource({
+      name: "Feodo",
+      status: "skipped",
+      enabled: true,
+      summary: "Does not support IPv6",
+    });
+    const ran = makeSource({ name: "AbuseIPDB", score: 0 });
+    const result: ResultLike = {
+      riskScore: 0,
+      verdict: "clean",
+      checkedAt: "2026-08-15T00:00:00Z",
+      sources: [noKey, unsupported, ran],
+      stats: makeStats({ total: 3 }),
+    };
+    const b = consensusBuckets(result);
+    expect(b.skipped).toBe(2); // both still skipped in the total
+    expect(b.noKey).toBe(1);
+    expect(b.unsupported).toBe(1);
+    // Reporting "2 no key" here would tell an analyst to go find an API key
+    // for a source that simply cannot answer for this address family.
+  });
+});
+
 describe("consensusBuckets — excludes weight-0 context sources (issue #8)", () => {
   it("does not count a zero-weight geolocation source as a responding/clean detector", () => {
     const geo = makeSource({ name: "ip-api", weight: 0 }); // context-only, ok

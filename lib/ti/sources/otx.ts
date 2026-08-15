@@ -13,6 +13,11 @@ interface OtxResponse {
   error?: string;
 }
 
+/** OTX namespaces its indicator API by type; pick the one matching the family. */
+export function otxIndicatorType(ip: string): "IPv4" | "IPv6" {
+  return ip.includes(":") ? "IPv6" : "IPv4";
+}
+
 /** OTX pulse count → 0-100 (IP weighting: 25 base + 10 per pulse). */
 export function otxScore(pulseCount: number): number {
   return pulseCount > 0 ? Math.min(100, 25 + pulseCount * 10) : 0;
@@ -28,6 +33,7 @@ export const otxSource: TiSource = {
     requiresKey: true,
     weight: 0.85,
     keyEnv: "OTX_API_KEY",
+    families: [4, 6],
     // The /general endpoint is slow for pulse-heavy indicators (10s+ seen), so
     // give it extra headroom rather than timing out.
     timeoutMs: 15000,
@@ -37,17 +43,18 @@ export const otxSource: TiSource = {
     const key = process.env.OTX_API_KEY;
     if (!key) return { status: "skipped" };
     const headers = { "X-OTX-API-KEY": key };
+    const indicator = otxIndicatorType(ip);
     try {
       // /general carries the verdict; /malware (one extra GET, in parallel)
       // adds the sample hashes seen contacting this IP. Best-effort.
       const [{ ok, status, data }, relations] = await Promise.all([
         getJson<OtxResponse>(
-          `https://otx.alienvault.com/api/v1/indicators/IPv4/${ip}/general`,
+          `https://otx.alienvault.com/api/v1/indicators/${indicator}/${ip}/general`,
           signal,
           headers,
         ),
         fetchOtxMalwareRelations(
-          `https://otx.alienvault.com/api/v1/indicators/IPv4/${ip}/malware`,
+          `https://otx.alienvault.com/api/v1/indicators/${indicator}/${ip}/malware`,
           headers,
           signal,
         ),

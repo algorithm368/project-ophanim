@@ -24,7 +24,7 @@ import {
   type SourceMeta,
   type SourceResult,
 } from "@/lib/ti/types";
-import { parseIPv4, type ParsedIP } from "@/lib/ip";
+import { parseIP, type ParsedIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
 import { parseHash } from "@/lib/hash";
 import { detectIOC, refangIOC, extractIps, iocFromPath, type IOCType } from "@/lib/ioc";
@@ -136,9 +136,9 @@ const EXAMPLE_CHIPS: { value: string; label: string; icon: IconType }[] = [
 /** Validate input before hitting the network, returning a friendly error or null. */
 function validateInput(value: string, mode: Mode): string | null {
   if (mode === "ip") {
-    const parsed = parseIPv4(value);
+    const parsed = parseIP(value);
     if (!parsed) {
-      return `"${value}" isn't a valid IPv4 address. Try something like 8.8.8.8.`;
+      return `"${value}" isn't a valid IP address. Try something like 8.8.8.8.`;
     }
     if (parsed.isPrivate || parsed.isReserved) {
       return `${parsed.scopeNote}. This address can't be checked against threat-intel feeds.`;
@@ -161,12 +161,13 @@ function validateInput(value: string, mode: Mode): string | null {
 
 /**
  * The exact value the lookup runs on: the refanged input reduced to its
- * canonical IOC — the parsed IPv4, the apex domain (so a pasted URL becomes
- * just its host), or the normalized hash. Falls back to the input until a type
- * is recognized. Used both for the "we'll check …" hint and the permalink.
+ * canonical IOC — the parsed IP (RFC 5952 form for v6), the apex domain (so a
+ * pasted URL becomes just its host), or the normalized hash. Falls back to the
+ * input until a type is recognized. Used both for the "we'll check …" hint and
+ * the permalink.
  */
 function canonicalFor(value: string, detected: Mode | null): string {
-  if (detected === "ip") return parseIPv4(value)?.ip ?? value;
+  if (detected === "ip") return parseIP(value)?.ip ?? value;
   if (detected === "domain") return parseDomain(value)?.domain ?? value;
   if (detected === "hash") return parseHash(value)?.hash ?? value;
   return value;
@@ -187,16 +188,10 @@ const CheckResults = dynamic(loadCheckResults);
 const loadBulkGeo = () => import("./BulkGeoResults");
 const BulkGeoResults = dynamic(loadBulkGeo, { ssr: false });
 
-/**
- * The IPs a value would bulk-geolocate, or null if it isn't a bulk case.
- * Bulk applies to 2+ routable IPs, or a single IPv6 (the full TI pipeline is
- * IPv4-only, so a lone v6 goes to the geo table instead).
- */
+/** The IPs a value would bulk-geolocate, or null if it isn't a bulk case. */
 function bulkTargets(value: string): ParsedIP[] | null {
   const ips = extractIps(value);
-  if (ips.length >= 2) return ips;
-  if (ips.length === 1 && ips[0].version === 6) return ips;
-  return null;
+  return ips.length >= 2 ? ips : null;
 }
 
 export default function Checker({

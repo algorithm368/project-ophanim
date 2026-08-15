@@ -50,6 +50,13 @@ export interface SourceMeta {
   keyEnv?: string;
   /** Per-source request timeout (ms). Falls back to the orchestrator default. */
   timeoutMs?: number;
+  /**
+   * IP families this source can answer for. Omitted means IPv4 only, so every
+   * existing source keeps its behavior and a newly added one is v4 until it
+   * proves otherwise. The failure mode of forgetting the flag is a missing
+   * source, not a broken one.
+   */
+  families?: (4 | 6)[];
 }
 
 /**

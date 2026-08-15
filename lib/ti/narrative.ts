@@ -707,6 +707,8 @@ export function consensusBuckets(result: ResultLike): {
   errored: number;
   rateLimited: number;
   skipped: number;
+  noKey: number;
+  unsupported: number;
 } {
   const scoring = result.sources.filter((s) => (s.source.weight ?? 1) > 0);
   const responded = scoring.filter((s) => s.status === "ok").length;
@@ -719,7 +721,12 @@ export function consensusBuckets(result: ResultLike): {
     (s) => s.status === "error" || s.status === "timeout",
   ).length;
   const rateLimited = scoring.filter((s) => s.status === "rate_limited").length;
-  const skipped = scoring.filter((s) => s.status === "skipped").length;
+  const skips = scoring.filter((s) => s.status === "skipped");
+  // Not every skip is a missing key. A source that cannot answer for this IP
+  // family is skipped with `enabled: true`, because nothing is wrong with its
+  // configuration; reporting it as "no key" would send an analyst hunting for
+  // credentials that would not help.
+  const noKey = skips.filter((s) => !s.enabled).length;
   return {
     total: scoring.length,
     responded,
@@ -727,6 +734,8 @@ export function consensusBuckets(result: ResultLike): {
     clean: Math.max(0, responded - flagged),
     errored,
     rateLimited,
-    skipped,
+    skipped: skips.length,
+    noKey,
+    unsupported: skips.length - noKey,
   };
 }

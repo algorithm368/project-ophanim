@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { otxScore, otxSource } from "./otx";
+import { otxIndicatorType, otxScore, otxSource } from "./otx";
 import { FLAG_THRESHOLD } from "../aggregate";
 import { getJson } from "../http";
 
@@ -48,5 +48,16 @@ describe("otxSource.check — no hard-malicious flag from pulses (P1.1)", () => 
     expect(f.status).toBe("ok");
     expect(f.score).toBe(100);
     expect(f.malicious).toBeUndefined();
+  });
+});
+
+describe("otxIndicatorType", () => {
+  it("selects the IPv4 indicator namespace for a v4 address", () => {
+    expect(otxIndicatorType("8.8.8.8")).toBe("IPv4");
+  });
+
+  it("selects the IPv6 indicator namespace for a v6 address", () => {
+    expect(otxIndicatorType("2001:4860:4860::8888")).toBe("IPv6");
+    expect(otxIndicatorType("::1")).toBe("IPv6");
   });
 });

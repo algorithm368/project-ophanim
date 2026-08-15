@@ -70,6 +70,7 @@ export const ripeStatSource: TiSource = {
     category: "context",
     requiresKey: false,
     weight: 0,
+    families: [4, 6],
     // stat.ripe.net can be slow under load; give it more headroom than the
     // 8s default so this enrichment isn't lost to a timeout.
     timeoutMs: 12000,

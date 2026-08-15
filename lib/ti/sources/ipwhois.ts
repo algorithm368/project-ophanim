@@ -36,6 +36,7 @@ export const ipWhoIsSource: TiSource = {
     category: "context",
     requiresKey: false,
     weight: 0,
+    families: [4, 6],
   },
   isEnabled: () => true,
   async check(ip, signal): Promise<SourceFinding> {

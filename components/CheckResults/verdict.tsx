@@ -227,7 +227,10 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
         { key: "clean", count: c.clean, label: "clean" },
         { key: "errored", count: c.errored, label: "errors" },
         { key: "rate", count: c.rateLimited, label: "rate limited" },
-        { key: "skipped", count: c.skipped, label: "no key" },
+        { key: "skipped", count: c.noKey, label: "no key" },
+        // Family-skipped sources are not misconfigured, so they must not be
+        // reported as missing a key.
+        { key: "unsupported", count: c.unsupported, label: "unsupported" },
     ];
     const segments = buckets.filter((b) => b.count > 0);
 

@@ -99,6 +99,7 @@ export const abuseIpdbSource: TiSource = {
     category: "reputation",
     requiresKey: true,
     weight: 1,
+    families: [4, 6],
     keyEnv: "ABUSEIPDB_API_KEY",
   },
   isEnabled: () => Boolean(process.env.ABUSEIPDB_API_KEY),

@@ -35,7 +35,10 @@ export function matchDrop(ip: string, blocks: DropBlock[]): DropBlock | null {
   return null;
 }
 
-const FEED_URL = "https://www.spamhaus.org/drop/drop_v4.json";
+const FEEDS: Record<4 | 6, string> = {
+  4: "https://www.spamhaus.org/drop/drop_v4.json",
+  6: "https://www.spamhaus.org/drop/drop_v6.json",
+};
 const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours — DROP changes slowly
 
 interface Cache {
@@ -43,24 +46,32 @@ interface Cache {
   fetchedAt: number;
 }
 
-let cache: Cache | null = null;
-let inflight: Promise<Cache> | null = null;
+// One cache and one in-flight promise per family: the two feeds are separate
+// documents with independent lifetimes, and a v6 lookup must not be served the
+// v4 blocklist.
+const caches: Partial<Record<4 | 6, Cache>> = {};
+const inflight: Partial<Record<4 | 6, Promise<Cache>>> = {};
 
-async function loadFeed(signal: AbortSignal): Promise<Cache> {
-  if (cache && Date.now() - cache.fetchedAt < TTL_MS) return cache;
-  if (inflight) return inflight;
+async function loadFeed(family: 4 | 6, signal: AbortSignal): Promise<Cache> {
+  const cached = caches[family];
+  if (cached && Date.now() - cached.fetchedAt < TTL_MS) return cached;
 
-  inflight = (async () => {
-    const { ok, status, text } = await getText(FEED_URL, signal);
+  const pending = inflight[family];
+  if (pending) return pending;
+
+  const request = (async () => {
+    const { ok, status, text } = await getText(FEEDS[family], signal);
     if (!ok) throw new Error(`feed unavailable (HTTP ${status})`);
-    cache = { blocks: parseDropFeed(text), fetchedAt: Date.now() };
-    return cache;
+    const fresh: Cache = { blocks: parseDropFeed(text), fetchedAt: Date.now() };
+    caches[family] = fresh;
+    return fresh;
   })();
+  inflight[family] = request;
 
   try {
-    return await inflight;
+    return await request;
   } finally {
-    inflight = null;
+    delete inflight[family];
   }
 }
 
@@ -78,11 +89,13 @@ export const spamhausDropSource: TiSource = {
     category: "blocklist",
     requiresKey: false,
     weight: 0.3,
+    families: [4, 6],
   },
   isEnabled: () => true,
   async check(ip, signal): Promise<SourceFinding> {
+    const family = ip.includes(":") ? 6 : 4;
     try {
-      const { blocks } = await loadFeed(signal);
+      const { blocks } = await loadFeed(family, signal);
       const hit = matchDrop(ip, blocks);
       if (!hit) {
         return {
