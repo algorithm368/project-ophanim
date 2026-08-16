@@ -14,11 +14,9 @@ interface GreyNoiseResponse {
 
 /** GreyNoise classification → 0-100 contribution (malicious 80, benign 0, else 30). */
 export function greyNoiseScore(classification: string | undefined): number {
-  return classification === "malicious"
-    ? 80
-    : classification === "benign"
-      ? 0
-      : 30;
+  if (classification === "malicious") return 80;
+  if (classification === "benign") return 0;
+  return 30;
 }
 
 /** GreyNoise Community API: internet scanner classification (free API key required). */
@@ -71,15 +69,16 @@ export const greyNoiseSource: TiSource = {
       if (data.riot) categories.push("common-business-service");
       categories.push(classification);
 
+      const actor = data.name ? ` (${data.name})` : "";
+      const scanner = data.noise ? " (active scanner)" : "";
+
       return {
         status: "ok",
         malicious: classification === "malicious",
         score,
         lastSeen: data.last_seen,
         categories,
-        summary: `${classification}${data.name ? ` (${data.name})` : ""}${
-          data.noise ? " (active scanner)" : ""
-        }`,
+        summary: `${classification}${actor}${scanner}`,
         details: {
           classification,
           noise: data.noise,

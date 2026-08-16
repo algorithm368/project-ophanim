@@ -101,24 +101,171 @@ function IdentityHeader({
     );
 }
 
+type DomainContextOf = NonNullable<DomainCheckResult["context"]>;
+
+/** Who the name is registered through, and for how long. */
+function RegistrationGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
+    const created = formatDate(ctx.createdAt);
+    const expires = formatDate(ctx.expiresAt);
+    const age = ageLabel(ctx.ageDays);
+    const categories = ctx.categories ?? [];
+    if (!ctx.registrar && !created && !expires && categories.length === 0) {
+        return null;
+    }
+
+    // A domain registered in the last month is the single most useful age
+    // signal on this card, so it is the one thing here that takes colour.
+    const fresh = ctx.ageDays !== undefined && ctx.ageDays < 30;
+
+    return (
+        <Group label="Registration">
+            {ctx.registrar && <Field label="Registrar">{ctx.registrar}</Field>}
+            {created && (
+                <Field
+                    label="Registered"
+                    tone={fresh ? "text-orange-600 dark:text-orange-400" : undefined}
+                >
+                    {created}
+                    {age ? ` · ${age} old` : ""}
+                </Field>
+            )}
+            {expires && <Field label="Expires">{expires}</Field>}
+            {categories.length > 0 && (
+                <Field label="Category">{categories.slice(0, 3).join(", ")}</Field>
+            )}
+        </Group>
+    );
+}
+
+/** Where the name points, and how well the resolvers agree about it. */
+function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
+    const ips = ctx.resolvedIps ?? [];
+    const ns = ctx.nameservers ?? [];
+    const reverse = ctx.reverse ?? [];
+    const caa = ctx.caa ?? [];
+    const dnssec =
+        ctx.dnssec !== undefined && ctx.dnssec !== "unknown" ? ctx.dnssec : undefined;
+    const consensus =
+        ctx.resolverConsensus && ctx.resolverConsensus.respondingResolvers > 1
+            ? ctx.resolverConsensus
+            : undefined;
+
+    const anything =
+        ips.length > 0 ||
+        ns.length > 0 ||
+        reverse.length > 0 ||
+        caa.length > 0 ||
+        dnssec !== undefined ||
+        consensus !== undefined;
+    if (!anything) return null;
+
+    return (
+        <Group label="DNS records">
+            {ips.length > 0 && (
+                <Field label="Resolves to" wrap>
+                    <PivotList values={ips} />
+                </Field>
+            )}
+            {ns.length > 0 && (
+                <Field label="Nameservers" wrap>
+                    <PivotList values={ns} />
+                </Field>
+            )}
+            {reverse.length > 0 && (
+                <Field label="Reverse DNS (PTR)" wrap>
+                    <PivotList values={reverse} />
+                </Field>
+            )}
+            {caa.length > 0 && (
+                <Field
+                    label="CAA"
+                    wrap
+                    hint="Certificate Authority Authorization, which CAs may issue TLS certs for this domain"
+                >
+                    <span className="font-mono text-[12px] break-all">
+                        {caa.join(", ")}
+                    </span>
+                </Field>
+            )}
+            {dnssec && (
+                <Field
+                    label="DNSSEC"
+                    hint="Whether the zone is DNSSEC-signed (resolver set the AD flag)"
+                    tone={
+                        dnssec === "signed"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : undefined
+                    }
+                >
+                    {dnssec === "signed" ? "Signed" : "Unsigned"}
+                </Field>
+            )}
+            {consensus && (
+                <Field
+                    label="Resolvers"
+                    hint="Unfiltered DoH resolvers queried for the A record, and how many agree on the resolved IP. A low count suggests GeoDNS, split-horizon, or possible poisoning."
+                    tone={
+                        consensus.bucket === "low"
+                            ? "text-red-600 dark:text-red-400"
+                            : undefined
+                    }
+                >
+                    {consensus.agreeCount}/{consensus.respondingResolvers}
+                    {consensus.bucket === "low" ? " split" : " agree"}
+                </Field>
+            )}
+        </Group>
+    );
+}
+
+/** Who may send mail as this domain, and what happens when they fail. */
+function EmailSecurityGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
+    const mx = ctx.mx ?? [];
+    if (mx.length === 0 && !ctx.spf && !ctx.dmarc) return null;
+
+    return (
+        <Group label="Email security">
+            {mx.length > 0 && (
+                <Field label="Mail (MX)" wrap>
+                    <PivotList values={mx} />
+                </Field>
+            )}
+            {ctx.spf && (
+                <Field
+                    label="SPF"
+                    wrap
+                    hint="Sender Policy Framework, which servers may send mail for this domain"
+                >
+                    <span className="font-mono text-[12px] break-all">{ctx.spf}</span>
+                </Field>
+            )}
+            {ctx.dmarc && (
+                <Field
+                    label="DMARC"
+                    wrap
+                    hint="Policy for handling mail that fails SPF/DKIM authentication"
+                >
+                    <span className="font-mono text-[12px] break-all">{ctx.dmarc}</span>
+                </Field>
+            )}
+        </Group>
+    );
+}
+
+/** A domain's age in the largest unit that stays exact: days under a year,
+ *  then years and the remaining days. */
+function ageLabel(ageDays: number | undefined): string | undefined {
+    if (ageDays === undefined) return undefined;
+    if (ageDays < 365) return `${ageDays} days`;
+    return `${Math.floor(ageDays / 365)} yr ${ageDays % 365} d`;
+}
+
 export function DomainProfileCard({ result }: Readonly<{ result: DomainCheckResult }>) {
     const ctx = result.context;
     const resolves =
         (ctx?.resolvedIps?.length ?? 0) > 0 || (ctx?.ipv6?.length ?? 0) > 0;
     const type = classifyDomain(ctx, resolves);
     const tone = domainTone(type.label);
-
-    const created = formatDate(ctx?.createdAt);
-    const expires = formatDate(ctx?.expiresAt);
-    const age =
-        ctx?.ageDays !== undefined
-            ? ctx.ageDays < 365
-                ? `${ctx.ageDays} days`
-                : `${Math.floor(ctx.ageDays / 365)} yr ${ctx.ageDays % 365} d`
-            : undefined;
-    const ips = ctx?.resolvedIps ?? [];
-    const ns = ctx?.nameservers ?? [];
-    const mx = ctx?.mx ?? [];
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -140,138 +287,9 @@ export function DomainProfileCard({ result }: Readonly<{ result: DomainCheckResu
                 {ctx ? (
                     <div className="space-y-4">
                         <Rule />
-
-                        {(ctx.registrar ||
-                            created ||
-                            expires ||
-                            (ctx.categories?.length ?? 0) > 0) && (
-                            <Group label="Registration">
-                                {ctx.registrar && (
-                                    <Field label="Registrar">{ctx.registrar}</Field>
-                                )}
-                                {created && (
-                                    <Field
-                                        label="Registered"
-                                        tone={
-                                            ctx.ageDays !== undefined && ctx.ageDays < 30
-                                                ? "text-orange-600 dark:text-orange-400"
-                                                : undefined
-                                        }
-                                    >
-                                        {created}
-                                        {age ? ` · ${age} old` : ""}
-                                    </Field>
-                                )}
-                                {expires && <Field label="Expires">{expires}</Field>}
-                                {ctx.categories && ctx.categories.length > 0 && (
-                                    <Field label="Category">
-                                        {ctx.categories.slice(0, 3).join(", ")}
-                                    </Field>
-                                )}
-                            </Group>
-                        )}
-
-                        {(ips.length > 0 ||
-                            ns.length > 0 ||
-                            (ctx.reverse?.length ?? 0) > 0 ||
-                            (ctx.caa?.length ?? 0) > 0 ||
-                            (ctx.dnssec !== undefined && ctx.dnssec !== "unknown") ||
-                            (ctx.resolverConsensus?.respondingResolvers ?? 0) > 1) && (
-                            <Group label="DNS records">
-                                {ips.length > 0 && (
-                                    <Field label="Resolves to" wrap>
-                                        <PivotList values={ips} />
-                                    </Field>
-                                )}
-                                {ns.length > 0 && (
-                                    <Field label="Nameservers" wrap>
-                                        <PivotList values={ns} />
-                                    </Field>
-                                )}
-                                {(ctx.reverse?.length ?? 0) > 0 && (
-                                    <Field label="Reverse DNS (PTR)" wrap>
-                                        <PivotList values={ctx.reverse!} />
-                                    </Field>
-                                )}
-                                {(ctx.caa?.length ?? 0) > 0 && (
-                                    <Field
-                                        label="CAA"
-                                        wrap
-                                        hint="Certificate Authority Authorization, which CAs may issue TLS certs for this domain"
-                                    >
-                                        <span className="font-mono text-[12px] break-all">
-                                            {ctx.caa!.join(", ")}
-                                        </span>
-                                    </Field>
-                                )}
-                                {ctx.dnssec !== undefined &&
-                                    ctx.dnssec !== "unknown" && (
-                                        <Field
-                                            label="DNSSEC"
-                                            hint="Whether the zone is DNSSEC-signed (resolver set the AD flag)"
-                                            tone={
-                                                ctx.dnssec === "signed"
-                                                    ? "text-emerald-600 dark:text-emerald-400"
-                                                    : undefined
-                                            }
-                                        >
-                                            {ctx.dnssec === "signed"
-                                                ? "Signed"
-                                                : "Unsigned"}
-                                        </Field>
-                                    )}
-                                {ctx.resolverConsensus &&
-                                    ctx.resolverConsensus.respondingResolvers > 1 && (
-                                        <Field
-                                            label="Resolvers"
-                                            hint="Unfiltered DoH resolvers queried for the A record, and how many agree on the resolved IP. A low count suggests GeoDNS, split-horizon, or possible poisoning."
-                                            tone={
-                                                ctx.resolverConsensus.bucket === "low"
-                                                    ? "text-red-600 dark:text-red-400"
-                                                    : undefined
-                                            }
-                                        >
-                                            {ctx.resolverConsensus.agreeCount}/
-                                            {ctx.resolverConsensus.respondingResolvers}
-                                            {ctx.resolverConsensus.bucket === "low"
-                                                ? " split"
-                                                : " agree"}
-                                        </Field>
-                                    )}
-                            </Group>
-                        )}
-
-                        {(mx.length > 0 || ctx.spf || ctx.dmarc) && (
-                            <Group label="Email security">
-                                {mx.length > 0 && (
-                                    <Field label="Mail (MX)" wrap>
-                                        <PivotList values={mx} />
-                                    </Field>
-                                )}
-                                {ctx.spf && (
-                                    <Field
-                                        label="SPF"
-                                        wrap
-                                        hint="Sender Policy Framework, which servers may send mail for this domain"
-                                    >
-                                        <span className="font-mono text-[12px] break-all">
-                                            {ctx.spf}
-                                        </span>
-                                    </Field>
-                                )}
-                                {ctx.dmarc && (
-                                    <Field
-                                        label="DMARC"
-                                        wrap
-                                        hint="Policy for handling mail that fails SPF/DKIM authentication"
-                                    >
-                                        <span className="font-mono text-[12px] break-all">
-                                            {ctx.dmarc}
-                                        </span>
-                                    </Field>
-                                )}
-                            </Group>
-                        )}
+                        <RegistrationGroup ctx={ctx} />
+                        <DnsRecordsGroup ctx={ctx} />
+                        <EmailSecurityGroup ctx={ctx} />
                     </div>
                 ) : (
                     <p className="text-sm text-muted-foreground">
@@ -437,7 +455,8 @@ function sentenceCase(s: string): string {
 /** MITRE technique id -> attack.mitre.org URL (handles `T1070.004` sub-techniques). */
 function mitreUrl(id: string): string {
     const [base, sub] = id.toUpperCase().split(".");
-    return `https://attack.mitre.org/techniques/${base}/${sub ? `${sub}/` : ""}`;
+    const subPath = sub ? `${sub}/` : "";
+    return `https://attack.mitre.org/techniques/${base}/${subPath}`;
 }
 
 /** A technique id that links out to its MITRE ATT&CK page. */
@@ -729,29 +748,39 @@ function EnginesChip({ malicious, total }: Readonly<{ malicious: number; total: 
     );
 }
 
+type HashKind = "malicious" | "clean" | "known" | "unknown";
+
+/**
+ * How severe the hash card reads.
+ *
+ * The signal follows the actual verdict, not just whether a family label
+ * exists: otherwise a clean file that has one (EICAR) looks malicious, and a
+ * malicious file without one (a flagged script) looks benign. "unknown" is
+ * reserved for a file nothing recognized at all, so an unrecognized hash and a
+ * recognized-but-unflagged one stay distinguishable.
+ */
+function hashKind(verdict: HashCheckResult["verdict"], known: boolean): HashKind {
+    if (verdict === "malicious" || verdict === "suspicious") return "malicious";
+    if (verdict === "clean") return "clean";
+    if (verdict === "unknown" && !known) return "unknown";
+    return "known";
+}
+
+const HASH_KIND_TONE: Record<HashKind, string> = {
+    malicious: "text-red-600 dark:text-red-400",
+    clean: "text-emerald-600 dark:text-emerald-400",
+    known: "text-foreground/80",
+    unknown: "text-foreground/80",
+};
+
 export function HashProfileCard({ result }: Readonly<{ result: HashCheckResult }>) {
     const ctx = result.context;
     const hasData = result.sources.some(
         (s) => s.status === "ok" && s.score !== undefined,
     );
     const type = classifyHash(ctx, hasData);
-    // Severity signal follows the actual verdict, not just whether a family label
-    // exists — otherwise a clean file with a family (EICAR) looks malicious and a
-    // malicious file without one (a flagged script) looks benign.
-    const kind: "malicious" | "clean" | "known" | "unknown" =
-        result.verdict === "malicious" || result.verdict === "suspicious"
-            ? "malicious"
-            : result.verdict === "clean"
-              ? "clean"
-              : result.verdict === "unknown" && !ctx
-                ? "unknown"
-                : "known";
-    const tone =
-        kind === "malicious"
-            ? "text-red-600 dark:text-red-400"
-            : kind === "clean"
-              ? "text-emerald-600 dark:text-emerald-400"
-              : "text-foreground/80";
+    const kind = hashKind(result.verdict, Boolean(ctx));
+    const tone = HASH_KIND_TONE[kind];
 
     const size = formatBytes(ctx?.fileSize);
     const firstSeen = formatDate(ctx?.firstSeen);

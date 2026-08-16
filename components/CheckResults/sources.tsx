@@ -77,13 +77,22 @@ function sourceLookupUrl(
     indicator: string,
     kind: Mode,
 ): string {
-    const map =
-        kind === "domain"
-            ? DOMAIN_LOOKUP_URL
-            : kind === "hash"
-              ? HASH_LOOKUP_URL
-              : LOOKUP_URL;
+    let map = LOOKUP_URL;
+    if (kind === "domain") map = DOMAIN_LOOKUP_URL;
+    else if (kind === "hash") map = HASH_LOOKUP_URL;
     return map[source.id]?.(indicator) ?? source.url;
+}
+
+/**
+ * Why a row has no summary of its own.
+ *
+ * A source that ran and found nothing, one turned off, and one waiting on a key
+ * are three different states, and only the last is something the reader can act
+ * on, so it names the variable to set.
+ */
+function noSummaryReason(skipped: boolean, keyEnv?: string): string {
+    if (!skipped) return "No data";
+    return keyEnv ? `Set ${keyEnv} to enable` : "Disabled";
 }
 
 function relevanceRank(s: SourceResult): number {
@@ -217,12 +226,7 @@ function SourceRow({
 
     const summary = errored
         ? (result.error ?? "Lookup failed")
-        : (result.summary ??
-          (skipped
-              ? source.keyEnv
-                  ? `Set ${source.keyEnv} to enable`
-                  : "Disabled"
-              : "No data"));
+        : (result.summary ?? noSummaryReason(skipped, source.keyEnv));
 
     return (
         <div

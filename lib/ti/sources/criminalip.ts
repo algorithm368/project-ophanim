@@ -85,14 +85,14 @@ export const criminalIpSource: TiSource = {
         12,
       );
 
+      const portsPart = openPorts ? ` · ${openPorts} open port(s)` : "";
+
       return {
         status: "ok",
         malicious: scoring.is_malicious === true || score >= 70,
         score,
         categories,
-        summary: `Inbound risk ${scoring.inbound ?? "?"}, outbound ${
-          scoring.outbound ?? "?"
-        }${openPorts ? ` · ${openPorts} open port(s)` : ""}`,
+        summary: `Inbound risk ${scoring.inbound ?? "?"}, outbound ${scoring.outbound ?? "?"}${portsPart}`,
         details: {
           inbound: scoring.inbound,
           outbound: scoring.outbound,

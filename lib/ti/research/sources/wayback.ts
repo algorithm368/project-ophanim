@@ -195,6 +195,40 @@ async function firstCapture(
  * budget rather than all of it: it retries once, and whatever is left goes to
  * the availability API, whose one recent capture beats reporting a dead lane.
  */
+/**
+ * The CDX page of recent captures, with one retry.
+ *
+ * The index gets its own deadline, short of the provider's, so a slow one
+ * leaves time for the availability fallback instead of spending the whole
+ * budget and returning nothing. Status 0 means "ask the fallback": the CDX
+ * deadline being spent is just this index being slow again, whereas the
+ * provider's own budget being spent is a real timeout and is rethrown.
+ *
+ * The retry is worth one attempt because the CDX load balancer often routes
+ * the second request to a healthy node; a 4xx will not fix itself that way.
+ */
+async function queryCdx(
+  url: string,
+  signal: AbortSignal,
+): Promise<{ status: number; data: unknown }> {
+  const deadline = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(CDX_QUERY_MS),
+  ]);
+  try {
+    let last = { status: 0, data: null as unknown };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await getJson<unknown>(url, deadline);
+      last = { status: res.status, data: res.data };
+      if (res.ok || res.status < 500) break;
+    }
+    return last;
+  } catch (cdxErr) {
+    if (signal.aborted) throw cdxErr;
+    return { status: 0, data: null };
+  }
+}
+
 export const waybackProvider: ResearchProvider = {
   meta: {
     id: "wayback",
@@ -216,30 +250,7 @@ export const waybackProvider: ResearchProvider = {
       // page of recent captures, and serializing them would double the wait.
       const oldest = firstCapture(indicator, signal);
 
-      let status = 0;
-      let data: unknown = null;
-      // The CDX index gets its own deadline, short of the provider's, so a slow
-      // one leaves time for the fallback instead of spending the whole budget
-      // and returning nothing.
-      const cdxDeadline = AbortSignal.any([
-        signal,
-        AbortSignal.timeout(CDX_QUERY_MS),
-      ]);
-      try {
-        // One retry: the CDX load balancer often routes it to a healthy node.
-        for (let attempt = 0; attempt < 2; attempt++) {
-          const res = await getJson<unknown>(url, cdxDeadline);
-          status = res.status;
-          data = res.data;
-          if (res.ok) break;
-          if (status < 500) break; // 4xx won't fix on retry
-        }
-      } catch (cdxErr) {
-        // The provider's own budget being spent is a real timeout; the CDX
-        // deadline being spent is just this index being slow again.
-        if (signal.aborted) throw cdxErr;
-        status = 0;
-      }
+      const { status, data } = await queryCdx(url, signal);
 
       if (status < 200 || status >= 300) {
         // Awaited, not just returned: a returned promise's rejection would sail

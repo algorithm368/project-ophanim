@@ -45,7 +45,7 @@ export function ipConsensus(votes: ResolverVote[]): ResolverConsensus {
 
   // Most common first; ties broken by smallest canonical key for determinism.
   const variants = [...byCanon.entries()]
-    .sort((a, b) => b[1].count - a[1].count || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .sort((a, b) => b[1].count - a[1].count || byCodeUnit(a[0], b[0]))
     .map(([, v]) => v);
 
   const winner = variants[0];

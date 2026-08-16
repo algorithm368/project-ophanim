@@ -49,6 +49,29 @@ type StreamEvent =
  * main TI fan-out) and the same key carries through to when results render —
  * no refetch on the loading→result transition.
  */
+/**
+ * An NDJSON body as a stream of parsed events.
+ *
+ * The framing (chunk boundaries falling mid-line, the trailing partial line
+ * held back until the next chunk completes it) is this generator's business, so
+ * the consumer only ever sees whole events.
+ */
+async function* ndjson<T>(body: ReadableStream<Uint8Array>): AsyncGenerator<T> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines.filter((l) => l.trim())) {
+            yield JSON.parse(line) as T;
+        }
+    }
+}
+
 export function useResearchStream(
     indicator: string | null,
     kind: IOCType | null,
@@ -77,29 +100,26 @@ export function useResearchStream(
                     snapshot(true, true);
                     return;
                 }
-                const reader = res.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = "";
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\n");
-                    buffer = lines.pop() ?? "";
-                    for (const line of lines) {
-                        if (!line.trim()) continue;
-                        const evt = JSON.parse(line) as StreamEvent;
-                        if (evt.type === "start") {
+                for await (const evt of ndjson<StreamEvent>(res.body)) {
+                    switch (evt.type) {
+                        case "start":
                             metas = evt.providers ?? [];
                             snapshot(false, false);
-                        } else if (evt.type === "result" && evt.result) {
-                            results = { ...results, [evt.result.provider.id]: evt.result };
+                            break;
+                        case "result":
+                            if (!evt.result) break;
+                            results = {
+                                ...results,
+                                [evt.result.provider.id]: evt.result,
+                            };
                             snapshot(false, false);
-                        } else if (evt.type === "done") {
+                            break;
+                        case "done":
                             snapshot(true, false);
-                        } else if (evt.type === "error") {
+                            break;
+                        case "error":
                             snapshot(true, true);
-                        }
+                            break;
                     }
                 }
                 // Mark complete if the stream ended without an explicit done event.

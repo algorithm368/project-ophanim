@@ -9,17 +9,25 @@ export const dynamic = "force-dynamic";
  * Returns { results: GeoRow[] }. Geo-only — no threat-intel scoring, cache, or
  * history. Invalid/private/reserved/duplicate entries are dropped by extractIps.
  */
+/**
+ * The `ips` field as one newline-separated blob, however it arrived.
+ *
+ * A client may send the textarea's contents verbatim or an already-split array;
+ * both reduce to the same thing the extractor downstream wants. Anything else
+ * is not an answer to "which addresses", and returns null so the caller can
+ * reject it rather than silently geolocating nothing.
+ */
+function readIpsField(val: unknown): string | null {
+  if (typeof val === "string") return val;
+  if (!Array.isArray(val)) return null;
+  return val.filter((x): x is string => typeof x === "string").join("\n");
+}
+
 export async function POST(request: Request) {
   let raw: string | null = null;
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const val = body.ips;
-    raw =
-      typeof val === "string"
-        ? val
-        : Array.isArray(val)
-          ? val.filter((x): x is string => typeof x === "string").join("\n")
-          : null;
+    raw = readIpsField(body.ips);
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }

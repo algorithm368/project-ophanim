@@ -11,6 +11,44 @@ export interface ParsedIPv4 {
 const IPV4_RE =
   /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
+/**
+ * The IPv4 ranges a TI lookup cannot say anything useful about, as a table
+ * rather than an if/else chain: every entry answers the same two questions
+ * (which kind of non-routable is it, and what do we tell the analyst), so the
+ * shared answer is written once per range instead of once per branch. The three
+ * RFC 1918 blocks in particular are one range with three prefixes, and reading
+ * as three identical branches only invited them to drift apart.
+ *
+ * Order is match order, and the last two entries depend on it: 240/4 is carved
+ * out of the 224-and-above space, so it has to be tested first.
+ */
+const SPECIAL_IPV4_RANGES: readonly {
+  covers: (a: number, b: number) => boolean;
+  scope: "private" | "reserved";
+  note: string;
+}[] = [
+  {
+    covers: (a, b) =>
+      a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168),
+    scope: "private",
+    note: "Private network (RFC 1918)",
+  },
+  { covers: (a) => a === 127, scope: "reserved", note: "Loopback (RFC 1122)" },
+  {
+    covers: (a, b) => a === 169 && b === 254,
+    scope: "reserved",
+    note: "Link-local (RFC 3927)",
+  },
+  {
+    covers: (a, b) => a === 100 && b >= 64 && b <= 127,
+    scope: "reserved",
+    note: "Carrier-grade NAT (RFC 6598)",
+  },
+  { covers: (a) => a === 0, scope: "reserved", note: "This network (RFC 1122)" },
+  { covers: (a) => a >= 240, scope: "reserved", note: "Reserved (RFC 1112)" },
+  { covers: (a) => a >= 224, scope: "reserved", note: "Multicast (RFC 5771)" },
+];
+
 export function parseIPv4(input: string): ParsedIPv4 | null {
   const value = input.trim();
   const m = IPV4_RE.exec(value);
@@ -25,43 +63,15 @@ export function parseIPv4(input: string): ParsedIPv4 | null {
   if (octets.some((o) => o < 0 || o > 255)) return null;
 
   const [a, b] = octets;
-  let isPrivate = false;
-  let isReserved = false;
-  let scopeNote: string | undefined;
-
-  if (a === 10) {
-    isPrivate = true;
-    scopeNote = "Private network (RFC 1918)";
-  } else if (a === 172 && b >= 16 && b <= 31) {
-    isPrivate = true;
-    scopeNote = "Private network (RFC 1918)";
-  } else if (a === 192 && b === 168) {
-    isPrivate = true;
-    scopeNote = "Private network (RFC 1918)";
-  } else if (a === 127) {
-    isReserved = true;
-    scopeNote = "Loopback (RFC 1122)";
-  } else if (a === 169 && b === 254) {
-    isReserved = true;
-    scopeNote = "Link-local (RFC 3927)";
-  } else if (a === 100 && b >= 64 && b <= 127) {
-    isReserved = true;
-    scopeNote = "Carrier-grade NAT (RFC 6598)";
-  } else if (a === 0) {
-    isReserved = true;
-    scopeNote = "This network (RFC 1122)";
-  } else if (a >= 224) {
-    isReserved = true;
-    scopeNote = a >= 240 ? "Reserved (RFC 1112)" : "Multicast (RFC 5771)";
-  }
+  const range = SPECIAL_IPV4_RANGES.find((r) => r.covers(a, b));
 
   return {
     ip: octets.join("."),
     version: 4,
     octets,
-    isPrivate,
-    isReserved,
-    scopeNote,
+    isPrivate: range?.scope === "private",
+    isReserved: range?.scope === "reserved",
+    scopeNote: range?.note,
   };
 }
 

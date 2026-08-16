@@ -7,6 +7,7 @@ import type {
 import { errorMessage, getJson, isTimeout } from "../../http";
 import { parseDomain } from "../../../domain";
 import { crossApexSans } from "../san-pivots";
+import { count } from "@/lib/text";
 
 interface CertspotterIssuance {
   dns_names?: string[];
@@ -117,11 +118,10 @@ export const certSpotterSource: TiSource = {
         data,
         apex,
       );
-      const summary =
-        `${certificates.length} certificate${certificates.length === 1 ? "" : "s"} in CT logs` +
-        (subdomains.length
-          ? `, ${subdomains.length} subdomain${subdomains.length === 1 ? "" : "s"}`
-          : "");
+      const subs = subdomains.length
+        ? `, ${count(subdomains.length, "subdomain")}`
+        : "";
+      const summary = `${count(certificates.length, "certificate")} in CT logs${subs}`;
 
       const relations: RelatedIndicator[] = sharedDomains.map((value) => ({
         value,

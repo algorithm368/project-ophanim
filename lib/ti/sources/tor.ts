@@ -61,15 +61,14 @@ export const torSource: TiSource = {
 
       const isExit = matching.some((r) => (r.flags ?? []).includes("Exit"));
       const relay = matching[0];
+      const named = relay.nickname ? ` (${relay.nickname})` : "";
 
       return {
         status: "ok",
         score: isExit ? 50 : 25,
         categories: ["tor", isExit ? "tor-exit" : "tor-relay"],
         lastSeen: relay.last_seen,
-        summary: isExit
-          ? `Tor exit node${relay.nickname ? ` (${relay.nickname})` : ""}`
-          : `Tor relay, non-exit${relay.nickname ? ` (${relay.nickname})` : ""}`,
+        summary: `${isExit ? "Tor exit node" : "Tor relay, non-exit"}${named}`,
         details: {
           role: isExit ? "exit" : "relay",
           nickname: relay.nickname,

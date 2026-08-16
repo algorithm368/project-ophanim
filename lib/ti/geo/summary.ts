@@ -8,6 +8,7 @@
  */
 import type { GeoRow } from "../geo";
 import { canonicalAsn } from "./geokit";
+import { count } from "@/lib/text";
 
 /**
  * Country code for a row, or undefined when nothing trustworthy is known.
@@ -114,7 +115,7 @@ export function originReport(rows: GeoRow[]): string {
   const countryWord = located.length === 1 ? "country" : "countries";
   const sentences: string[] = [
     locatedCount === total
-      ? `All ${total} ${total === 1 ? "address" : "addresses"} geolocated to ${located.length} ${countryWord}.`
+      ? `All ${count(total, "address", "addresses")} geolocated to ${located.length} ${countryWord}.`
       : `${locatedCount} of ${total} addresses geolocated to ${located.length} ${countryWord}.`,
   ];
 

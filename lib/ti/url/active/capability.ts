@@ -49,7 +49,10 @@ const PASSWORD_INPUT = /<input\b[^>]*\btype\s*=\s*["']?password\b/i;
 const FORM_TAG = /<form\b[^>]*>/gi;
 const ANCHOR_HREF = /<a\b[^>]*\bhref\s*=\s*["']([^"']*)["']/gi;
 const ATTR = (name: string) =>
-  new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i");
+  new RegExp(
+    String.raw`\b${name}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`,
+    "i",
+  );
 
 /** The attribute's value, or undefined when the tag does not carry it. */
 function attr(tag: string, name: string): string | undefined {
@@ -104,44 +107,61 @@ export function analyzeDom(html: string, pageUrl: string): ScanCapability {
   const pageHost = resolve(pageUrl, pageUrl).host;
   const pageSite = pageHost ? siteOf(pageHost) : undefined;
 
+  return {
+    passwordField: PASSWORD_INPUT.test(html),
+    forms: formTargets(html, pageUrl, pageSite),
+    downloadLinks: executableLinks(html, pageUrl),
+  };
+}
+
+/** Where the page's forms post, and whether that leaves the site. */
+function formTargets(
+  html: string,
+  pageUrl: string,
+  pageSite: string | undefined,
+): FormTarget[] {
   const forms: FormTarget[] = [];
-  const seenForms = new Set<string>();
+  const seen = new Set<string>();
   for (const [tag] of html.matchAll(FORM_TAG)) {
     if (forms.length >= MAX_LISTED) break;
     const raw = attr(tag, "action");
     // A form with no action posts back to the page it is on.
     const { absolute, host } = resolve(raw ?? pageUrl, pageUrl);
-    if (seenForms.has(absolute)) continue;
-    seenForms.add(absolute);
+    if (seen.has(absolute)) continue;
+    seen.add(absolute);
     forms.push({
       action: absolute,
       ...(host ? { host } : {}),
       crossDomain: Boolean(host && pageSite && siteOf(host) !== pageSite),
     });
   }
+  return forms;
+}
 
-  const downloadLinks: string[] = [];
-  const seenLinks = new Set<string>();
+/** Links whose path ends in something executable. A href that will not parse
+ *  as a URL is skipped rather than guessed at. */
+function executableLinks(html: string, pageUrl: string): string[] {
+  const links: string[] = [];
+  const seen = new Set<string>();
   for (const [, href] of html.matchAll(ANCHOR_HREF)) {
-    if (downloadLinks.length >= MAX_LISTED) break;
+    if (links.length >= MAX_LISTED) break;
     if (!href) continue;
     const { absolute } = resolve(href, pageUrl);
-    let pathname: string;
-    try {
-      pathname = new URL(absolute, pageUrl).pathname;
-    } catch {
-      continue;
-    }
-    if (!isExecutable(pathname) || seenLinks.has(absolute)) continue;
-    seenLinks.add(absolute);
-    downloadLinks.push(absolute);
+    const pathname = pathnameOf(absolute, pageUrl);
+    if (!pathname || !isExecutable(pathname) || seen.has(absolute)) continue;
+    seen.add(absolute);
+    links.push(absolute);
   }
+  return links;
+}
 
-  return {
-    passwordField: PASSWORD_INPUT.test(html),
-    forms,
-    downloadLinks,
-  };
+/** The path of a URL, or undefined when it will not parse. */
+function pathnameOf(absolute: string, base: string): string | undefined {
+  try {
+    return new URL(absolute, base).pathname;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

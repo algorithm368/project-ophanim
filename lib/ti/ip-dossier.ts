@@ -7,6 +7,7 @@ import { shodanHostInfo, PORT_SERVICE } from "./shodan";
 import { maliciousTags } from "./sources/shodan-internetdb";
 import { cpeLabel } from "@/lib/cpe";
 import { relationsFor } from "@/lib/relations";
+import { count } from "@/lib/text";
 
 export type DossierField = { label: string; value: string; hint?: string; mono?: boolean };
 export type DossierGroup = { id: string; title: string; fields: DossierField[] };
@@ -180,12 +181,6 @@ function isoDate(s: string): string {
   return s.slice(0, 10);
 }
 
-/** "1 linked IOC" / "3 linked IOCs", so a count never reads as a mislabelled
- *  plural. */
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
-}
-
 /**
  * Blocklist listings, keyed off each source's raw listing evidence rather than
  * its `malicious` flag: dnsbl/blocklist-de/ipsum all gate `malicious` behind a
@@ -274,6 +269,7 @@ export function buildRelationships(result: CheckResult): DossierGroup | null {
   const rev = findFinding(result, "reverse-ip")?.details;
   const domainCount = typeof rev?.domainCount === "number" ? rev.domainCount : 0;
   const example = strArr(rev?.domains)[0];
+  const eg = example ? `, e.g. ${example}` : "";
   const pdnsCount = result.passiveDns?.length ?? 0;
   const related = relationsFor(result).related.length;
 
@@ -281,14 +277,14 @@ export function buildRelationships(result: CheckResult): DossierGroup | null {
     domainCount
       ? {
           label: "Hosted domains",
-          value: `${domainCount} domain${domainCount === 1 ? "" : "s"}${example ? `, e.g. ${example}` : ""}`,
+          value: `${domainCount} domain${domainCount === 1 ? "" : "s"}${eg}`,
         }
       : null,
     pdnsCount
       ? { label: "Passive DNS", value: `${pdnsCount} historical resolution${pdnsCount === 1 ? "" : "s"}` }
       : null,
     related
-      ? { label: "Related indicators", value: plural(related, "linked IOC") }
+      ? { label: "Related indicators", value: count(related, "linked IOC") }
       : null,
   ]);
 }

@@ -33,6 +33,46 @@ export function classificationScore(c: string | undefined): {
  * endpoint is public, so this runs without a key; a MALTIVERSE_API_KEY (free
  * account) is sent when present to raise the rate limit.
  */
+/**
+ * Detection labels as distinct chips.
+ *
+ * `blacklist[].description` is sometimes a single label and sometimes a
+ * comma-joined set ("ransomware,wcry,…"), so it is split either way rather
+ * than rendered as one run-on chip.
+ */
+function detectionLabels(data: MaltiverseSample): string[] {
+  return [
+    ...new Set(
+      (data.blacklist ?? [])
+        .flatMap((b) => (b.description ?? "").split(","))
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, 12);
+}
+
+/** The hosts the sample reached out to, as pivots. Observed, not confirmed:
+ *  sandbox contact is evidence of a call, not of a relationship. */
+function contactedHostRelations(
+  hosts: MaltiverseSample["contacted_host"],
+): RelatedIndicator[] {
+  const seen = new Set<string>();
+  const out: RelatedIndicator[] = [];
+  for (const h of hosts ?? []) {
+    if (typeof h !== "string" || !h || seen.has(h)) continue;
+    seen.add(h);
+    out.push({
+      value: h,
+      type: detectIOC(h) === "ip" ? "ip" : "domain",
+      relation: "contacts",
+      sources: ["maltiverse"],
+      tier: "observed",
+    });
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
 export const maltiverseSource: TiSource = {
   meta: {
     id: "maltiverse",
@@ -76,37 +116,12 @@ export const maltiverseSource: TiSource = {
       const { score, malicious, allowlisted } = classificationScore(
         data.classification,
       );
-      // blacklist[].description is sometimes a single label, sometimes a
-      // comma-joined set ("ransomware,wcry,..."); split into distinct chips.
-      const detectionNames = [
-        ...new Set(
-          (data.blacklist ?? [])
-            .flatMap((b) => (b.description ?? "").split(","))
-            .map((s) => s.trim())
-            .filter(Boolean),
-        ),
-      ].slice(0, 12);
-
-      const relations: RelatedIndicator[] = [];
-      const seen = new Set<string>();
-      for (const h of data.contacted_host ?? []) {
-        if (typeof h !== "string" || !h || seen.has(h)) continue;
-        seen.add(h);
-        relations.push({
-          value: h,
-          type: detectIOC(h) === "ip" ? "ip" : "domain",
-          relation: "contacts",
-          sources: ["maltiverse"],
-          tier: "observed",
-        });
-        if (relations.length >= 10) break;
-      }
+      const detectionNames = detectionLabels(data);
+      const relations = contactedHostRelations(data.contacted_host);
 
       const rawNames = Array.isArray(data.filename)
         ? data.filename
-        : data.filename
-          ? [data.filename]
-          : [];
+        : [data.filename].filter((n): n is string => Boolean(n));
       const fileNames = [
         ...new Set(rawNames.filter((n): n is string => Boolean(n?.trim()))),
       ];

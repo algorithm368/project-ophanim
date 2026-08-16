@@ -142,7 +142,7 @@ describe("checkUrl", () => {
 
   it("concatenates every layer's rows into sources for the route factory", async () => {
     const result = await checkUrl("https://evil.com/a", undefined, deps());
-    expect(result.sources.length).toBe(
+    expect(result.sources).toHaveLength(
       result.layers.reduce((n, l) => n + l.sources.length, 0),
     );
   });

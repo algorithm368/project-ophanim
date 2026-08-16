@@ -310,6 +310,284 @@ function bulkTargets(value: string): ParsedIP[] | null {
   return ips.length >= 2 ? ips : null;
 }
 
+const ENDPOINTS: Record<Mode, string> = {
+  ip: "/api/check",
+  domain: "/api/check-domain",
+  hash: "/api/check-hash",
+  url: "/api/check-url",
+};
+
+/** One line of the NDJSON progress stream the route factory writes. */
+type StreamEvent = {
+  type: "start" | "source" | "done" | "error";
+  total?: number;
+  sources?: SourceMeta[];
+  result?: (CheckResult & DomainCheckResult & HashCheckResult) | SourceResult;
+  error?: string;
+};
+
+type Prepared =
+  | { ok: true; detected: Mode; canonical: string; endpoint: string }
+  | { ok: false; message: string };
+
+/**
+ * Everything that must hold before a lookup is worth starting.
+ *
+ * The type is detected from the value itself rather than from the active tab,
+ * so the right checker runs regardless of which one is selected. In-scope but
+ * uncheckable input (private IPs, reserved names) is caught here too, so the
+ * user gets specific feedback immediately instead of a server round-trip.
+ */
+function prepareCheck(value: string): Prepared {
+  const detected = detectIOC(value);
+  if (!detected) {
+    return {
+      ok: false,
+      message: `"${value}" doesn't look like an IPv4 address, domain, or file hash. Try one of the examples below.`,
+    };
+  }
+  const invalid = validateInput(value, detected);
+  if (invalid) return { ok: false, message: invalid };
+
+  return {
+    ok: true,
+    detected,
+    canonical: canonicalFor(value, detected),
+    endpoint: ENDPOINTS[detected],
+  };
+}
+
+/**
+ * An inactivity watchdog.
+ *
+ * `bump` restarts the clock, so the stall fires only when nothing has arrived
+ * for `ms`. The server streams a source every few seconds and bounds each at
+ * ~12s, so a long gap means the stream genuinely stopped rather than that a
+ * slow source is still working.
+ */
+function inactivityWatchdog(ms: number, onStall: () => void) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return {
+    bump() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(onStall, ms);
+    },
+    clear() {
+      if (timer) clearTimeout(timer);
+    },
+  };
+}
+
+/** The server's own message for a failed request, falling back to the status
+ *  when the body isn't the JSON error shape. */
+async function requestErrorMessage(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { error?: string };
+    if (data?.error) return data.error;
+  } catch {
+    /* fall through to the generic message */
+  }
+  return `The lookup failed (HTTP ${res.status}). Please try again.`;
+}
+
+/** What to tell the user when the lookup threw, or null when a history
+ *  navigation aborted it: the popstate handler owns the next state, so an
+ *  error there would be a complaint about a lookup the user replaced. */
+function abortMessage(signal: AbortSignal): string | null {
+  if (signal.reason === NAV_ABORT) return null;
+  return signal.aborted
+    ? "This check is taking longer than expected. Please try again."
+    : "Couldn't reach the server. Check your connection and try again.";
+}
+
+/** Callbacks the stream drives as it arrives: one per network chunk, and one
+ *  per progress event worth showing before the result is complete. */
+type StreamHandlers = {
+  chunk: () => void;
+  start: (total: number, metas: SourceMeta[]) => void;
+  source: (sr: SourceResult) => void;
+};
+
+/** Read the NDJSON body line by line. The whole result is shown at once when
+ *  complete, so only `start` and `source` surface mid-stream. */
+async function consumeCheckStream(
+  body: ReadableStream<Uint8Array>,
+  on: StreamHandlers,
+): Promise<{ result: AnyCheckResult | null; error: string | null }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: AnyCheckResult | null = null;
+  let error: string | null = null;
+
+  while (true) {
+    const { done, value: chunk } = await reader.read();
+    if (done) break;
+    on.chunk();
+    buffer += decoder.decode(chunk, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines.filter((l) => l.trim())) {
+      const evt = JSON.parse(line) as StreamEvent;
+      switch (evt.type) {
+        case "start":
+          on.start(evt.total ?? evt.sources?.length ?? 0, evt.sources ?? []);
+          break;
+        case "source":
+          on.source(evt.result as SourceResult);
+          break;
+        case "done":
+          result = evt.result as AnyCheckResult;
+          break;
+        case "error":
+          error = evt.error ?? "The lookup failed. Please try again.";
+          break;
+      }
+    }
+  }
+  return { result, error };
+}
+
+type LookupOutcome =
+  | { kind: "result"; result: AnyCheckResult }
+  | { kind: "error"; message: string }
+  | { kind: "aborted" };
+
+/**
+ * One streaming lookup, from request to outcome.
+ *
+ * The NDJSON stream is the normal path; a validation or transport failure comes
+ * back as a plain JSON body instead, so both shapes are handled here and the
+ * caller sees exactly one of three outcomes. "aborted" is its own outcome
+ * rather than an error because a navigation that cancels a lookup is not a
+ * failure to report.
+ */
+async function streamLookup(
+  endpoint: string,
+  body: unknown,
+  controller: AbortController,
+  on: StreamHandlers,
+): Promise<LookupOutcome> {
+  try {
+    on.chunk();
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok || !res.body) {
+      return { kind: "error", message: await requestErrorMessage(res) };
+    }
+
+    const { result, error } = await consumeCheckStream(res.body, on);
+    if (error) return { kind: "error", message: error };
+    if (result) return { kind: "result", result };
+    return {
+      kind: "error",
+      message: "The server returned an unexpected response. Please try again.",
+    };
+  } catch {
+    const message = abortMessage(controller.signal);
+    return message ? { kind: "error", message } : { kind: "aborted" };
+  }
+}
+
+/**
+ * The search box, in whichever size the page is showing.
+ *
+ * The compact form is the same control, shorter and stuck to the top: it takes
+ * over once a result is on screen so the box stays in reach without pushing the
+ * verdict off it. One component rather than two near-copies, which is what they
+ * were, and what let them drift a class at a time.
+ */
+function SearchBox({
+  compact,
+  query,
+  loading,
+  canSubmit,
+  inputRef,
+  onQueryChange,
+  onClear,
+  onSubmit,
+}: Readonly<{
+  compact: boolean;
+  query: string;
+  loading: boolean;
+  canSubmit: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onQueryChange: (value: string) => void;
+  onClear: () => void;
+  onSubmit: () => void;
+}>) {
+  const height = compact ? "h-10" : "h-11";
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+      className={
+        compact
+          ? "sketch-shadow sticky top-2 z-30 flex items-center gap-2 rounded-lg border border-border bg-card p-2"
+          : "flex flex-col gap-3 sm:flex-row"
+      }
+    >
+      <div className="relative flex flex-1 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/50">
+        <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
+        <Input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          inputMode="text"
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          aria-label="IOC to check"
+          placeholder="IP, domain, or file hash"
+          className={cn(
+            height,
+            "rounded-none border-0 bg-transparent pl-9 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
+            query ? "pr-9" : "pr-3",
+          )}
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={onClear}
+            aria-label="Clear input"
+            className="absolute right-2 flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+      <Button
+        type="submit"
+        aria-label="Check"
+        disabled={!canSubmit}
+        className={cn(
+          height,
+          compact ? "w-10" : "w-11",
+          "shrink-0 rounded-md p-0",
+        )}
+      >
+        {loading ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Search className="size-4" />
+        )}
+      </Button>
+    </form>
+  );
+}
+
 export default function Checker({
   initialQuery,
   initialResult,
@@ -384,52 +662,63 @@ export default function Checker({
       window.history.scrollRestoration = "manual";
     }
 
+    /** Everything a lookup puts on screen, cleared. The empty state and a
+     *  restored cache hit both need exactly this, and listing the setters twice
+     *  is how one of them quietly grows a field the other forgets. */
+    function clearLookupState() {
+      setError(null);
+      setLoading(false);
+      setProgress(null);
+      setBulkRows(null);
+      setIsBulk(false);
+    }
+
+    /**
+     * Put the view back in sync with the address bar.
+     *
+     * The path segment is canonicalized the same way runCheck does before it
+     * builds the URL, so the cache key and re-fetch target match what a lookup
+     * stored. A directly-visited non-canonical permalink (mixed-case domain,
+     * "algo:"-prefixed hash) then normalizes via one push and hits the cache on
+     * subsequent Back, instead of bouncing.
+     */
+    function restoreFromPath() {
+      const ioc = iocFromPath(window.location.pathname);
+      if (ioc === null) {
+        // Back to the home page: clear to the empty state.
+        setQuery("");
+        setResult(null);
+        clearLookupState();
+        return;
+      }
+
+      const refanged = refangIOC(ioc);
+      const detected = detectIOC(refanged);
+      const canonical = canonicalFor(refanged, detected);
+      setQuery(canonical);
+      if (detected) setMode(detected);
+
+      const cached = resultsCache.current.get(canonical);
+      if (cached) {
+        // Cache hit: restore instantly, no network.
+        setResult(cached);
+        clearLookupState();
+      } else {
+        // Cache miss (e.g. after a hard reload): re-fetch this indicator. The
+        // pathname === url guard in runCheck means it won't push a duplicate
+        // entry for an already-canonical URL we're on (a non-canonical one
+        // normalizes with a single push).
+        runCheckRef.current(canonical);
+      }
+    }
+
     function onPopState() {
       // Cancel any in-flight lookup so it can't error or clobber the restore.
       if (abortRef.current) {
         abortRef.current.abort(NAV_ABORT);
         abortRef.current = null;
       }
-
-      const ioc = iocFromPath(window.location.pathname);
-      if (ioc === null) {
-        // Back to the home page: clear to the empty state.
-        setQuery("");
-        setResult(null);
-        setError(null);
-        setLoading(false);
-        setProgress(null);
-        setBulkRows(null);
-        setIsBulk(false);
-      } else {
-        // Canonicalize the path segment the same way runCheck does before it
-        // builds the URL, so the cache key and re-fetch target match what a
-        // lookup stored. A directly-visited non-canonical permalink (mixed-case
-        // domain, "algo:"-prefixed hash) then normalizes via one push and hits
-        // the cache on subsequent Back, instead of bouncing.
-        const refanged = refangIOC(ioc);
-        const detected = detectIOC(refanged);
-        const canonical = canonicalFor(refanged, detected);
-        setQuery(canonical);
-        if (detected) setMode(detected);
-        const cached = resultsCache.current.get(canonical);
-        if (cached) {
-          // Cache hit: restore instantly, no network.
-          setResult(cached);
-          setError(null);
-          setLoading(false);
-          setProgress(null);
-          setBulkRows(null);
-          setIsBulk(false);
-        } else {
-          // Cache miss (e.g. after a hard reload): re-fetch this indicator. The
-          // pathname === url guard in runCheck means it won't push a duplicate
-          // entry for an already-canonical URL we're on (a non-canonical one
-          // normalizes with a single push).
-          runCheckRef.current(canonical);
-        }
-      }
-
+      restoreFromPath();
       window.scrollTo({ top: 0 });
       requestAnimationFrame(() => window.scrollTo({ top: 0 }));
     }
@@ -497,14 +786,7 @@ export default function Checker({
         body: JSON.stringify({ ips: value }),
       });
       if (!res.ok) {
-        let message = `The lookup failed (HTTP ${res.status}). Please try again.`;
-        try {
-          const data = (await res.json()) as { error?: string };
-          if (data?.error) message = data.error;
-        } catch {
-          /* keep default */
-        }
-        setError({ kind: "request", message });
+        setError({ kind: "request", message: await requestErrorMessage(res) });
         return;
       }
       const data = (await res.json()) as { results: GeoRow[] };
@@ -532,31 +814,17 @@ export default function Checker({
       return;
     }
 
-    // Auto-detect the IOC type from the value itself so the right checker runs
-    // regardless of which tab is active.
-    const detected = detectIOC(value);
-    if (!detected) {
-      setError({
-        kind: "input",
-        message: `"${value}" doesn't look like an IPv4 address, domain, or file hash. Try one of the examples below.`,
-      });
+    const prep = prepareCheck(value);
+    if (!prep.ok) {
+      setError({ kind: "input", message: prep.message });
       setResult(null);
       return;
     }
-    if (detected !== mode) setMode(detected);
-
-    // Catch in-scope-but-uncheckable input (private IPs, reserved names, etc.)
-    // so the user gets immediate, specific feedback.
-    const invalid = validateInput(value, detected);
-    if (invalid) {
-      setError({ kind: "input", message: invalid });
-      setResult(null);
-      return;
-    }
+    if (prep.detected !== mode) setMode(prep.detected);
 
     // Reflect the lookup in a shareable URL (/check/<ioc>) without a full
     // navigation, so a result can be linked into a ticket and reopened.
-    const canonical = canonicalFor(value, detected);
+    const canonical = prep.canonical;
     const url = `/check/${encodeURIComponent(canonical)}`;
     if (window.location.pathname !== url) {
       window.history.pushState(null, "", url);
@@ -575,131 +843,37 @@ export default function Checker({
     // Warm the lazy results chunk while the lookup runs so it renders instantly.
     void loadCheckResults();
 
-    const ENDPOINTS: Record<Mode, string> = {
-      ip: "/api/check",
-      domain: "/api/check-domain",
-      hash: "/api/check-hash",
-      url: "/api/check-url",
-    };
-    const endpoint = ENDPOINTS[detected];
-    const refreshFlag = opts?.refresh === true;
-    const body = { [detected]: value, refresh: refreshFlag };
-
-    // Inactivity watchdog: the server streams a source every few seconds and
-    // bounds each at ~12s, so a long gap means the stream genuinely stalled.
-    // The whole result is shown at once when complete — no partial reveal.
     const controller = new AbortController();
     abortRef.current = controller;
-    let watchdog: ReturnType<typeof setTimeout> | undefined;
-    const bump = () => {
-      if (watchdog) clearTimeout(watchdog);
-      watchdog = setTimeout(() => controller.abort(), STREAM_INACTIVITY_MS);
-    };
+    const watchdog = inactivityWatchdog(STREAM_INACTIVITY_MS, () =>
+      controller.abort(),
+    );
 
     try {
-      bump();
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/x-ndjson",
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      // Validation/transport errors come back as a plain JSON body.
-      if (!res.ok || !res.body) {
-        let message = `The lookup failed (HTTP ${res.status}). Please try again.`;
-        try {
-          const data = (await res.json()) as { error?: string };
-          if (data?.error) message = data.error;
-        } catch {
-          /* keep default */
-        }
-        setError({ kind: "request", message });
-        return;
-      }
-
-      // Otherwise read the NDJSON progress stream line by line.
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let finalResult:
-        | (AnyCheckResult)
-        | null = null;
-      let streamError: string | null = null;
-
-      while (true) {
-        const { done, value: chunk } = await reader.read();
-        if (done) break;
-        bump();
-        buffer += decoder.decode(chunk, { stream: true });
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          const evt = JSON.parse(line) as {
-            type: "start" | "source" | "done" | "error";
-            total?: number;
-            sources?: SourceMeta[];
-            result?:
-              | (CheckResult & DomainCheckResult & HashCheckResult)
-              | SourceResult;
-            error?: string;
-          };
-
-          if (evt.type === "start") {
-            setProgress({
-              total: evt.total ?? evt.sources?.length ?? 0,
-              metas: evt.sources ?? [],
-              settled: {},
-            });
-          } else if (evt.type === "source") {
-            const sr = evt.result as SourceResult;
+      const outcome = await streamLookup(
+        prep.endpoint,
+        { [prep.detected]: value, refresh: opts?.refresh === true },
+        controller,
+        {
+          chunk: watchdog.bump,
+          start: (total, metas) => setProgress({ total, metas, settled: {} }),
+          source: (sr) =>
             setProgress((p) =>
               p ? { ...p, settled: { ...p.settled, [sr.source.id]: sr } } : p,
-            );
-          } else if (evt.type === "done") {
-            finalResult = evt.result as
-              | CheckResult
-              | DomainCheckResult
-              | HashCheckResult;
-          } else if (evt.type === "error") {
-            streamError = evt.error ?? "The lookup failed. Please try again.";
-          }
-        }
-      }
+            ),
+        },
+      );
 
-      if (streamError) {
-        setError({ kind: "request", message: streamError });
-      } else if (finalResult) {
+      if (outcome.kind === "error") {
+        setError({ kind: "request", message: outcome.message });
+      } else if (outcome.kind === "result") {
         // Cache the completed result so Back/Forward to this indicator restores
         // instantly — `canonical` is the exact key the URL was built from.
-        resultsCache.current.set(canonical, finalResult);
-        setResult(finalResult);
-      } else {
-        setError({
-          kind: "request",
-          message:
-            "The server returned an unexpected response. Please try again.",
-        });
-      }
-    } catch {
-      // A history navigation aborted this lookup (signal.reason === NAV_ABORT):
-      // the popstate handler owns the next state, so don't surface an error.
-      // Otherwise it's a network drop or the watchdog firing on a stalled stream.
-      if (controller.signal.reason !== NAV_ABORT) {
-        setError({
-          kind: "request",
-          message: controller.signal.aborted
-            ? "This check is taking longer than expected. Please try again."
-            : "Couldn't reach the server. Check your connection and try again.",
-        });
+        resultsCache.current.set(canonical, outcome.result);
+        setResult(outcome.result);
       }
     } finally {
-      if (watchdog) clearTimeout(watchdog);
+      watchdog.clear();
       // Only clear shared lookup state if a newer lookup hasn't taken over: a
       // navigation may have aborted this one and started another, which now owns
       // abortRef/loading/progress.
@@ -743,158 +917,71 @@ export default function Checker({
   // to a one-line search bar so the verdict is the first thing on screen. The full
   // hero — heading, detection hint, TRY chips — stays on the landing/empty/error
   // states and on the bulk path.
-  const showCompact = !isBulk && !bulkRows && (loading || result);
+  const showCompact = !isBulk && !bulkRows && Boolean(loading || result);
+
+  const searchBox = (
+    <SearchBox
+      compact={showCompact}
+      query={query}
+      loading={loading}
+      canSubmit={
+        !loading && Boolean(query.trim()) && Boolean(detected ?? bulkPreview)
+      }
+      inputRef={inputRef}
+      onQueryChange={onQueryChange}
+      onClear={() => {
+        setQuery("");
+        if (error?.kind === "input") setError(null);
+        inputRef.current?.focus();
+      }}
+      onSubmit={() => runCheck(query)}
+    />
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
       {showCompact ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            runCheck(query);
-          }}
-          className="sketch-shadow sticky top-2 z-30 flex items-center gap-2 rounded-lg border border-border bg-card p-2"
-        >
-          <div className="relative flex flex-1 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/50">
-            <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
-            <Input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-              inputMode="text"
-              autoCapitalize="none"
-              autoCorrect="off"
-              autoComplete="off"
-              spellCheck={false}
-              aria-label="IOC to check"
-              placeholder="IP, domain, or file hash"
-              className={cn(
-                "h-10 rounded-none border-0 bg-transparent pl-9 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
-                query ? "pr-9" : "pr-3",
-              )}
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery("");
-                  if (error?.kind === "input") setError(null);
-                  inputRef.current?.focus();
-                }}
-                aria-label="Clear input"
-                className="absolute right-2 flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <X className="size-4" />
-              </button>
-            )}
-          </div>
-          <Button
-            type="submit"
-            aria-label="Check"
-            disabled={loading || !query.trim() || (!detected && !bulkPreview)}
-            className="h-10 w-10 shrink-0 rounded-md p-0"
-          >
-            {loading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Search className="size-4" />
-            )}
-          </Button>
-        </form>
+        searchBox
       ) : (
-      <div className="sketch-shadow relative rounded-lg border border-border bg-card p-4 sm:p-5">
-        <div className="mb-2 font-mono text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
-          Indicator lookup
-        </div>
-        <h1 className="mb-4 text-2xl font-semibold tracking-tight sm:text-[1.7rem]">
-          Check an IP, domain, or file&nbsp;hash
-        </h1>
+        <div className="sketch-shadow relative rounded-lg border border-border bg-card p-4 sm:p-5">
+          <div className="mb-2 font-mono text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            Indicator lookup
+          </div>
+          <h1 className="mb-4 text-2xl font-semibold tracking-tight sm:text-[1.7rem]">
+            Check an IP, domain, or file&nbsp;hash
+          </h1>
 
-        {/* Plain and minimal: a flat input box and the Check button as separate
-            elements, with a little space between them. */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            runCheck(query);
-          }}
-          className="flex flex-col gap-3 sm:flex-row"
-        >
-          <div className="relative flex flex-1 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/50">
-            <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
-            <Input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-              inputMode="text"
-              autoCapitalize="none"
-              autoCorrect="off"
-              autoComplete="off"
-              spellCheck={false}
-              aria-label="IOC to check"
-              placeholder="IP, domain, or file hash"
-              className={cn(
-                "h-11 rounded-none border-0 bg-transparent pl-9 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
-                query ? "pr-9" : "pr-3",
-              )}
+          {searchBox}
+
+          <div className="mt-3 min-h-7 text-sm">
+            <DetectionHint
+              trimmed={trimmed}
+              bulkCount={bulkPreview?.length}
+              detected={detected}
+              canonical={canonical}
             />
-            {query && (
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-3">
+            <span className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+              Try
+            </span>
+            {EXAMPLE_CHIPS.map(({ value, label, icon: ChipIcon }) => (
               <button
+                key={value}
                 type="button"
                 onClick={() => {
-                  setQuery("");
-                  if (error?.kind === "input") setError(null);
-                  inputRef.current?.focus();
+                  setQuery(value);
+                  runCheck(value);
                 }}
-                aria-label="Clear input"
-                className="absolute right-2 flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+                className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
               >
-                <X className="size-4" />
+                <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
+                {label}
               </button>
-            )}
+            ))}
           </div>
-          <Button
-            type="submit"
-            aria-label="Check"
-            disabled={loading || !query.trim() || (!detected && !bulkPreview)}
-            className="h-11 w-11 shrink-0 rounded-md p-0"
-          >
-            {loading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Search className="size-4" />
-            )}
-          </Button>
-        </form>
-
-        <div className="mt-3 min-h-7 text-sm">
-          <DetectionHint
-            trimmed={trimmed}
-            bulkCount={bulkPreview?.length}
-            detected={detected}
-            canonical={canonical}
-          />
         </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-3">
-          <span className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-            Try
-          </span>
-          {EXAMPLE_CHIPS.map(({ value, label, icon: ChipIcon }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => {
-                setQuery(value);
-                runCheck(value);
-              }}
-              className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
-            >
-              <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
       )}
 
       {error && (
@@ -946,17 +1033,27 @@ function BulkProgress({ count }: Readonly<{ count: number }>) {
   );
 }
 
+const HASH_EMPTY_COPY =
+  "Paste a file hash (MD5, SHA-1, or SHA-256) above and we'll tell you what the file is, its name and type, any malware family it belongs to, and whether threat-intel sources have flagged it.";
+
+// Before a type is recognized (the default on first load), the copy describes
+// every IOC so the tool doesn't read as IP-only; once detection has picked a
+// type, it says what that particular lookup will actually return.
+//
+// `url` reads the hash copy, which is what the if/else chain this replaced did
+// (its last branch caught both) and is kept unchanged here rather than quietly
+// corrected. A detected URL deserves its own sentence.
+const EMPTY_STATE_COPY: Record<Mode | "none", string> = {
+  none: "Paste an IP address, domain, or file hash above, we'll detect the type, then tell you what it is, where it lives, and whether any threat-intel source has flagged it, summarized into one risk score.",
+  ip: "Enter an IPv4 address above and we'll tell you what kind of address it is, where it's located, and whether any threat-intel source has flagged it, summarized into one risk score.",
+  domain:
+    "Enter a domain above and we'll tell you when it was registered, where it resolves, and whether any threat-intel source has flagged it, summarized into one risk score.",
+  hash: HASH_EMPTY_COPY,
+  url: HASH_EMPTY_COPY,
+};
+
 function EmptyState({ detected }: Readonly<{ detected: Mode | null }>) {
-  // Before a type is recognized (the default on first load), describe all three
-  // IOCs so the tool doesn't read as IP-only; once detection has picked a type,
-  // tailor the copy to what that lookup will actually return.
-  const copy = !detected
-    ? "Paste an IP address, domain, or file hash above, we'll detect the type, then tell you what it is, where it lives, and whether any threat-intel source has flagged it, summarized into one risk score."
-    : detected === "ip"
-      ? "Enter an IPv4 address above and we'll tell you what kind of address it is, where it's located, and whether any threat-intel source has flagged it, summarized into one risk score."
-      : detected === "domain"
-        ? "Enter a domain above and we'll tell you when it was registered, where it resolves, and whether any threat-intel source has flagged it, summarized into one risk score."
-        : "Paste a file hash (MD5, SHA-1, or SHA-256) above and we'll tell you what the file is, its name and type, any malware family it belongs to, and whether threat-intel sources have flagged it.";
+  const copy = EMPTY_STATE_COPY[detected ?? "none"];
 
   const readout: [string, string][] = [
     ["IP", "geolocation · ASN owner · hosting type · feed reputation"],
@@ -969,7 +1066,7 @@ function EmptyState({ detected }: Readonly<{ detected: Mode | null }>) {
       {/* console-style header strip */}
       <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
         <span className="size-1.5 rounded-full bg-muted-foreground/60" />
-        idle
+        <span>idle</span>
       </div>
       <CardContent className="space-y-4 py-6">
         <div className="flex items-center gap-2 font-mono text-sm">
@@ -1098,6 +1195,26 @@ function fmtElapsed(seconds: number): string {
     : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+/** What the progress header calls the thing being looked up.
+ *
+ *  `url` says "file", which is what the ternary chain this replaced did (its
+ *  fallback caught both url and hash) and is kept unchanged rather than quietly
+ *  corrected. A URL lookup should say so. */
+const SCANNING_NOUN: Record<Mode, string> = {
+  ip: "address",
+  domain: "domain",
+  hash: "file",
+  url: "file",
+};
+
+/** Worst-case remaining wait: the sources run in parallel, so the slowest one
+ *  still out bounds the finish. Falls back to 10s with nothing to go on, which
+ *  is the case only before any source has reported. */
+function longestTimeout(metas: { timeoutMs?: number }[]): number {
+  if (!metas.length) return 10000;
+  return Math.max(...metas.map((m) => m.timeoutMs ?? 8000));
+}
+
 function SearchProgress({
   progress,
   indicator,
@@ -1107,8 +1224,7 @@ function SearchProgress({
   indicator: string;
   mode: Mode;
 }>) {
-  const noun =
-    mode === "ip" ? "address" : mode === "domain" ? "domain" : "file";
+  const noun = SCANNING_NOUN[mode];
   const total = progress?.total ?? 0;
   const done = progress ? Object.keys(progress.settled).length : 0;
   const metas = progress?.metas ?? [];
@@ -1119,11 +1235,7 @@ function SearchProgress({
   // As slow sources land this only shrinks, so the countdown never ticks up.
   // Falls back to all-source / 10s before any source has settled.
   const pendingMetas = metas.filter((m) => !progress?.settled[m.id]);
-  const etaMs = pendingMetas.length
-    ? Math.max(...pendingMetas.map((m) => m.timeoutMs ?? 8000))
-    : metas.length
-      ? Math.max(...metas.map((m) => m.timeoutMs ?? 8000))
-      : 10000;
+  const etaMs = longestTimeout(pendingMetas.length ? pendingMetas : metas);
 
   // Tick at 100ms so the bar glides and the countdown ticks down by the second.
   const [startTs] = useState(() => Date.now());
@@ -1145,11 +1257,9 @@ function SearchProgress({
   // Countdown: how much of the estimate is left. Once it runs out we keep the
   // bar near-full and switch the label to the honest "finishing up…".
   const remainingS = Math.max(0, Math.ceil((etaMs - elapsedMs) / 1000));
-  const countdown = allSettled
-    ? "wrapping up…"
-    : remainingS > 0
-      ? `~${fmtElapsed(remainingS)} left`
-      : "finishing up…";
+  let countdown = "finishing up…";
+  if (allSettled) countdown = "wrapping up…";
+  else if (remainingS > 0) countdown = `~${fmtElapsed(remainingS)} left`;
 
   return (
     <Card className="sketch-shadow mt-8 overflow-hidden rounded-lg border border-border bg-card">

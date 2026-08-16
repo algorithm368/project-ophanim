@@ -54,6 +54,21 @@ export function scoreForAge(age: number | undefined): number {
 }
 
 /** RDAP registration data (rdap.org) - domain age, registrar, status (no key). */
+/**
+ * The registry's DNSSEC posture, as a word.
+ *
+ * Absent is not the same as unsigned: RDAP that never reported secureDNS tells
+ * us nothing, while an explicit `false` is the registry saying the delegation
+ * is unsigned. Both used to collapse into one nested ternary, and only one of
+ * them is a finding.
+ */
+function delegationStatus(
+  signed: boolean | undefined,
+): "signed" | "unsigned" | undefined {
+  if (signed === undefined) return undefined;
+  return signed ? "signed" : "unsigned";
+}
+
 export const rdapSource: TiSource = {
   meta: {
     id: "rdap",
@@ -90,12 +105,7 @@ export const rdapSource: TiSource = {
       const statuses = data.status ?? [];
       // Authoritative DNSSEC posture from the registry (the resolver's AD flag
       // is a weaker proxy); only set it when RDAP actually reports secureDNS.
-      const dnssec =
-        data.secureDNS?.delegationSigned === undefined
-          ? undefined
-          : data.secureDNS.delegationSigned
-            ? ("signed" as const)
-            : ("unsigned" as const);
+      const dnssec = delegationStatus(data.secureDNS?.delegationSigned);
       const abuse = abuseContact(data.entities);
 
       const context: DomainContext = {
