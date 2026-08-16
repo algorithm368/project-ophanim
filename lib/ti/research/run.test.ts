@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runResearch } from "./run";
+import { researchMetasFor, runResearch } from "./run";
 import type { ResearchProvider } from "./types";
 
 function provider(over: Partial<ResearchProvider>): ResearchProvider {
@@ -69,6 +69,19 @@ describe("runResearch", () => {
     );
 
     expect(seen.sort()).toEqual(["crtsh", "urlscan"]);
+  });
+
+  it("leaves a disabled provider out of the announced list", async () => {
+    // Announcing it would put a labeled placeholder on screen and then take it
+    // away when the skipped result lands.
+    const metas = researchMetasFor("domain", [
+      provider({ meta: { id: "urlscan", name: "A", url: "u" } }),
+      provider({
+        meta: { id: "crtsh", name: "B", url: "u" },
+        isEnabled: () => false,
+      }),
+    ]);
+    expect(metas.map((m) => m.id)).toEqual(["urlscan"]);
   });
 
   it("stamps provider meta and timing on a successful finding", async () => {

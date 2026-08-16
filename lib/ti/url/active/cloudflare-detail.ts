@@ -21,6 +21,27 @@ function hostOf(value: unknown): string | undefined {
   }
 }
 
+/**
+ * Names out of one of Cloudflare's category arrays.
+ *
+ * The rows are `{id, name, super_category_id?}`, and the feed emits the super
+ * category alongside each of its children, so a two-category site comes back
+ * with "Entertainment" twice. Deduplicated, because a repeated word reads as
+ * two findings. Undefined rather than `[]` when there is nothing: an
+ * uncategorized domain has not been categorized as nothing.
+ */
+function categoryNames(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const names = [
+    ...new Set(
+      value
+        .map((row) => str(obj(row).name))
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ];
+  return names.length > 0 ? names.slice(0, MAX_LISTED) : undefined;
+}
+
 /** Cloudflare has no data.redirects: the chain is consecutive history entries,
  *  so N entries mean N-1 hops and a single entry means no redirect at all. */
 function chainFromHistory(history: unknown): ScanRedirect[] {
@@ -60,18 +81,24 @@ export function distillCloudflareResult(raw: unknown): ScanDetail {
   const whois = obj(obj(processors.whois).data);
   const scannedHost = str(page.domain);
 
-  // Only the primary domain's risks describe the page under test; a
-  // third-party asset's categories say nothing about it.
+  // Only the primary domain's categories describe the page under test; a
+  // third-party asset's say nothing about it.
   const categoryRows = obj(processors.domainCategories).data;
   const primary = Array.isArray(categoryRows)
     ? categoryRows.find((row) => obj(row).isPrimary === true)
     : undefined;
-  const primaryRisks = obj(primary).risks;
-  const riskCategories = Array.isArray(primaryRisks)
-    ? primaryRisks
-        .map((risk) => str(obj(risk).name))
-        .filter((name): name is string => Boolean(name))
-    : undefined;
+  // A host Cloudflare has not categorized itself inherits its parent's, which
+  // is how most subdomains are classified: blog.cloudflare.com carries nothing
+  // of its own and inherits "Technology" from cloudflare.com. The parent is
+  // kept alongside, because "the site is Technology" and "its apex is
+  // Technology" are different claims and only one of them was observed.
+  const inherited = obj(obj(primary).inherited);
+  const riskCategories =
+    categoryNames(obj(primary).risks) ?? categoryNames(inherited.risks);
+  const ownContent = categoryNames(obj(primary).content);
+  const contentCategories = ownContent ?? categoryNames(inherited.content);
+  const categoryInheritedFrom =
+    contentCategories && !ownContent ? str(inherited.from) : undefined;
 
   const rankRows = obj(processors.radarRank).data;
   const radarRankBucket = Array.isArray(rankRows)
@@ -172,6 +199,8 @@ export function distillCloudflareResult(raw: unknown): ScanDetail {
       ? (whois.nameservers as string[]).slice(0, MAX_LISTED)
       : undefined,
     riskCategories,
+    contentCategories,
+    categoryInheritedFrom,
     radarRankBucket,
     domStructHash: str(page.domStructHash),
     siblingDomains,

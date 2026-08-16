@@ -159,10 +159,8 @@ function validateInput(value: string, mode: Mode): string | null {
     if (!parseUrl(value)) {
       return `"${value}" isn't a checkable URL. Paste an http or https link.`;
     }
-  } else {
-    if (!parseHash(value)) {
-      return `"${value}" isn't a valid file hash. Paste an MD5, SHA-1, or SHA-256 digest.`;
-    }
+  } else if (!parseHash(value)) {
+    return `"${value}" isn't a valid file hash. Paste an MD5, SHA-1, or SHA-256 digest.`;
   }
   return null;
 }
@@ -198,6 +196,97 @@ function researchTargetFor(
     return host ? { indicator: host, kind: "domain" } : null;
   }
   return { indicator: value, kind };
+}
+
+/** The indicator a result is about, whichever kind it is. */
+function indicatorOf(result: AnyCheckResult | UrlCheckResult): string {
+  if (isUrlResult(result)) return result.url;
+  if (isHashResult(result)) return result.hash;
+  if (isDomainResult(result)) return result.domain;
+  return result.ip;
+}
+
+/**
+ * What the live-research lane should ask about for a settled result.
+ *
+ * A URL researches its host as a domain: no provider supports a url kind, and
+ * the host is the pivot an analyst wants anyway, certificates and archived
+ * snapshots and prior scans of the site. Null when a URL will not parse, since
+ * there is then no host to research.
+ */
+function researchTargetOf(
+  result: AnyCheckResult | UrlCheckResult,
+): { indicator: string; kind: IOCType } | null {
+  if (isUrlResult(result)) {
+    const host = parseUrl(result.url)?.host;
+    return host ? { indicator: host, kind: "domain" } : null;
+  }
+  if (isHashResult(result)) return { indicator: result.hash, kind: "hash" };
+  if (isDomainResult(result)) return { indicator: result.domain, kind: "domain" };
+  return { indicator: result.ip, kind: "ip" };
+}
+
+/**
+ * What the box has made of what is typed, in one line under it.
+ *
+ * Four states in the order they occur: nothing typed, a paste of many
+ * addresses, a recognized indicator (with the canonical form when it differs
+ * from the input), and something not recognized yet.
+ */
+function DetectionHint({
+  trimmed,
+  bulkCount,
+  detected,
+  canonical,
+}: Readonly<{
+  trimmed: string;
+  bulkCount?: number;
+  detected: Mode | null;
+  canonical: string;
+}>) {
+  if (!trimmed) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+        <Search className="size-4" />
+        Type or paste an indicator and we&apos;ll detect the type for you.
+      </span>
+    );
+  }
+
+  if (bulkCount) {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
+        <Network className="size-4" />
+        {bulkCount === 1
+          ? "Detected an IPv6 address"
+          : `Detected ${bulkCount} IP addresses`}
+        <span className="text-muted-foreground">, bulk geolocation</span>
+      </span>
+    );
+  }
+
+  if (!detected) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+        <ShieldQuestion className="size-4" />
+        Not a recognized IOC yet. Paste an IP, domain, or file hash.
+      </span>
+    );
+  }
+
+  const DetectedIcon = MODE_META[detected].icon;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
+      <DetectedIcon className="size-4" />
+      Detected {detected === "ip" ? "an" : "a"} {MODE_META[detected].label}
+      {canonical !== trimmed && (
+        <span className="text-muted-foreground">
+          (we&apos;ll check{" "}
+          <span className="font-mono text-foreground">{canonical}</span>)
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** No NDJSON line for this long means the stream stalled (server bounds each
@@ -380,7 +469,6 @@ export default function Checker({
   // and reduced to its canonical IOC (a pasted URL becomes just its host), so
   // the hint shows the real target when it differs from what was typed.
   const canonical = canonicalFor(refangIOC(query), detected);
-  const DetectedIcon = detected ? MODE_META[detected].icon : ShieldQuestion;
 
   // Live auto-detection: as the user types, switch the active checker to match
   // what they pasted. Detection only fires on a confident match, so partial
@@ -625,14 +713,7 @@ export default function Checker({
 
   function refresh() {
     if (!result) return;
-    const indicator = isUrlResult(result)
-      ? result.url
-      : isHashResult(result)
-        ? result.hash
-        : isDomainResult(result)
-          ? result.domain
-          : result.ip;
-    runCheck(indicator, { refresh: true });
+    runCheck(indicatorOf(result), { refresh: true });
   }
 
   // The indicator the live-research lane should fetch: the displayed result's
@@ -642,28 +723,12 @@ export default function Checker({
   // A URL result researches its *host* as a domain: no research provider
   // supports a url kind, and the host is the pivot an analyst wants anyway
   // (certificates, archived snapshots, prior scans of the site).
-  const activeIndicator: string | null = result
-    ? isUrlResult(result)
-      ? (parseUrl(result.url)?.host ?? null)
-      : isHashResult(result)
-        ? result.hash
-        : isDomainResult(result)
-          ? result.domain
-          : result.ip
-    : loading && !isBulk && pending
-      ? (researchTargetFor(pending)?.indicator ?? null)
-      : null;
-  const activeKind: IOCType | null = result
-    ? isUrlResult(result)
-      ? "domain"
-      : isHashResult(result)
-        ? "hash"
-        : isDomainResult(result)
-          ? "domain"
-          : "ip"
-    : pending
-      ? (researchTargetFor(pending)?.kind ?? null)
-      : null;
+  const settled = result ? researchTargetOf(result) : null;
+  const inFlight =
+    loading && !isBulk && pending ? researchTargetFor(pending) : null;
+  const activeIndicator = settled?.indicator ?? inFlight?.indicator ?? null;
+  const activeKind =
+    settled?.kind ?? (pending ? (researchTargetFor(pending)?.kind ?? null) : null);
   const research = useResearchStream(activeIndicator, activeKind);
 
   // Follow a related indicator from a result: jump to the top and run a fresh
@@ -802,36 +867,12 @@ export default function Checker({
         </form>
 
         <div className="mt-3 min-h-7 text-sm">
-          {!trimmed ? (
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Search className="size-4" />
-              Type or paste an indicator and we&apos;ll detect the type for you.
-            </span>
-          ) : bulkPreview ? (
-            <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
-              <Network className="size-4" />
-              {bulkPreview.length === 1
-                ? "Detected an IPv6 address"
-                : `Detected ${bulkPreview.length} IP addresses`}
-              <span className="text-muted-foreground">, bulk geolocation</span>
-            </span>
-          ) : detected ? (
-            <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
-              <DetectedIcon className="size-4" />
-              Detected {detected === "ip" ? "an" : "a"} {MODE_META[detected].label}
-              {canonical !== trimmed && (
-                <span className="text-muted-foreground">
-                  (we&apos;ll check{" "}
-                  <span className="font-mono text-foreground">{canonical}</span>)
-                </span>
-              )}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <ShieldQuestion className="size-4" />
-              Not a recognized IOC yet. Paste an IP, domain, or file hash.
-            </span>
-          )}
+          <DetectionHint
+            trimmed={trimmed}
+            bulkCount={bulkPreview?.length}
+            detected={detected}
+            canonical={canonical}
+          />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-3">

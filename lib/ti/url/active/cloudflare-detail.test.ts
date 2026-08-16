@@ -48,6 +48,14 @@ const CF = {
             name: "arwana855jp.com",
             isPrimary: true,
             risks: [{ name: "Newly Seen Domains" }, { name: "Security Risks" }],
+            // The feed emits the super category alongside each child, so
+            // "Gambling" arrives twice for a two-category site.
+            content: [
+              { id: 99, super_category_id: 12, name: "Gambling" },
+              { id: 12, name: "Gambling" },
+              { id: 155, super_category_id: 26, name: "Technology" },
+            ],
+            inherited: {},
           },
           { name: "static.cloudflareinsights.com", isPrimary: false },
         ],
@@ -94,6 +102,56 @@ describe("distillCloudflareResult", () => {
     // A third-party asset's categories say nothing about the page under test.
     const d = distillCloudflareResult(CF);
     expect(d.riskCategories).toEqual(["Newly Seen Domains", "Security Risks"]);
+  });
+
+  it("takes the site's content categories, without repeating a super category", () => {
+    const d = distillCloudflareResult(CF);
+    expect(d.contentCategories).toEqual(["Gambling", "Technology"]);
+    expect(d.categoryInheritedFrom).toBeUndefined();
+  });
+
+  it("falls back to the parent's categories, naming the parent", () => {
+    // Verified live: blog.cloudflare.com carries none of its own and inherits
+    // "Technology" from cloudflare.com.
+    const d = distillCloudflareResult({
+      ...CF,
+      meta: {
+        processors: {
+          domainCategories: {
+            data: [
+              {
+                name: "blog.cloudflare.com",
+                isPrimary: true,
+                inherited: {
+                  from: "cloudflare.com",
+                  content: [
+                    { id: 155, super_category_id: 26, name: "Technology" },
+                    { id: 26, name: "Technology" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(d.contentCategories).toEqual(["Technology"]);
+    expect(d.categoryInheritedFrom).toBe("cloudflare.com");
+  });
+
+  it("leaves an uncategorized domain unset rather than categorized as nothing", () => {
+    const d = distillCloudflareResult({
+      ...CF,
+      meta: {
+        processors: {
+          domainCategories: {
+            data: [{ name: "x.test", isPrimary: true, content: [], inherited: {} }],
+          },
+        },
+      },
+    });
+    expect(d.contentCategories).toBeUndefined();
+    expect(d.riskCategories).toBeUndefined();
   });
 
   it("keeps the radar rank bucket and the DOM structure hash", () => {

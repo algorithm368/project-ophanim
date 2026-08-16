@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
     Check,
     Copy,
+    Eye,
     ExternalLink,
     ImageOff,
     Loader2,
     Maximize2,
     Telescope,
-    X,
 } from "lucide-react";
+import { ArchivePreview } from "@/components/ArchivePreview";
+import { ImageInspector } from "@/components/ImageInspector";
 import {
     type AnyCheckResult,
     isDomainResult,
@@ -18,11 +20,16 @@ import {
 } from "@/lib/ti/types";
 import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
 import { parseUrl } from "@/lib/url";
+import type { IOCType } from "@/lib/ioc";
 import {
+    archiveFrameUrl,
     researchLinks,
+    researchMetasFor,
     type ResearchCert,
+    type ResearchData,
     type ResearchLink,
     type ResearchResult,
+    type ResearchStatus,
     type UrlScanItem,
     type WaybackSnapshot,
 } from "@/lib/ti/research";
@@ -119,9 +126,7 @@ function ScanThumb({ item }: Readonly<{ item: UrlScanItem }>) {
 
     return (
         <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-            {status === "loading" && (
-                <div className="absolute inset-0 animate-pulse bg-foreground/5" />
-            )}
+            {status === "loading" && <div className="sweep absolute inset-0" />}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
                 src={item.screenshot}
@@ -141,95 +146,6 @@ function ScanThumb({ item }: Readonly<{ item: UrlScanItem }>) {
     );
 }
 
-/** A full-screen viewer for one scan's screenshot. Closes on Escape, on a
- *  backdrop click, or via the close button; locks body scroll while open. */
-function Lightbox({
-    item,
-    onClose,
-}: Readonly<{
-    item: UrlScanItem;
-    onClose: () => void;
-}>) {
-    useEffect(() => {
-        function onKey(e: KeyboardEvent) {
-            if (e.key === "Escape") onClose();
-        }
-        document.addEventListener("keydown", onKey);
-        const prevOverflow = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-        return () => {
-            document.removeEventListener("keydown", onKey);
-            document.body.style.overflow = prevOverflow;
-        };
-    }, [onClose]);
-
-    return (
-        <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Screenshot of ${item.pageUrl}`}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/90 p-4 backdrop-blur-sm sm:p-8"
-        >
-            {/* Click-to-dismiss lives on its own button rather than on the
-                dialog div. A div is neither focusable nor in the tab order, so
-                a click handler there is unreachable by keyboard, which is what
-                typescript:S1082 flags. Making the backdrop a real button also
-                puts it behind the content instead of around it, so the content
-                no longer has to stopPropagation to avoid closing on its own
-                clicks. tabIndex -1 keeps it out of the tab order: Escape and
-                the visible close button are the keyboard paths, and a second
-                "Close" stop would only be noise in a screen reader. */}
-            <button
-                type="button"
-                aria-label="Close"
-                tabIndex={-1}
-                onClick={onClose}
-                className="absolute inset-0 cursor-default"
-            />
-            <div className="relative flex w-full max-w-5xl items-center justify-between gap-3">
-                <div className="min-w-0">
-                    <div
-                        className="truncate font-mono text-[13px] text-foreground"
-                        title={item.pageUrl}
-                    >
-                        {hostOf(item.pageUrl)}
-                    </div>
-                    <div className="font-mono text-[11px] text-muted-foreground">
-                        <span className="tabular-nums">{fmtDay(item.time)}</span>
-                        {item.country && ` · ${item.country}`}
-                        {item.asn && ` · ${item.asn}`}
-                    </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                    <a
-                        href={item.scanUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Open scan"
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                        <ExternalLink className="size-4" />
-                    </a>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        aria-label="Close"
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                        <X className="size-4" />
-                    </button>
-                </div>
-            </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-                src={item.screenshot}
-                alt={`Screenshot of ${item.pageUrl}`}
-                className="relative max-h-[80vh] max-w-full rounded-md border border-border object-contain"
-            />
-        </div>
-    );
-}
-
 /** URLScan submissions as tidy rows: a small screenshot that opens full-screen
  *  on click, the page host + capture metadata, and an outbound link to the full
  *  scan. Compact so many scans read as an orderly list rather than a heavy grid. */
@@ -239,9 +155,9 @@ function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
     return (
         <>
             <div className="divide-y divide-border overflow-hidden rounded-md border border-border">
-                {scans.map((s, i) => (
+                {scans.map((s) => (
                     <div
-                        key={i}
+                        key={s.scanUrl}
                         className="flex items-center gap-3 bg-background p-2 transition-colors hover:bg-muted/30"
                     >
                         <button
@@ -292,31 +208,79 @@ function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
                     </div>
                 ))}
             </div>
-            {zoom && <Lightbox item={zoom} onClose={() => setZoom(null)} />}
+            {zoom?.screenshot && (
+                <ImageInspector
+                    src={zoom.screenshot}
+                    alt={`Screenshot of ${zoom.pageUrl}`}
+                    title={hostOf(zoom.pageUrl)}
+                    subtitle={[fmtDay(zoom.time), zoom.country, zoom.asn]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    href={zoom.scanUrl}
+                    hrefLabel="Open scan"
+                    onClose={() => setZoom(null)}
+                />
+            )}
         </>
     );
 }
 
-/** Wayback snapshots as a row of dated, deep-linked chips. */
+/**
+ * Wayback snapshots as dated chips, each of which can be looked at here.
+ *
+ * The date opens the capture in place, because "what did this site look like in
+ * March" is the question the chip exists to answer and a new tab at the archive
+ * is a detour. The arrow still goes to the archive for the toolbar, the
+ * calendar, and everything else the archive does better.
+ */
 function WaybackRow({ snapshots }: Readonly<{ snapshots: WaybackSnapshot[] }>) {
+    const [preview, setPreview] = useState<WaybackSnapshot | null>(null);
+    const frameUrl = preview ? archiveFrameUrl(preview.url) : null;
+
     return (
-        <div className="flex flex-wrap gap-1.5">
-            {snapshots.map((s, i) => (
-                <a
-                    key={i}
-                    href={s.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => backgroundClick(e, s.url)}
-                    className={CHIP}
-                >
-                    <span className="font-mono text-[12px] tabular-nums">
-                        {fmtDay(s.time)}
+        <>
+            <div className="flex flex-wrap gap-1.5">
+                {snapshots.map((s) => (
+                    <span
+                        key={s.url}
+                        className="group inline-flex items-stretch overflow-hidden rounded-md border border-border bg-muted/40 transition-colors hover:border-foreground/40"
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setPreview(s)}
+                            title={`View this capture, ${fmtDay(s.time)}`}
+                            aria-label={`View the ${fmtDay(s.time)} capture`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                        >
+                            <Eye className="size-3 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground" />
+                            <span className="font-mono text-[12px] tabular-nums">
+                                {fmtDay(s.time)}
+                            </span>
+                        </button>
+                        <a
+                            href={s.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => backgroundClick(e, s.url)}
+                            title="Open at the Wayback Machine"
+                            aria-label={`Open the ${fmtDay(s.time)} capture at the Wayback Machine`}
+                            className="inline-flex items-center border-l border-border px-1.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:outline-none"
+                        >
+                            <ExternalLink className="size-3" />
+                        </a>
                     </span>
-                    <ExternalLink className="size-3 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
-                </a>
-            ))}
-        </div>
+                ))}
+            </div>
+            {preview && frameUrl && (
+                <ArchivePreview
+                    frameUrl={frameUrl}
+                    playbackUrl={preview.url}
+                    title={hostOf(preview.url.replace(/^.*?\/web\/\d+\//, ""))}
+                    subtitle={`archived ${fmtDay(preview.time)}`}
+                    onClose={() => setPreview(null)}
+                />
+            )}
+        </>
     );
 }
 
@@ -328,9 +292,9 @@ function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
     const shown = expanded ? certs : certs.slice(0, CERT_PREVIEW);
     return (
         <div className="space-y-1.5">
-            {shown.map((c, i) => (
+            {shown.map((c) => (
                 <div
-                    key={i}
+                    key={`${c.issuer}-${c.notBefore}-${c.commonName ?? ""}`}
                     className="flex items-baseline justify-between gap-3 text-[13px]"
                 >
                     <span
@@ -357,54 +321,40 @@ function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
     );
 }
 
-/** One provider's result block: header (name, summary, outbound link) + body. */
-function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
-    const { provider, status, summary, error, data, link } = result;
-
-    let body: React.ReactNode = null;
-    if (data?.type === "urlscan") {
-        body = <UrlScanList scans={data.scans} />;
-    } else if (data?.type === "wayback") {
-        body =
-            data.snapshots.length > 0 ? (
-                <WaybackRow snapshots={data.snapshots} />
-            ) : null;
-    } else if (data?.type === "crtsh") {
-        body = (
-            <div className="space-y-3">
-                {data.subdomains.length > 0 && (
-                    <div className="space-y-1.5">
-                        <div className={SUBLABEL}>
-                            Subdomains{" "}
-                            <span className="text-muted-foreground/60">
-                                ({data.subdomains.length})
-                            </span>
-                        </div>
-                        <PivotList values={data.subdomains} max={12} />
-                    </div>
-                )}
-                {data.certs.length > 0 && <CertList certs={data.certs} />}
-            </div>
-        );
-    }
-
-    // Empty / failed runs still report, quietly, so the user knows the lane ran.
-    const note =
-        status === "ok"
-            ? summary
-            : status === "empty"
-              ? (summary ?? "Nothing found")
-              : status === "timeout"
-                ? "Timed out"
-                : (error ?? "Unavailable");
-
+/**
+ * The frame every provider sits in, whether it is loading, empty, or full.
+ *
+ * One frame and one body height, because these blocks arrive seconds apart: a
+ * lane that shrinks when it lands and grows when the next one starts moves the
+ * card under the reader's cursor. A slot that never changes size means the only
+ * thing that changes is the content.
+ */
+function ProviderShell({
+    name,
+    note,
+    loading,
+    link,
+    children,
+}: Readonly<{
+    name: React.ReactNode;
+    note: React.ReactNode;
+    loading?: boolean;
+    link?: string;
+    children: React.ReactNode;
+}>) {
     return (
         <div className="space-y-2 rounded-md border border-foreground/10 bg-muted/20 p-3">
             <div className="flex items-center justify-between gap-2">
                 <span className="text-[13px] font-medium text-foreground">
-                    {provider.name}
+                    {name}
                 </span>
                 <div className="flex items-center gap-2">
+                    {loading && (
+                        <Loader2
+                            className="size-3 animate-spin text-muted-foreground"
+                            aria-hidden
+                        />
+                    )}
                     <span className="font-mono text-[11px] text-muted-foreground">
                         {note}
                     </span>
@@ -414,7 +364,7 @@ function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => backgroundClick(e, link)}
-                            title={`Open ${provider.name}`}
+                            title="Open provider"
                             className="text-muted-foreground transition-colors hover:text-foreground"
                         >
                             <ExternalLink className="size-3.5" />
@@ -422,25 +372,93 @@ function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
                     )}
                 </div>
             </div>
-            {body}
+            <div className="min-h-16">{children}</div>
         </div>
     );
 }
 
-/** A labeled placeholder for a provider whose result hasn't streamed in yet. */
-function ProviderSkeleton({ name }: Readonly<{ name: string }>) {
+/** What a lane found, rendered per provider. Null when there is nothing to draw,
+ *  which the block turns into a sentence rather than a gap. */
+function ProviderBody({ data }: Readonly<{ data: ResearchData }>) {
+    if (data.type === "urlscan") return <UrlScanList scans={data.scans} />;
+    if (data.type === "wayback") {
+        return data.snapshots.length > 0 ? (
+            <WaybackRow snapshots={data.snapshots} />
+        ) : null;
+    }
+    if (data.certs.length === 0 && data.subdomains.length === 0) return null;
     return (
-        <div className="space-y-2 rounded-md border border-foreground/10 bg-muted/20 p-3">
-            <div className="flex items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-foreground">
-                    {name}
-                </span>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                    loading…
-                </span>
-            </div>
-            <div className="h-16 animate-pulse rounded bg-muted/40" />
+        <div className="space-y-3">
+            {data.subdomains.length > 0 && (
+                <div className="space-y-1.5">
+                    <div className={SUBLABEL}>
+                        Subdomains{" "}
+                        <span className="text-muted-foreground/60">
+                            ({data.subdomains.length})
+                        </span>
+                    </div>
+                    <PivotList values={data.subdomains} max={12} />
+                </div>
+            )}
+            {data.certs.length > 0 && <CertList certs={data.certs} />}
         </div>
+    );
+}
+
+/** The header note: what the lane says about itself in one phrase. Empty and
+ *  failed runs still report, quietly, so the user knows the lane ran. */
+function noteFor(result: ResearchResult): string {
+    const { status, summary, error } = result;
+    if (status === "ok") return summary ?? "";
+    if (status === "empty") return summary ?? "Nothing found";
+    if (status === "timeout") return "Timed out";
+    return error ?? "Unavailable";
+}
+
+/** What an empty body says. A lane that found nothing has to say so: left blank
+ *  it looks identical to a lane still loading, and the two mean opposite
+ *  things. */
+const BLANK_BODY: Partial<Record<ResearchStatus, string>> = {
+    empty: "Nothing on record here.",
+    timeout: "The source did not answer in time, so nothing is known from it.",
+    error: "The source could not be read, which is not the same as it being empty.",
+};
+
+/** One provider's result block: header (name, summary, outbound link) + body. */
+function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
+    const { provider, status, data, link } = result;
+    const body = data ? <ProviderBody data={data} /> : null;
+
+    return (
+        <ProviderShell name={provider.name} note={noteFor(result)} link={link}>
+            {body ?? (
+                <p className="flex h-16 items-center text-[13px] text-muted-foreground">
+                    {BLANK_BODY[status] ?? "Nothing to show."}
+                </p>
+            )}
+        </ProviderShell>
+    );
+}
+
+/** A provider that has not answered yet: the same frame, with the wait shown
+ *  rather than implied. */
+function ProviderSkeleton({ name }: Readonly<{ name?: string }>) {
+    return (
+        <ProviderShell
+            name={
+                name ?? (
+                    <span className="sweep inline-block h-3 w-24 rounded align-middle" />
+                )
+            }
+            note="loading…"
+            loading
+        >
+            <div className="flex h-16 flex-col justify-center gap-2">
+                {["w-full", "w-4/5", "w-2/3"].map((w) => (
+                    <span key={w} className={`sweep block h-2.5 rounded ${w}`} />
+                ))}
+            </div>
+        </ProviderShell>
     );
 }
 
@@ -449,9 +467,16 @@ function ProviderSkeleton({ name }: Readonly<{ name: string }>) {
  *  so a fast source (URLScan) appears immediately and a slow one (crt.sh) never
  *  blocks it. Renders nothing when there is no live lane for this IOC type
  *  (e.g. a bare hash) and no error. */
-function LiveResearch({ research }: Readonly<{ research: ResearchStreamState }>) {
+function LiveResearch({
+    research,
+    kind,
+}: Readonly<{ research: ResearchStreamState; kind: IOCType }>) {
     const { metas, results, loading, started, error } = research;
-    const visible = metas.filter((m) => results[m.id]?.status !== "skipped");
+    // Which providers will run is a static property of the registry, so the
+    // wait before the stream's start event is named rather than a grey box, and
+    // an IOC type with no live lane shows nothing instead of flashing one.
+    const expected = started ? metas : researchMetasFor(kind);
+    const visible = expected.filter((m) => results[m.id]?.status !== "skipped");
 
     if (!loading && visible.length === 0 && !error) return null;
 
@@ -464,31 +489,18 @@ function LiveResearch({ research }: Readonly<{ research: ResearchStreamState }>)
                 )}
             </div>
 
-            {!started && loading ? (
-                <div className="space-y-2">
-                    {[0, 1].map((i) => (
-                        <div
-                            key={i}
-                            className="h-20 animate-pulse rounded-md border border-foreground/10 bg-muted/30"
-                        />
-                    ))}
-                </div>
-            ) : (
-                <>
-                    {visible.map((m) => {
-                        const r = results[m.id];
-                        return r ? (
-                            <ProviderBlock key={m.id} result={r} />
-                        ) : (
-                            <ProviderSkeleton key={m.id} name={m.name} />
-                        );
-                    })}
-                    {error && visible.length === 0 && (
-                        <p className="font-mono text-[12px] text-muted-foreground">
-                            Live lookup unavailable.
-                        </p>
-                    )}
-                </>
+            {visible.map((m) => {
+                const r = results[m.id];
+                return r ? (
+                    <ProviderBlock key={m.id} result={r} />
+                ) : (
+                    <ProviderSkeleton key={m.id} name={m.name} />
+                );
+            })}
+            {error && visible.length === 0 && (
+                <p className="font-mono text-[12px] text-muted-foreground">
+                    Live lookup unavailable.
+                </p>
             )}
         </div>
     );
@@ -560,7 +572,7 @@ export function ResearchCard({
                     Research
                 </SectionHeading>
 
-                <LiveResearch research={research} />
+                <LiveResearch research={research} kind={kind} />
 
                 {sections.map((section) => (
                     <div key={section.id} className="space-y-2">

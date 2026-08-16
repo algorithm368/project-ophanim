@@ -23,6 +23,10 @@ tsconfig.tsbuildinfo
 # coverage report (written by `bun run coverage`, read by the sonar scanner)
 coverage/
 
+# screenshots from the scripts/ helpers. They default to a temp dir; a run that
+# points SHOT_DIR here is a look at the current UI, not a record of it.
+shots/
+
 # sonar scanner working directory
 .scannerwork/
 

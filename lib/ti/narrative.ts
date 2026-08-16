@@ -9,6 +9,7 @@ import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { FLAG_THRESHOLD, MALICIOUS_FLOOR } from "./aggregate";
 import { ENGINE_NAME } from "./url/active/engines";
 import type { MergedScan } from "./url/active/merge";
+import type { ScanDetail } from "./url/active/detail";
 import type {
   CheckResult,
   CheckStats,
@@ -209,6 +210,19 @@ function headline(subject: string, result: ResultLike): string {
   return `This ${subject} ${VERDICT_PHRASE[result.verdict]}.`;
 }
 
+/**
+ * How a domain's age is introduced.
+ *
+ * Three honest tiers so a 45-day-old domain is not called "established": newly
+ * registered under 30 days, a neutral middle under a year, established beyond
+ * it.
+ */
+function ageLead(ageDays: number): string {
+  if (ageDays < 30) return "It is a newly registered domain, created";
+  if (ageDays < 365) return "It was registered";
+  return "It is an established domain, registered";
+}
+
 /** Render a domain's age in the largest unit that stays accurate. */
 function formatAge(ageDays: number): string {
   if (ageDays < 60) {
@@ -359,9 +373,10 @@ function abuseHistoryClause(result: ResultLike): string {
     // AbuseIPDB's confidence rides on the source's score (0-100).
     const confidence = abuse.score ?? 0;
     if (typeof reports === "number") {
+      const significant = reports > 0 && confidence >= ABUSE_SIGNIFICANT;
       parts.push(
-        reports > 0 && confidence >= ABUSE_SIGNIFICANT
-          ? `${reports} AbuseIPDB report${reports === 1 ? "" : "s"} at ${confidence}% confidence`
+        significant
+          ? `${plural(reports, "AbuseIPDB report")} at ${confidence}% confidence`
           : "no significant AbuseIPDB reports",
       );
     }
@@ -524,12 +539,7 @@ export function buildDomainNarrative(result: DomainCheckResult): string[] {
     const reg = ctx.registrar ? ` through ${ctx.registrar}` : "";
     // Three honest tiers so a 45-day domain isn't called "established" (issue #6):
     // newly (<30d), a neutral middle (<1yr), and established (≥1yr).
-    const lead =
-      ctx.ageDays < 30
-        ? `It is a newly registered domain, created ${ageText}${reg}`
-        : ctx.ageDays < 365
-          ? `It was registered ${ageText}${reg}`
-          : `It is an established domain, registered ${ageText}${reg}`;
+    const lead = `${ageLead(ctx.ageDays)} ${ageText}${reg}`;
     sentences.push(`${lead}${catText}.`.replace(/\.\.$/, "."));
   } else if (ctx?.registrar) {
     sentences.push(
@@ -547,8 +557,7 @@ export function buildDomainNarrative(result: DomainCheckResult): string[] {
   const mx = ctx?.mx ?? [];
   if (ips.length > 0) {
     const extra = ips.length - 1;
-    const hosts =
-      extra > 0 ? ` and ${extra} other host${extra > 1 ? "s" : ""}` : "";
+    const hosts = extra > 0 ? ` and ${plural(extra, "other host")}` : "";
     const mail = mx.length ? `, with mail handled by ${mx[0]}` : "";
     sentences.push(`It currently resolves to ${ips[0]}${hosts}${mail}.`);
   } else if (ctx?.nxdomain && result.verdict !== "unknown") {
@@ -613,7 +622,8 @@ export function buildHashNarrative(result: HashCheckResult): string[] {
         )
           ? ""
           : " file";
-      parts.push(`${article} ${type}${noun}${size ? ` (${size})` : ""}`);
+      const bytes = size ? ` (${size})` : "";
+      parts.push(`${article} ${type}${noun}${bytes}`);
     } else if (size) parts.push(`${size} in size`);
     if (parts.length) {
       // fileName is the best-known name, not provably the earliest seen.
@@ -766,6 +776,11 @@ function countWord(n: number): string {
   return `${n} times`;
 }
 
+/** "1 day" / "2 days": a count with a noun that agrees with it. */
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 /**
  * The paragraph an analyst pastes into a ticket.
  *
@@ -779,37 +794,40 @@ function countWord(n: number): string {
  * Claims about the page are scoped to the page that loaded, never to the site,
  * because a kit can serve one thing to a scanner and another to a victim.
  */
-export function buildScanNarrative(merged: MergedScan): string[] {
-  // Nothing finished means nothing was observed. No paragraph is the honest
-  // output; a headline here would be a claim built on no evidence.
-  if (merged.engines.length === 0) return [];
-
+/** 1. Where the URL ends up. The redirect is the first thing an analyst needs,
+ *  and a destination under a different name is the finding itself. */
+function scanDestination(merged: MergedScan): string[] {
   const d = merged.detail;
-  const cap = merged.capability;
-  const sentences: string[] = [];
-
   const finalHost = hostOf(d.finalUrl);
   const targetHost = hostOf(merged.target);
   const hops = d.redirects?.length ?? 0;
   const served = d.httpStatus ? `, answering HTTP ${d.httpStatus}` : "";
 
-  // 1. Where it ends up. The redirect is the first thing an analyst needs, and
-  //    a destination under a different name is the finding itself.
   if (hops > 0 && finalHost) {
-    sentences.push(
-      `This URL redirects ${countWord(hops)}, to ${finalHost}${served}.`,
-    );
-  } else if (finalHost && targetHost && finalHost !== targetHost) {
-    sentences.push(`This URL ends up at ${finalHost}${served}.`);
-  } else if (d.httpStatus) {
-    sentences.push(`This URL answered HTTP ${d.httpStatus} when it was visited.`);
+    return [`This URL redirects ${countWord(hops)}, to ${finalHost}${served}.`];
   }
+  if (finalHost && targetHost && finalHost !== targetHost) {
+    return [`This URL ends up at ${finalHost}${served}.`];
+  }
+  if (d.httpStatus) {
+    return [`This URL answered HTTP ${d.httpStatus} when it was visited.`];
+  }
+  return [];
+}
 
-  // 2. What the page can do, strictly as observed in the captured DOM. When the
-  //    DOM was never read, nothing is said: silence beats a false absence.
-  //    Title and password field share a sentence when both are present, so the
-  //    qualifier "the page that loaded" is stated once rather than drummed.
+/**
+ * 2. What the page can do, strictly as observed in the captured DOM.
+ *
+ * When the DOM was never read, nothing is said: silence beats a false absence.
+ * Title and password field share a sentence when both are present, so the
+ * qualifier "the page that loaded" is stated once rather than drummed.
+ */
+function scanCapability(merged: MergedScan): string[] {
+  const d = merged.detail;
+  const cap = merged.capability;
+  const sentences: string[] = [];
   const password = !cap.error && cap.passwordField;
+
   if (d.title && password) {
     sentences.push(
       `The page that loaded is titled "${d.title}" and carries a password field.`,
@@ -819,33 +837,46 @@ export function buildScanNarrative(merged: MergedScan): string[] {
   } else if (password) {
     sentences.push("The page that loaded carries a password field.");
   }
+  if (cap.error) return sentences;
 
-  if (!cap.error) {
-    const crossDomain = cap.forms.filter((f) => f.crossDomain && f.host);
-    if (crossDomain.length > 0) {
-      const hosts = [...new Set(crossDomain.map((f) => f.host as string))];
-      sentences.push(
-        `Its form posts to ${joinList(hosts)}, a different domain from the one shown.`,
-      );
-    }
-    if (cap.downloadLinks.length > 0) {
-      const count = cap.downloadLinks.length;
-      const shown = cap.downloadLinks.slice(0, 3);
-      const files = shown
-        .map((link) => link.split("/").pop())
-        .filter((name): name is string => Boolean(name));
-      const hosts = [
-        ...new Set(shown.map((link) => hostOf(link)).filter(Boolean)),
-      ] as string[];
-      const from = hosts.length ? `, served from ${joinList(hosts)}` : "";
-      sentences.push(
-        `It links to ${count} file${count === 1 ? "" : "s"} that ${count === 1 ? "executes" : "execute"} when opened, ${joinList(files)}${from}.`,
-      );
-    }
+  const crossDomain = cap.forms.filter((f) => f.crossDomain && f.host);
+  if (crossDomain.length > 0) {
+    const hosts = [...new Set(crossDomain.map((f) => f.host as string))];
+    sentences.push(
+      `Its form posts to ${joinList(hosts)}, a different domain from the one shown.`,
+    );
   }
 
-  // 3. How new the name and the certificate are. An exact WHOIS instant beats a
-  //    rounded age, so it wins when both are present.
+  const downloads = downloadSentence(cap.downloadLinks);
+  if (downloads) sentences.push(downloads);
+
+  return sentences;
+}
+
+/** The files the page hands over, which is how a page that looks harmless
+ *  delivers. Named with where they are served from, since that is often not the
+ *  site being looked at. */
+function downloadSentence(links: string[]): string | undefined {
+  if (links.length === 0) return undefined;
+  const shown = links.slice(0, 3);
+  const files = shown
+    .map((link) => link.split("/").pop())
+    .filter((name): name is string => Boolean(name));
+  const hosts = [
+    ...new Set(shown.map((link) => hostOf(link)).filter(Boolean)),
+  ] as string[];
+  const from = hosts.length ? `, served from ${joinList(hosts)}` : "";
+  const verb = links.length === 1 ? "executes" : "execute";
+  return `It links to ${plural(links.length, "file")} that ${verb} when opened, ${joinList(files)}${from}.`;
+}
+
+/** 3. How new the name and the certificate are, and what the domain is filed
+ *  as. An exact WHOIS instant beats a rounded age, so it wins when both are
+ *  present. */
+function scanProvenance(merged: MergedScan): string[] {
+  const d = merged.detail;
+  const sentences: string[] = [];
+
   const created = formatDate(d.domainCreated);
   if (created) {
     sentences.push(`Its domain was registered on ${created}.`);
@@ -853,45 +884,78 @@ export function buildScanNarrative(merged: MergedScan): string[] {
     sentences.push(`Its domain was registered ${formatAge(d.domainAgeDays)}.`);
   }
 
-  if (d.tlsAgeDays !== undefined || d.tlsIssuer) {
-    const issuer = d.tlsIssuer ? `issued by ${d.tlsIssuer}` : "issued";
-    const age =
-      d.tlsAgeDays !== undefined
-        ? `is ${d.tlsAgeDays} ${d.tlsAgeDays === 1 ? "day" : "days"} old, ${issuer}`
-        : `was ${issuer}`;
-    const valid =
-      d.tlsValidDays !== undefined ? `, valid for ${d.tlsValidDays} days` : "";
-    sentences.push(`Its certificate ${age}${valid}.`);
+  const cert = certificateSentence(d);
+  if (cert) sentences.push(cert);
+
+  // What the site is about, stated before what is wrong with it: the mismatch
+  // between the two is the finding, and an analyst reads it in that order.
+  if (d.contentCategories?.length) {
+    const inherited = d.categoryInheritedFrom
+      ? `, inherited from ${d.categoryInheritedFrom}`
+      : "";
+    sentences.push(
+      `Cloudflare categorizes the site as ${joinList(d.contentCategories)}${inherited}.`,
+    );
   }
 
   if (d.riskCategories?.length) {
+    sentences.push(`Cloudflare puts the domain in ${joinList(d.riskCategories)}.`);
+  }
+
+  const siblings = d.siblingDomains ?? [];
+  if (siblings.length) {
+    const noun = siblings.length === 1 ? "a sibling domain" : "sibling domains";
     sentences.push(
-      `Cloudflare puts the domain in ${joinList(d.riskCategories)}.`,
+      `Its robots.txt names ${joinList(siblings)}, ${noun} worth checking too.`,
     );
   }
 
-  if (d.siblingDomains?.length) {
-    sentences.push(
-      `Its robots.txt names ${joinList(d.siblingDomains)}, ${d.siblingDomains.length === 1 ? "a sibling domain" : "sibling domains"} worth checking too.`,
-    );
-  }
+  return sentences;
+}
 
-  // 4. What the scanners concluded, attributed, because an unattributed verdict
-  //    cannot be defended when it is questioned in a ticket.
+/** The certificate's age, issuer and validity, in whatever parts were seen. A
+ *  certificate days old on a domain days old is the cheapest strong phishing
+ *  signal there is. */
+function certificateSentence(d: ScanDetail): string | undefined {
+  if (d.tlsAgeDays === undefined && !d.tlsIssuer) return undefined;
+  const issuer = d.tlsIssuer ? `issued by ${d.tlsIssuer}` : "issued";
+  const age =
+    d.tlsAgeDays !== undefined
+      ? `is ${plural(d.tlsAgeDays, "day")} old, ${issuer}`
+      : `was ${issuer}`;
+  const valid =
+    d.tlsValidDays !== undefined ? `, valid for ${d.tlsValidDays} days` : "";
+  return `Its certificate ${age}${valid}.`;
+}
+
+/**
+ * 4 to 6. What the scanners concluded, where they disagreed, and who did not
+ * finish.
+ *
+ * Attributed, because an unattributed verdict cannot be defended when it is
+ * questioned in a ticket. Disagreement is itself a finding: a site answering
+ * differently by visitor is what a kit dodging scanners does. And an engine
+ * that did not finish is named, so the reading is not mistaken for the whole
+ * picture.
+ */
+function scanVerdicts(merged: MergedScan): string[] {
+  const d = merged.detail;
+  const sentences: string[] = [];
   const names = merged.engines.map((e) => ENGINE_NAME[e]);
+
   if (d.verdicts.overall.malicious) {
     const categories = d.verdicts.overall.categories?.length
       ? ` as ${joinList(d.verdicts.overall.categories)}`
       : "";
     sentences.push(`It was flagged${categories} by ${joinList(names)}.`);
   } else {
+    const subject =
+      names.length === 1 ? "the scanner that ran" : "scanner";
     sentences.push(
-      `Neither ${names.length === 1 ? "the scanner that ran" : "scanner"} flagged it, which is an absence of evidence rather than a clean bill.`,
+      `Neither ${subject} flagged it, which is an absence of evidence rather than a clean bill.`,
     );
   }
 
-  // 5. Disagreement is itself a finding: a site answering differently by
-  //    visitor is what a kit dodging scanners does.
   for (const disagreement of merged.disagreements) {
     const readings = disagreement.values
       .map((v) => `${ENGINE_NAME[v.engine]} saw ${v.value}`)
@@ -901,13 +965,35 @@ export function buildScanNarrative(merged: MergedScan): string[] {
     );
   }
 
-  // 6. An engine that did not finish is named, so the reading is not mistaken
-  //    for the whole picture.
   for (const entry of merged.incomplete) {
     const reason =
-      entry.status === "running" ? "was still scanning" : `did not finish (${entry.error ?? entry.status})`;
+      entry.status === "running"
+        ? "was still scanning"
+        : `did not finish (${entry.error ?? entry.status})`;
     sentences.push(`${ENGINE_NAME[entry.engine]} ${reason}.`);
   }
 
   return sentences;
+}
+
+/**
+ * The paragraph an analyst pastes into a ticket, from an active scan.
+ *
+ * Assembled from four readings in the order a case is written: where the URL
+ * went, what the page can do, how new the name and its certificate are, and
+ * what the scanners made of it. Each section is its own function so the shape
+ * of the paragraph is visible here and the conditions live next to the
+ * sentences they guard.
+ */
+export function buildScanNarrative(merged: MergedScan): string[] {
+  // Nothing finished means nothing was observed. No paragraph is the honest
+  // output; a headline here would be a claim built on no evidence.
+  if (merged.engines.length === 0) return [];
+
+  return [
+    ...scanDestination(merged),
+    ...scanCapability(merged),
+    ...scanProvenance(merged),
+    ...scanVerdicts(merged),
+  ];
 }

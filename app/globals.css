@@ -172,3 +172,38 @@
 @utility sketch-shadow-primary {
     box-shadow: var(--elev-shadow);
 }
+
+/* A single band of light sweeping across a placeholder. Used wherever the app
+   is waiting on a source: a pulse says "something is here", a sweep says "work
+   is in progress", and the difference matters when a lane can take ten seconds.
+   Grayscale like everything else, so it never competes with a verdict. */
+@keyframes ophanim-sweep {
+    from {
+        background-position: -150% 0;
+    }
+    to {
+        background-position: 250% 0;
+    }
+}
+
+/* Named "sweep", not "shimmer": shadcn ships a .shimmer utility of its own for
+   text, and two rules of the same name interleave in ways neither intends. */
+@utility sweep {
+    background-color: color-mix(in oklch, var(--foreground) 9%, transparent);
+    background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in oklch, var(--foreground) 14%, transparent) 50%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: ophanim-sweep 1.6s linear infinite;
+}
+
+/* Motion is decoration here: the label already says the lane is loading. */
+@media (prefers-reduced-motion: reduce) {
+    .sweep {
+        animation: none;
+    }
+}

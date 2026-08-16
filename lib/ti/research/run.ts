@@ -56,11 +56,22 @@ export async function runResearch(
   );
 }
 
-/** Provider metas that will run for an IOC kind — used by the stream's `start`
- *  event so the UI can show a labeled skeleton per provider before any resolve. */
+/**
+ * Provider metas that will run for an IOC kind, used by the stream's `start`
+ * event so the UI can show a labeled skeleton per provider before any resolve.
+ *
+ * A key-gated provider without its key is left out rather than announced and
+ * then skipped, which would put a labeled placeholder on screen only to remove
+ * it. The UI also calls this in the browser, where the server's env is not
+ * visible and every gated provider therefore reads as disabled: that errs
+ * toward a lane appearing when the `start` event lands, never toward one
+ * vanishing.
+ */
 export function researchMetasFor(
   kind: IOCType,
   providers: ResearchProvider[] = researchProviders,
 ) {
-  return providers.filter((p) => p.supports.includes(kind)).map((p) => p.meta);
+  return providers
+    .filter((p) => p.supports.includes(kind) && p.isEnabled())
+    .map((p) => p.meta);
 }

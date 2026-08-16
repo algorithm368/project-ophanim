@@ -84,10 +84,30 @@ lib/ti/{sources,domain/sources,hash/sources}/*   one adapter per source
 lib/ti/{registry,domain/registry,hash/registry}.ts   the source lists
 lib/ti/{check,domain/check,hash/check}.ts            per-type orchestrators
 app/api/{check,check-domain,check-hash}/route.ts     indicator routes
-app/check/[ioc]/                         unified result page (+ OG image)
-components/Checker.tsx, CheckResults.tsx UI entry points
+app/api/scan-url/route.ts                active scan: POST submits, GET polls
+app/page.tsx, app/check/[ioc]/           passive: landing + result (+ OG image)
+app/scan/page.tsx, app/scan/[indicator]/ active: landing + scan page
+lib/route-mode.ts                        which mode a path is in, for the switch
+lib/scan-input.ts                        what the active box makes of an input
+components/Checker.tsx, CheckResults.tsx passive UI entry points
+components/ScanSearch.tsx                the active landing page's search box
+components/ModeSwitch.tsx                passive/active switch, in the banner
+components/ImageInspector.tsx            full-screen capture viewer, zoom + pan
+components/ScanReport/                   the active scan page's UI
 components/ui/                           shadcn primitives
 ```
+
+The two readings are two modes, and each mode is two pages: a landing page with
+a search box (`/` and `/scan`) and a page for one indicator (`/check/<ioc>` and
+`/scan/<indicator>`). Passive is assembled from records others keep; active is
+the only thing in the app that visits the indicator, and `/scan/<indicator>` is
+the only place a scan can be started. `ModeSwitch` in the banner (beside the
+theme toggle) moves between them, carrying the indicator when there is one, and
+renders nothing on a path in neither mode. The card on `/check` is an entry
+point: it reports whether a scan already exists and links across, it never
+scans. `readScanInput` in `lib/scan-input.ts` is the boundary the active box
+enforces, deliberately the same one `/api/scan-url` applies, so the box never
+accepts what the route would refuse.
 
 ## Conventions
 

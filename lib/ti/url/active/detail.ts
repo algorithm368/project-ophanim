@@ -108,6 +108,15 @@ export interface ScanDetail {
   /** Cloudflare's own risk categories for the primary domain, e.g.
    *  "Newly Seen Domains". Cloudflare only. */
   riskCategories?: string[];
+  /** What Cloudflare says the site is *about*, e.g. "News & Media". Not a
+   *  verdict: it is the same classification the DNS filtering products use, and
+   *  it earns its place by being checkable against the page. A login form on a
+   *  domain categorized "Parked" or "Newly Registered" is the mismatch worth
+   *  seeing. Cloudflare only. */
+  contentCategories?: string[];
+  /** The parent domain the content categories were inherited from, when the
+   *  scanned host carries none of its own. Cloudflare only. */
+  categoryInheritedFrom?: string;
   /** Radar popularity bucket, e.g. ">200000". Cloudflare only. */
   radarRankBucket?: string;
   /** Hash of the DOM structure, for clustering pages built from one kit.

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ModeSwitch } from "@/components/ModeSwitch";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // Checker owns the URL: it reflects each lookup with history.pushState (so a
@@ -47,7 +48,10 @@ export function Banner() {
             Threat Intelligence · IOC Lookup
           </span>
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Which reading is on screen, next to how the page is shown. Absent
+              on the home page, where there is no indicator to read either way. */}
+          <ModeSwitch />
           <ThemeToggle />
         </div>
       </div>

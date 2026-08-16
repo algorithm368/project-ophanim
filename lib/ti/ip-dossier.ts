@@ -39,31 +39,36 @@ function group(id: string, title: string, fields: (DossierField | null)[]): Doss
   return kept.length ? { id, title, fields: kept } : null;
 }
 
+/** What the Tor lists say this address is, if anything. */
+function anonymization(categories: string[] | undefined): string {
+  if (categories?.includes("tor-exit")) return "Tor exit node";
+  if (categories?.includes("tor-relay")) return "Tor relay";
+  return "";
+}
+
+/**
+ * The PTR record, with what verification made of it.
+ *
+ * A PTR with no FCrDNS data (verification never ran) has to read differently
+ * from one where FCrDNS explicitly failed to confirm the forward record: the
+ * latter is a classic spoofed-PTR indicator, and collapsing both to a bare
+ * hostname made them indistinguishable.
+ */
+function reverseDnsLine(geo: CheckResult["geo"]): string {
+  if (!geo?.reverse) return "";
+  if (!geo.fcrdns) return geo.reverse;
+  const verdict = geo.fcrdns.verified ? "verified" : "unconfirmed";
+  return `${geo.reverse} (FCrDNS ${verdict})`;
+}
+
 export function buildHostClassification(result: CheckResult): DossierGroup | null {
   const geo = result.geo;
   const gn = findFinding(result, "greynoise");
   const riot = gn?.details?.riot === true ? (gn?.details?.actor as string | undefined) : undefined;
   const cloud = cloudProvider(geo?.asn, geo?.asnOrg);
 
-  const tor = findFinding(result, "tor-project");
-  const anon = tor?.categories?.includes("tor-exit")
-    ? "Tor exit node"
-    : tor?.categories?.includes("tor-relay")
-      ? "Tor relay"
-      : "";
-
-  // A PTR record with no FCrDNS data (verification never ran) must read
-  // differently from one where FCrDNS explicitly failed to confirm the
-  // forward record — the latter is a classic spoofed-PTR indicator and was
-  // previously indistinguishable from "no data" once collapsed to a bare
-  // hostname.
-  const ptr = geo?.reverse
-    ? geo.fcrdns
-      ? geo.fcrdns.verified
-        ? `${geo.reverse} (FCrDNS verified)`
-        : `${geo.reverse} (FCrDNS unconfirmed)`
-      : geo.reverse
-    : "";
+  const anon = anonymization(findFinding(result, "tor-project")?.categories);
+  const ptr = reverseDnsLine(geo);
 
   return group("classification", "Host classification", [
     { label: "Assignment type", value: assignmentType(geo) },
@@ -125,6 +130,24 @@ export function buildExposedServices(result: CheckResult): DossierGroup | null {
   ]);
 }
 
+/** "value, qualifier", or the value alone. The qualifier is always a detail of
+ *  the value, so it never appears without it. */
+function withQualifier(
+  value: string | undefined,
+  qualifier: string | undefined,
+  prefix = "",
+): string {
+  if (!value) return "";
+  return qualifier ? `${value}, ${prefix}${qualifier}` : value;
+}
+
+/** The AS number with its holder, unless the number already spells it out. */
+function asnLine(asn: string | undefined, org: string | undefined): string {
+  if (!asn) return "";
+  const repeats = org && asn.toLowerCase().includes(org.toLowerCase());
+  return org && !repeats ? `${asn} ${org}` : asn;
+}
+
 export function buildNetworkProvenance(result: CheckResult): DossierGroup | null {
   const geo = result.geo;
   const pdb = findFinding(result, "peeringdb")?.details;
@@ -132,25 +155,12 @@ export function buildNetworkProvenance(result: CheckResult): DossierGroup | null
   const ripe = findFinding(result, "ripestat")?.details;
 
   const asnOrg = geo?.asnOrg?.trim();
-  const asnBase = geo?.asn?.trim();
-  const asn = asnBase
-    ? asnOrg && !asnBase.toLowerCase().includes(asnOrg.toLowerCase())
-      ? `${asnBase} ${asnOrg}`
-      : asnBase
-    : "";
-  const netClass = str(pdb?.networkClass)
-    ? `${str(pdb?.networkClass)}${str(pdb?.trafficLevel) ? `, ${str(pdb?.trafficLevel)}` : ""}`
-    : "";
+  const asn = asnLine(geo?.asn?.trim(), asnOrg);
+  const netClass = withQualifier(str(pdb?.networkClass), str(pdb?.trafficLevel));
   const org = geo?.org && geo.org !== geo.isp && geo.org !== geo.asnOrg ? geo.org : "";
-  const allocation = str(rdap?.networkName)
-    ? `${str(rdap?.networkName)}${str(rdap?.range) ? `, ${str(rdap?.range)}` : ""}`
-    : "";
-  const prefix = str(ripe?.prefix)
-    ? `${str(ripe?.prefix)}${str(ripe?.rpkiStatus) ? `, RPKI ${str(ripe?.rpkiStatus)}` : ""}`
-    : "";
-  const abuse = str(rdap?.abuseContact)
-    ? `${str(rdap?.abuseContact)}${str(rdap?.abuseOrg) ? `, ${str(rdap?.abuseOrg)}` : ""}`
-    : "";
+  const allocation = withQualifier(str(rdap?.networkName), str(rdap?.range));
+  const prefix = withQualifier(str(ripe?.prefix), str(ripe?.rpkiStatus), "RPKI ");
+  const abuse = withQualifier(str(rdap?.abuseContact), str(rdap?.abuseOrg));
 
   return group("provenance", "Network provenance", [
     asn ? { label: "Autonomous system", value: asn, mono: true } : null,
@@ -168,6 +178,12 @@ export function buildNetworkProvenance(result: CheckResult): DossierGroup | null
 
 function isoDate(s: string): string {
   return s.slice(0, 10);
+}
+
+/** "1 linked IOC" / "3 linked IOCs", so a count never reads as a mislabelled
+ *  plural. */
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 /**
@@ -230,11 +246,9 @@ export function buildThreatActivity(result: CheckResult): DossierGroup | null {
   // malware-family list — prefer it, falling back to the old behavior only
   // when it is absent.
   const tfMalware = strArr(tf?.details?.malware);
-  const malware = tfMalware.length
-    ? tfMalware.slice(0, 3).join(", ")
-    : tf?.categories?.length
-      ? tf.categories.slice(0, 3).join(", ")
-      : "";
+  const malware = (tfMalware.length ? tfMalware : (tf?.categories ?? []))
+    .slice(0, 3)
+    .join(", ");
 
   const feodo = findFinding(result, "feodo");
   const c2 = feodo?.malicious === true ? `${str(feodo.details?.malware) ?? "Botnet"} C2` : "";
@@ -274,7 +288,7 @@ export function buildRelationships(result: CheckResult): DossierGroup | null {
       ? { label: "Passive DNS", value: `${pdnsCount} historical resolution${pdnsCount === 1 ? "" : "s"}` }
       : null,
     related
-      ? { label: "Related indicators", value: `${related} linked IOC${related === 1 ? "" : "s"}` }
+      ? { label: "Related indicators", value: plural(related, "linked IOC") }
       : null,
   ]);
 }

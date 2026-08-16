@@ -4,13 +4,12 @@ import { Radar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
- * Active mode: the switch out of passive reading.
+ * Active mode: the trigger, on the page devoted to it.
  *
- * Every other reading on a page is passive, assembled from records other people
- * already keep. Active mode is the one control that reaches out and touches the
- * indicator, so it is a mode the analyst enters deliberately rather than a
- * button they can hit by reflex. Entering it arms the scan; a second press
- * fires it.
+ * Every reading on /check is passive, assembled from records other people
+ * already keep. This is the one control in the app that reaches out and touches
+ * the indicator, so it lives here alone and is entered deliberately rather than
+ * hit by reflex. Pressing it arms the scan; a second press fires it.
  *
  * The armed panel inverts to near-black because the skin spends color only on
  * the verdict, so inversion is the loudest signal left, and it cannot be read as

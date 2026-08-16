@@ -1,9 +1,12 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { ExternalLink, Maximize2 } from "lucide-react";
+import { ImageInspector } from "@/components/ImageInspector";
 import { buildScanNarrative, formatDate, midSentence } from "@/lib/ti/narrative";
 import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import { attribution, type MergedScan } from "@/lib/ti/url/active/merge";
+import type { ScanCapability } from "@/lib/ti/url/active/capability";
 import type { ScanDetail } from "@/lib/ti/url/active/detail";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
 import { CopyableSummary } from "@/components/CheckResults/primitives";
@@ -102,6 +105,65 @@ function Evidence({
 }
 
 /**
+ * What the page asks for, strictly as seen in the captured DOM.
+ *
+ * Finding nothing is a result and says so; failing to look is not, and returns
+ * undefined so the row can say that instead. A kit can build its form after a
+ * click or hide it from a scanner, so neither answer is ever phrased as a fact
+ * about the site.
+ */
+function asksForLine(cap: ScanCapability): string | undefined {
+  if (cap.error) return undefined;
+  const elsewhere = cap.forms.find((f) => f.crossDomain && f.host)?.host;
+  if (cap.passwordField && elsewhere) {
+    return `a password, posted to ${elsewhere}, a different domain`;
+  }
+  if (cap.passwordField) return "a password, in the page that loaded";
+  if (elsewhere) return `no password, but a form posts to ${elsewhere}`;
+  return "no password form in the page that loaded";
+}
+
+/** When the domain was registered. An exact WHOIS instant beats a rounded age,
+ *  so it wins when both are present. */
+function registeredLine(d: ScanDetail): string | undefined {
+  if (d.domainCreated) return new Date(d.domainCreated).toLocaleString();
+  if (d.domainAgeDays !== undefined) return `${count(d.domainAgeDays, "day")} old`;
+  return undefined;
+}
+
+/** Age, issuer and validity of the certificate, in whatever parts were seen. */
+function certificateLine(d: ScanDetail): string | undefined {
+  if (d.tlsAgeDays === undefined && !d.tlsIssuer) return undefined;
+  return [
+    d.tlsAgeDays !== undefined ? `${count(d.tlsAgeDays, "day")} old` : undefined,
+    d.tlsIssuer,
+    d.tlsValidDays !== undefined ? `valid ${d.tlsValidDays} d` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** What nobody collected, named rather than left as an empty section. */
+function notCollectedLines(merged: MergedScan): string[] {
+  const { detail, capability, incomplete, engines } = merged;
+  const unfinished = incomplete.map((e) => {
+    const reason =
+      e.status === "running"
+        ? "is still scanning"
+        : `did not finish: ${e.error ?? e.status}`;
+    return `${ENGINE_NAME[e.engine]} ${reason}.`;
+  });
+  return [
+    ...detail.absent.map((name) => `No ${name} reported.`),
+    ...(capability.error
+      ? [`Form analysis unavailable: ${capability.error}`]
+      : []),
+    ...unfinished,
+    ...(engines.includes("urlscan") ? [] : ["No urlscan verdict lanes."]),
+  ];
+}
+
+/**
  * Everything one scanned URL turned into, in the order the design puts it:
  * the paragraph first, then the five decisive rows, then who said what, then
  * the evidence, then what nobody collected.
@@ -118,6 +180,7 @@ export function TargetReport({
   const d = merged.detail;
   const cap = merged.capability;
   const narrative = buildScanNarrative(merged).join(" ");
+  const [inspecting, setInspecting] = useState<string | null>(null);
 
   // Only a urlscan screenshot is a public file. Cloudflare's is an
   // authenticated API endpoint and an <img> pointed at it renders broken.
@@ -127,7 +190,6 @@ export function TargetReport({
 
   const hops = d.redirects?.length ?? 0;
   const brands = d.verdicts.overall.brands ?? [];
-  const crossDomain = cap.forms.filter((f) => f.crossDomain && f.host);
 
   // Only an engine whose DOM was actually read backs the "asks for" row. One
   // that finished the scan but was refused the DOM contributed nothing to it,
@@ -136,49 +198,10 @@ export function TargetReport({
     .filter((s) => s.capability && !s.capability.error)
     .map((s) => ENGINE_NAME[s.engine]);
 
-  // What the page asks for, strictly as seen in the captured DOM. Finding
-  // nothing is a result and says so; failing to look is not, and says that
-  // instead. A kit can build its form after a click or hide it from a scanner,
-  // so neither answer is ever phrased as a fact about the site.
-  let asksFor: string | undefined;
-  if (cap.error) {
-    asksFor = undefined;
-  } else if (cap.passwordField && crossDomain.length > 0) {
-    asksFor = `a password, posted to ${crossDomain[0].host}, a different domain`;
-  } else if (cap.passwordField) {
-    asksFor = "a password, in the page that loaded";
-  } else if (crossDomain.length > 0) {
-    asksFor = `no password, but a form posts to ${crossDomain[0].host}`;
-  } else {
-    asksFor = "no password form in the page that loaded";
-  }
-
-  const registered = d.domainCreated
-    ? new Date(d.domainCreated).toLocaleString()
-    : d.domainAgeDays !== undefined
-      ? `${count(d.domainAgeDays, "day")} old`
-      : undefined;
-
-  const certificate =
-    d.tlsAgeDays !== undefined || d.tlsIssuer
-      ? [
-          d.tlsAgeDays !== undefined ? `${count(d.tlsAgeDays, "day")} old` : undefined,
-          d.tlsIssuer,
-          d.tlsValidDays !== undefined ? `valid ${d.tlsValidDays} d` : undefined,
-        ]
-          .filter(Boolean)
-          .join(" · ")
-      : undefined;
-
-  const notCollected: string[] = [
-    ...d.absent.map((name) => `No ${name} reported.`),
-    ...(cap.error ? [`Form analysis unavailable: ${cap.error}`] : []),
-    ...merged.incomplete.map(
-      (e) =>
-        `${ENGINE_NAME[e.engine]} ${e.status === "running" ? "is still scanning" : `did not finish: ${e.error ?? e.status}`}.`,
-    ),
-    ...(merged.engines.includes("urlscan") ? [] : ["No urlscan verdict lanes."]),
-  ];
+  const asksFor = asksForLine(cap);
+  const registered = registeredLine(d);
+  const certificate = certificateLine(d);
+  const notCollected = notCollectedLines(merged);
 
   const network = [
     d.ips?.length ? count(d.ips.length, "IP") : undefined,
@@ -216,15 +239,29 @@ export function TargetReport({
         </div>
         {shot?.verdict?.screenshot ? (
           <figure className="space-y-1">
-            {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
-            <img
-              src={shot.verdict.screenshot}
-              alt={`Screenshot of ${merged.target}`}
-              className="w-full rounded border border-foreground/12 object-cover object-top"
-              loading="lazy"
-            />
+            {/* The capture is evidence, and at this size it can only be
+                glanced at. Clicking opens it full screen with zoom, which is
+                where a misspelt footer or a wrong favicon is actually read. */}
+            <button
+              type="button"
+              onClick={() => setInspecting(shot.verdict?.screenshot ?? null)}
+              aria-label={`Inspect the screenshot of ${merged.target}`}
+              title="Inspect the screenshot"
+              className="group relative block w-full cursor-zoom-in overflow-hidden rounded border border-foreground/12"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
+              <img
+                src={shot.verdict.screenshot}
+                alt={`Screenshot of ${merged.target}`}
+                className="w-full object-cover object-top"
+                loading="lazy"
+              />
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100 group-focus-visible:bg-foreground/30 group-focus-visible:opacity-100">
+                <Maximize2 className="size-5" />
+              </span>
+            </button>
             <figcaption className="text-[11px] text-foreground/45">
-              screenshot · {ENGINE_NAME[shot.engine]}
+              screenshot · {ENGINE_NAME[shot.engine]} · click to inspect
             </figcaption>
           </figure>
         ) : (
@@ -280,8 +317,10 @@ export function TargetReport({
         {scans
           .filter((s) => s.status === "done" && s.detail)
           .map((s) => {
-            const lane = (s.detail as ScanDetail).verdicts.overall;
-            const risks = (s.detail as ScanDetail).riskCategories ?? [];
+            const reading = s.detail as ScanDetail;
+            const lane = reading.verdicts.overall;
+            const risks = reading.riskCategories ?? [];
+            const categories = reading.contentCategories ?? [];
             const words = lane.malicious
               ? `MALICIOUS  ${[lane.score !== undefined ? `score ${lane.score}` : undefined, ...(lane.categories ?? [])].filter(Boolean).join(" · ")}`
               : risks.length
@@ -304,6 +343,17 @@ export function TargetReport({
                 >
                   {words}
                 </span>
+                {/* What the site is filed as, next to the verdict rather than
+                    inside it: a category is not an accusation, and a login page
+                    on a domain filed as Parked is the mismatch worth seeing. */}
+                {categories.length > 0 && (
+                  <span className="text-xs text-foreground/50">
+                    filed as {categories.join(", ")}
+                    {reading.categoryInheritedFrom
+                      ? `, via ${reading.categoryInheritedFrom}`
+                      : ""}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -476,6 +526,23 @@ export function TargetReport({
             </a>
           ))}
       </div>
+
+      {inspecting && (
+        <ImageInspector
+          src={inspecting}
+          alt={`Screenshot of ${merged.target}`}
+          title={d.finalUrl ?? merged.target}
+          subtitle={[
+            shot ? `captured by ${ENGINE_NAME[shot.engine]}` : undefined,
+            d.title,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          href={shot?.resultUrl}
+          hrefLabel="Open the scanner's report"
+          onClose={() => setInspecting(null)}
+        />
+      )}
     </section>
   );
 }

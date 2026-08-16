@@ -12,10 +12,7 @@ import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/CheckResults/primitives";
-import {
-  ActiveModeButton,
-  ArmedPanel,
-} from "@/components/CheckResults/active-mode";
+import { ActiveModeButton, ArmedPanel } from "./active-mode";
 import { TargetReport } from "./target";
 
 /** Re-poll while anything is queued. A scan takes roughly half a minute, so

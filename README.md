@@ -99,6 +99,19 @@ Enabled only when an API key is set:
 > A single abuse.ch Auth-Key (`THREATFOX_API_KEY`) enables ThreatFox,
 > MalwareBazaar, and URLhaus across all modes.
 
+## Live research
+
+Context rather than scoring: these run alongside the sources above and never
+move the risk score. They stream into the Research card one at a time.
+
+All three work without any key.
+
+| Lane            | What it provides                                        |
+| --------------- | ------------------------------------------------------- |
+| URLScan         | Recent public scans and their screenshots                |
+| Wayback Machine | Recent captures, viewable in place, and first-seen year  |
+| crt.sh          | Certificates and subdomains from CT logs                 |
+
 ## Getting started
 
 ```bash

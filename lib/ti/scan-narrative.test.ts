@@ -42,6 +42,7 @@ const FULL = merged({
     tlsAgeDays: 2,
     tlsValidDays: 89,
     riskCategories: ["Newly Seen Domains", "Security Risks"],
+    contentCategories: ["Business & Economy"],
     siblingDomains: ["arwana855silver.com"],
     redirects: [
       {
@@ -200,6 +201,34 @@ describe("buildScanNarrative", () => {
     expect(text).toContain("disagree on page title");
   });
 
+  it("says what the site is filed as, before what is wrong with it", () => {
+    const sentences = buildScanNarrative(FULL);
+    const filed = sentences.findIndex((s) => s.includes("categorizes the site"));
+    const risk = sentences.findIndex((s) => s.includes("puts the domain in"));
+    expect(sentences[filed]).toContain("Business & Economy");
+    expect(filed).toBeLessThan(risk);
+  });
+
+  it("names the parent a category was inherited from", () => {
+    const text = buildScanNarrative(
+      merged({
+        detail: detail({
+          contentCategories: ["Technology"],
+          categoryInheritedFrom: "cloudflare.com",
+        }),
+      }),
+    ).join(" ");
+    expect(text).toContain("Technology, inherited from cloudflare.com.");
+  });
+
+  it("claims no category for a host that inherited one it never had", () => {
+    // The parent name alone is not a categorization of the scanned host.
+    const text = buildScanNarrative(
+      merged({ detail: detail({ categoryInheritedFrom: "cloudflare.com" }) }),
+    ).join(" ");
+    expect(text).not.toMatch(/categorizes|cloudflare\.com/);
+  });
+
   it("names an engine that did not finish", () => {
     const text = buildScanNarrative(
       merged({
@@ -233,6 +262,8 @@ describe("buildScanNarrative, as a property", () => {
     ["tlsAgeDays", 2],
     ["tlsValidDays", 89],
     ["riskCategories", ["Security Risks"]],
+    ["contentCategories", ["News & Media"]],
+    ["categoryInheritedFrom", "bbc.com"],
     ["siblingDomains", ["other.test"]],
     ["redirects", [{ from: "https://login-ms.xyz/", to: "https://elsewhere.test/x", status: 301 }]],
   ];
@@ -241,8 +272,8 @@ describe("buildScanNarrative, as a property", () => {
   const LEAKS = /\bundefined\b|\bnull\b|\bNaN\b|\[object|\bunknown\b/i;
 
   it("never leaks a placeholder, for any subset of the data", () => {
-    // 2^14 subsets is more than enough to hit every combination of present and
-    // absent fields the builder branches on.
+    // Sampling the subset space is more than enough to hit every combination of
+    // present and absent fields the builder branches on.
     for (let mask = 0; mask < 1 << FIELDS.length; mask += 37) {
       const over: Record<string, unknown> = {};
       FIELDS.forEach(([key, value], i) => {
