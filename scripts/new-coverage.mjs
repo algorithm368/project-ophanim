@@ -106,11 +106,49 @@ if (!GIT) {
  * refused rather than passed along and hoped for.
  */
 function safeRevision(rev) {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(rev)) {
+  // `~` and `^` are here because HEAD~1 and main^ are ordinary things to pass;
+  // neither can turn the argument into an option, which is what the
+  // alphanumeric-only first character rules out.
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/~^-]*$/.test(rev)) {
     console.error(`Refusing "${rev}" as a git revision.`);
     process.exit(2);
   }
   return rev;
+}
+
+/**
+ * The commit id a revision names, and the only form of it this script will
+ * hand to `git diff`.
+ *
+ * Resolving first means the diff never receives argv text at all: it gets forty
+ * hex characters that git produced and this function re-checked. The resolve
+ * call is the one place the argument is read, and there it is both charset-
+ * limited by safeRevision and placed after --end-of-options, so git cannot read
+ * it as a flag however it is spelled.
+ */
+function resolveCommit(rev) {
+  const safe = safeRevision(rev);
+  let out = "";
+  try {
+    out = execFileSync(
+      GIT,
+      ["rev-parse", "--verify", "--quiet", "--end-of-options", `${safe}^{commit}`],
+      { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+  } catch {
+    // --verify exits non-zero for a name that resolves to nothing, which is a
+    // user error rather than a crash.
+    out = "";
+  }
+  const sha = /^[0-9a-f]{40}$/.exec(out)?.[0];
+  if (!sha) {
+    console.error(
+      `"${rev}" does not name a commit here. ` +
+        "If it is a remote branch, `git fetch` first.",
+    );
+    process.exit(2);
+  }
+  return sha;
 }
 
 /**
@@ -119,10 +157,10 @@ function safeRevision(rev) {
  * Read from a zero-context diff against the merge base, which is the same set
  * Sonar calls new code. Deletions carry no new lines and are skipped.
  */
-function changedLines(base) {
+function changedLines(baseSha) {
   const diff = execFileSync(
     GIT,
-    ["diff", "--unified=0", "--diff-filter=d", `${safeRevision(base)}...HEAD`],
+    ["diff", "--unified=0", "--diff-filter=d", `${baseSha}...HEAD`],
     { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
   const byFile = new Map();
@@ -145,8 +183,11 @@ function changedLines(base) {
 }
 
 const base = process.argv[2] ?? "origin/main";
+// Resolved once, up front: everything downstream works from the commit id, so
+// the text the user typed never reaches another command.
+const baseSha = resolveCommit(base);
 const hits = lcovHits();
-const changed = changedLines(base);
+const changed = changedLines(baseSha);
 
 let coverable = 0;
 let covered = 0;
