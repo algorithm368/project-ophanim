@@ -989,3 +989,178 @@ describe("scoreExplanation — reads the breakdown (B5)", () => {
     ).toEqual([]);
   });
 });
+
+describe("buildNarrative — the remaining network types and location shapes", () => {
+  function ip(geo: CheckResult["geo"]): string {
+    const result: CheckResult = {
+      ip: "10.0.0.1",
+      checkedAt: "2026-05-29T00:00:00Z",
+      riskScore: 0,
+      verdict: "clean",
+      geo,
+      sources: [],
+      stats: makeStats(),
+    };
+    return buildNarrative(result).join(" ");
+  }
+
+  it("names a mobile carrier address", () => {
+    expect(ip({ isMobile: true, isp: "AIS" })).toContain(
+      "a mobile carrier (cellular) address",
+    );
+  });
+
+  // The operator falls back isp -> org -> asnOrg, so a provider that fills only
+  // the later fields still gets named rather than dropped.
+  it("takes the operator from org when isp is absent", () => {
+    expect(ip({ org: "Contoso Ltd" })).toContain("operated by Contoso Ltd");
+  });
+
+  it("takes the operator from asnOrg when isp and org are both absent", () => {
+    expect(ip({ asnOrg: "Fabrikam" })).toContain("operated by Fabrikam");
+  });
+
+  it("omits the operator clause entirely when nothing names one", () => {
+    expect(ip({ country: "Thailand" })).not.toContain("operated by");
+  });
+
+  // ip-api bundles the org name into the ASN field, so only the AS number is
+  // kept; a field that is just the number passes through unchanged.
+  it("keeps a bare AS number as-is", () => {
+    expect(ip({ asn: "AS17552" })).toContain("(AS17552)");
+  });
+
+  it("geolocates without reverse DNS when only a place is known", () => {
+    const text = ip({ country: "Thailand", city: "Bangkok" });
+    expect(text).toContain("It is geolocated to Bangkok, Thailand.");
+    expect(text).not.toContain("reverse DNS");
+  });
+
+  it("reports reverse DNS alone when there is no place", () => {
+    expect(ip({ reverse: "dns.google" })).toContain(
+      "Its reverse DNS is dns.google.",
+    );
+  });
+
+  it("says nothing about location when neither is known", () => {
+    const text = ip({ isHosting: true });
+    expect(text).not.toContain("geolocated");
+    expect(text).not.toContain("reverse DNS");
+  });
+});
+
+describe("buildHashNarrative — the remaining identity shapes", () => {
+  function mkHash(over: Partial<HashCheckResult>): HashCheckResult {
+    return {
+      hash: "b".repeat(64),
+      algorithm: "sha256",
+      checkedAt: "2026-05-30T00:00:00Z",
+      riskScore: 95,
+      verdict: "malicious",
+      sources: [makeSource({ name: "VirusTotal", score: 100, malicious: true })],
+      stats: makeStats({ flagged: 1 }),
+      ...over,
+    };
+  }
+
+  // A vendor threat label is the fallback identity when no family is named;
+  // one or the other, never both, so the sentence cannot say it twice.
+  it("classifies by threat label when no malware family is known", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { threatLabel: "Trojan.Generic" } }),
+    ).join(" ");
+    expect(text).toContain("classified as Trojan.Generic");
+    expect(text).not.toContain("identified as");
+  });
+
+  it("prefers the family over the threat label when both are present", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { malwareFamily: "WannaCry", threatLabel: "Trojan" } }),
+    ).join(" ");
+    expect(text).toContain("identified as WannaCry");
+    expect(text).not.toContain("classified as Trojan");
+  });
+
+  // A type already naming the kind must not gain a redundant " file".
+  it("drops the redundant noun when the type already names the kind", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { fileType: "PDF document" } }),
+    ).join(" ");
+    expect(text).toContain("a PDF document");
+    expect(text).not.toContain("PDF document file");
+  });
+
+  it("falls back to size alone when the type is unknown", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { fileSize: 1024 } }),
+    ).join(" ");
+    expect(text).toContain("in size");
+  });
+
+  // With nothing describing the file but a name, the sentence changes shape
+  // rather than emitting "It is , seen as …".
+  it("uses the name-only sentence when nothing else describes the file", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { fileName: "invoice.doc" } }),
+    ).join(" ");
+    expect(text).toContain('It has been seen as "invoice.doc".');
+    expect(text).not.toContain("It is ,");
+  });
+
+  it("reports the first-observed date when one is on record", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { fileType: "exe", firstSeen: "2024-03-04T00:00:00Z" } }),
+    ).join(" ");
+    expect(text).toContain("First observed");
+  });
+
+  it("omits the first-observed sentence when no source reported one", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { fileType: "exe" } }),
+    ).join(" ");
+    expect(text).not.toContain("First observed");
+  });
+
+  // formatDate passes an unparseable value straight through rather than
+  // dropping it, so a feed's own odd date string is shown as it arrived rather
+  // than silently becoming "no first-observed date on record".
+  it("shows an unparseable date as the source gave it", () => {
+    const text = buildHashNarrative(
+      mkHash({ context: { fileType: "exe", firstSeen: "not-a-date" } }),
+    ).join(" ");
+    expect(text).toContain("First observed not-a-date.");
+  });
+});
+
+describe("buildDomainNarrative — resolution detail", () => {
+  function mkDomain(over: Partial<DomainCheckResult>): DomainCheckResult {
+    return {
+      domain: "example.com",
+      checkedAt: "2026-05-30T00:00:00Z",
+      riskScore: 0,
+      verdict: "clean",
+      sources: [],
+      stats: makeStats(),
+      ...over,
+    };
+  }
+
+  it("counts the other hosts and names the mail exchanger", () => {
+    const text = buildDomainNarrative(
+      mkDomain({
+        context: { resolvedIps: ["1.1.1.1", "1.0.0.1", "8.8.8.8"], mx: ["mx.example.com"] },
+      }),
+    ).join(" ");
+    expect(text).toContain("It currently resolves to 1.1.1.1 and 2 other hosts");
+    expect(text).toContain("with mail handled by mx.example.com");
+  });
+
+  it("says neither when a single address carries no mail", () => {
+    const text = buildDomainNarrative(
+      mkDomain({ context: { resolvedIps: ["1.1.1.1"] } }),
+    ).join(" ");
+    expect(text).toContain("It currently resolves to 1.1.1.1.");
+    expect(text).not.toContain("other host");
+    expect(text).not.toContain("mail handled by");
+  });
+});

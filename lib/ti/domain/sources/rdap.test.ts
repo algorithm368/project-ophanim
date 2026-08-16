@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { eventDate, registrarName, scoreForAge } from "./rdap";
+import {
+  delegationStatus,
+  eventDate,
+  registrarName,
+  scoreForAge,
+} from "./rdap";
 
 describe("scoreForAge", () => {
   it("scores newer registrations higher, decaying to 0 by 90 days", () => {
@@ -51,5 +56,16 @@ describe("registrarName", () => {
   it("returns undefined when there is no registrar entity", () => {
     expect(registrarName([{ roles: ["registrant"] }])).toBeUndefined();
     expect(registrarName(undefined)).toBeUndefined();
+  });
+});
+
+describe("delegationStatus", () => {
+  // Absent and unsigned are different facts. RDAP that never reported
+  // secureDNS tells us nothing, while an explicit false is the registry
+  // saying the delegation is unsigned, and only the latter is a finding.
+  it("distinguishes never-reported from explicitly unsigned", () => {
+    expect(delegationStatus(undefined)).toBeUndefined();
+    expect(delegationStatus(false)).toBe("unsigned");
+    expect(delegationStatus(true)).toBe("signed");
   });
 });

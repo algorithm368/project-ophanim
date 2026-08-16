@@ -62,7 +62,7 @@ export function scoreForAge(age: number | undefined): number {
  * is unsigned. Both used to collapse into one nested ternary, and only one of
  * them is a finding.
  */
-function delegationStatus(
+export function delegationStatus(
   signed: boolean | undefined,
 ): "signed" | "unsigned" | undefined {
   if (signed === undefined) return undefined;

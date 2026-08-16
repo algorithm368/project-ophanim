@@ -8,10 +8,15 @@
  * instead of a hand-built curl each time.
  *
  * Usage:
- *   node scripts/sonar.mjs list [--branch main] [--rules S3776,S3358]
- *   node scripts/sonar.mjs by-rule [--branch main]
- *   node scripts/sonar.mjs gate [--branch main]
+ *   node scripts/sonar.mjs list [--branch main | --pr 25] [--rules S3776,S3358]
+ *   node scripts/sonar.mjs by-rule [--branch main | --pr 25]
+ *   node scripts/sonar.mjs gate [--branch main | --pr 25]
  *   node scripts/sonar.mjs close <issueKey> <falsepositive|accept> <comment...>
+ *
+ * `--pr` is the one to reach for while a change is in review: the gate that
+ * blocks a merge is computed on the pull request's *new* code, not on the
+ * branch, and the two disagree often enough that reading the wrong one sends
+ * you looking for problems that are not there.
  *
  * SONAR_TOKEN must be set. The project key and host come from
  * sonar-project.properties, so this can never drift from what CI analyses.
@@ -43,6 +48,18 @@ function projectKey() {
   return match[1].trim();
 }
 
+/** The token as an HTTP Basic credential: SonarCloud takes it as the username
+ *  with an empty password. */
+const AUTH = `Basic ${Buffer.from(`${TOKEN}:`).toString("base64")}`;
+
+/** Code-unit order, the same deterministic comparison lib/ti/sort.ts uses. A
+ *  bare .sort() coerces to strings and compares by locale, which reorders the
+ *  same list differently on a different machine. */
+function byCodeUnit(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 async function api(path, params = {}, init = {}) {
   const url = new URL(`${HOST}/api/${path}`);
   for (const [k, v] of Object.entries(params)) {
@@ -51,7 +68,7 @@ async function api(path, params = {}, init = {}) {
   const res = await fetch(url, {
     ...init,
     headers: {
-      Authorization: `Basic ${Buffer.from(`${TOKEN}:`).toString("base64")}`,
+      Authorization: AUTH,
       ...(init.body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
       ...init.headers,
     },
@@ -62,12 +79,12 @@ async function api(path, params = {}, init = {}) {
 }
 
 /** Every open issue, following pagination. The API caps a page at 500. */
-async function openIssues(branch, rules) {
+async function openIssues(scope, rules) {
   const out = [];
   for (let page = 1; ; page++) {
     const data = await api("issues/search", {
       componentKeys: projectKey(),
-      branch,
+      ...scope,
       statuses: "OPEN,CONFIRMED",
       rules,
       ps: 500,
@@ -88,17 +105,23 @@ const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
   return i === -1 ? fallback : args[i + 1];
 };
+// A pull request and a branch are separate scopes in the API, and passing both
+// is a request for something that does not exist, so --pr wins outright.
+const pr = flag("pr");
 const branch = flag("branch", "main");
+/** The API params selecting what to report on, and a name for the output. */
+const scope = pr ? { pullRequest: pr } : { branch };
+const scopeName = pr ? `PR #${pr}` : branch;
 
 if (command === "list") {
-  const issues = await openIssues(branch, flag("rules"));
+  const issues = await openIssues(scope, flag("rules"));
   const byFile = new Map();
   for (const issue of issues) {
     const key = pathOf(issue);
     if (!byFile.has(key)) byFile.set(key, []);
     byFile.get(key).push(issue);
   }
-  for (const file of [...byFile.keys()].sort()) {
+  for (const file of [...byFile.keys()].sort(byCodeUnit)) {
     console.log(file);
     for (const i of byFile.get(file).sort((a, b) => (a.line ?? 0) - (b.line ?? 0))) {
       // The key is printed because `close` needs it, and looking it up in the
@@ -108,9 +131,9 @@ if (command === "list") {
       );
     }
   }
-  console.log(`\n${issues.length} open on ${branch}`);
+  console.log(`\n${issues.length} open on ${scopeName}`);
 } else if (command === "by-rule") {
-  const issues = await openIssues(branch, flag("rules"));
+  const issues = await openIssues(scope, flag("rules"));
   const counts = new Map();
   for (const i of issues) {
     const k = `${i.severity}\t${i.rule}`;
@@ -121,13 +144,13 @@ if (command === "list") {
     const [severity, rule] = k.split("\t");
     console.log(`${String(n).padStart(4)}  ${severity.padEnd(8)} ${rule}`);
   }
-  console.log(`\n${issues.length} open on ${branch}`);
+  console.log(`\n${issues.length} open on ${scopeName}`);
 } else if (command === "gate") {
   const { projectStatus } = await api("qualitygates/project_status", {
     projectKey: projectKey(),
-    branch,
+    ...scope,
   });
-  console.log(`${projectStatus.status} on ${branch}`);
+  console.log(`${projectStatus.status} on ${scopeName}`);
   for (const c of projectStatus.conditions ?? []) {
     console.log(
       `  ${c.status.padEnd(5)} ${c.metricKey.padEnd(32)} ${c.actualValue} (${c.comparator} ${c.errorThreshold})`,
