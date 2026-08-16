@@ -14,6 +14,17 @@ describe("urlIndicatorProblem", () => {
     expect(urlIndicatorProblem("http://185.220.101.1/admin")).toBeNull();
   });
 
+  it("accepts a bracketed IPv6 literal, which is the only way to write one", () => {
+    // scanTargetsFor builds these for an IPv6 indicator, so reading the
+    // brackets as part of the host made every IPv6 scan a 400.
+    expect(urlIndicatorProblem("https://[2606:4700:4700::1111]/")).toBeNull();
+  });
+
+  it("still rejects a non-routable IPv6 literal", () => {
+    expect(urlIndicatorProblem("http://[::1]/x")?.status).toBe(422);
+    expect(urlIndicatorProblem("http://[fd00::1]/x")?.status).toBe(422);
+  });
+
   it.each([
     ["ftp://evil.com/a"],
     ["javascript:alert(1)"],

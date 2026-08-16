@@ -26,7 +26,14 @@ export function urlIndicatorProblem(raw: string): UrlProblem | null {
   const parsed = parseUrl(raw);
   if (!parsed) return { message: "Invalid URL", status: 400 };
 
-  const ip = parseIP(parsed.host);
+  // An IPv6 authority is bracketed, and the brackets are part of the hostname
+  // the URL parser reports. Unwrapped here, or every IPv6 indicator reads as an
+  // invalid host and the scope check that follows never runs on it.
+  const host = parsed.host.startsWith("[") && parsed.host.endsWith("]")
+    ? parsed.host.slice(1, -1)
+    : parsed.host;
+
+  const ip = parseIP(host);
   if (ip) {
     if (ip.isPrivate || ip.isReserved) {
       return {
@@ -38,7 +45,7 @@ export function urlIndicatorProblem(raw: string): UrlProblem | null {
     return null;
   }
 
-  const domain = parseDomain(parsed.host);
+  const domain = parseDomain(host);
   if (!domain) return { message: "Invalid host in URL", status: 400 };
   if (domain.isReserved) {
     return {
