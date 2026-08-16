@@ -6,6 +6,7 @@ import { ImageInspector } from "@/components/ImageInspector";
 import { buildScanNarrative, formatDate, midSentence } from "@/lib/ti/narrative";
 import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import { attribution, type MergedScan } from "@/lib/ti/url/active/merge";
+import type { ScanCapability } from "@/lib/ti/url/active/capability";
 import type { ScanDetail } from "@/lib/ti/url/active/detail";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
 import { CopyableSummary } from "@/components/CheckResults/primitives";
@@ -104,6 +105,66 @@ function Evidence({
 }
 
 /**
+ * What the page asks for, strictly as seen in the captured DOM.
+ *
+ * Finding nothing is a result and says so; failing to look is not, and returns
+ * undefined so the row can say that instead. A kit can build its form after a
+ * click or hide it from a scanner, so neither answer is ever phrased as a fact
+ * about the site.
+ */
+function asksForLine(cap: ScanCapability): string | undefined {
+  if (cap.error) return undefined;
+  const crossDomain = cap.forms.filter((f) => f.crossDomain && f.host);
+  const elsewhere = crossDomain[0]?.host;
+  if (cap.passwordField && elsewhere) {
+    return `a password, posted to ${elsewhere}, a different domain`;
+  }
+  if (cap.passwordField) return "a password, in the page that loaded";
+  if (elsewhere) return `no password, but a form posts to ${elsewhere}`;
+  return "no password form in the page that loaded";
+}
+
+/** When the domain was registered. An exact WHOIS instant beats a rounded age,
+ *  so it wins when both are present. */
+function registeredLine(d: ScanDetail): string | undefined {
+  if (d.domainCreated) return new Date(d.domainCreated).toLocaleString();
+  if (d.domainAgeDays !== undefined) return `${count(d.domainAgeDays, "day")} old`;
+  return undefined;
+}
+
+/** Age, issuer and validity of the certificate, in whatever parts were seen. */
+function certificateLine(d: ScanDetail): string | undefined {
+  if (d.tlsAgeDays === undefined && !d.tlsIssuer) return undefined;
+  return [
+    d.tlsAgeDays !== undefined ? `${count(d.tlsAgeDays, "day")} old` : undefined,
+    d.tlsIssuer,
+    d.tlsValidDays !== undefined ? `valid ${d.tlsValidDays} d` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** What nobody collected, named rather than left as an empty section. */
+function notCollectedLines(merged: MergedScan): string[] {
+  const { detail, capability, incomplete, engines } = merged;
+  const unfinished = incomplete.map((e) => {
+    const reason =
+      e.status === "running"
+        ? "is still scanning"
+        : `did not finish: ${e.error ?? e.status}`;
+    return `${ENGINE_NAME[e.engine]} ${reason}.`;
+  });
+  return [
+    ...detail.absent.map((name) => `No ${name} reported.`),
+    ...(capability.error
+      ? [`Form analysis unavailable: ${capability.error}`]
+      : []),
+    ...unfinished,
+    ...(engines.includes("urlscan") ? [] : ["No urlscan verdict lanes."]),
+  ];
+}
+
+/**
  * Everything one scanned URL turned into, in the order the design puts it:
  * the paragraph first, then the five decisive rows, then who said what, then
  * the evidence, then what nobody collected.
@@ -130,7 +191,6 @@ export function TargetReport({
 
   const hops = d.redirects?.length ?? 0;
   const brands = d.verdicts.overall.brands ?? [];
-  const crossDomain = cap.forms.filter((f) => f.crossDomain && f.host);
 
   // Only an engine whose DOM was actually read backs the "asks for" row. One
   // that finished the scan but was refused the DOM contributed nothing to it,
@@ -139,49 +199,10 @@ export function TargetReport({
     .filter((s) => s.capability && !s.capability.error)
     .map((s) => ENGINE_NAME[s.engine]);
 
-  // What the page asks for, strictly as seen in the captured DOM. Finding
-  // nothing is a result and says so; failing to look is not, and says that
-  // instead. A kit can build its form after a click or hide it from a scanner,
-  // so neither answer is ever phrased as a fact about the site.
-  let asksFor: string | undefined;
-  if (cap.error) {
-    asksFor = undefined;
-  } else if (cap.passwordField && crossDomain.length > 0) {
-    asksFor = `a password, posted to ${crossDomain[0].host}, a different domain`;
-  } else if (cap.passwordField) {
-    asksFor = "a password, in the page that loaded";
-  } else if (crossDomain.length > 0) {
-    asksFor = `no password, but a form posts to ${crossDomain[0].host}`;
-  } else {
-    asksFor = "no password form in the page that loaded";
-  }
-
-  const registered = d.domainCreated
-    ? new Date(d.domainCreated).toLocaleString()
-    : d.domainAgeDays !== undefined
-      ? `${count(d.domainAgeDays, "day")} old`
-      : undefined;
-
-  const certificate =
-    d.tlsAgeDays !== undefined || d.tlsIssuer
-      ? [
-          d.tlsAgeDays !== undefined ? `${count(d.tlsAgeDays, "day")} old` : undefined,
-          d.tlsIssuer,
-          d.tlsValidDays !== undefined ? `valid ${d.tlsValidDays} d` : undefined,
-        ]
-          .filter(Boolean)
-          .join(" · ")
-      : undefined;
-
-  const notCollected: string[] = [
-    ...d.absent.map((name) => `No ${name} reported.`),
-    ...(cap.error ? [`Form analysis unavailable: ${cap.error}`] : []),
-    ...merged.incomplete.map(
-      (e) =>
-        `${ENGINE_NAME[e.engine]} ${e.status === "running" ? "is still scanning" : `did not finish: ${e.error ?? e.status}`}.`,
-    ),
-    ...(merged.engines.includes("urlscan") ? [] : ["No urlscan verdict lanes."]),
-  ];
+  const asksFor = asksForLine(cap);
+  const registered = registeredLine(d);
+  const certificate = certificateLine(d);
+  const notCollected = notCollectedLines(merged);
 
   const network = [
     d.ips?.length ? count(d.ips.length, "IP") : undefined,

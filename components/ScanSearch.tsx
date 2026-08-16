@@ -4,7 +4,12 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Globe, Link2, Network, Radar, ShieldQuestion, X } from "lucide-react";
 import { modeHref } from "@/lib/route-mode";
-import { isScanProblem, readScanInput } from "@/lib/scan-input";
+import {
+  isScanProblem,
+  readScanInput,
+  type ScanInput,
+  type ScanInputProblem,
+} from "@/lib/scan-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -16,6 +21,54 @@ const EXAMPLE_CHIPS = [
   { value: "1.1.1.1", label: "1.1.1.1", icon: Network },
   { value: "https://cloudflare.com/", label: "a full URL", icon: Link2 },
 ];
+
+/**
+ * What the box makes of what is typed, in one line under it.
+ *
+ * The three states are an empty box, an input that cannot be scanned and says
+ * why, and a readable list of the exact URLs an engine would fetch. items-start
+ * on the first two because both wrap to a second line on a phone, where a
+ * centered icon floats away from the first word.
+ */
+function InputHint({
+  read,
+}: Readonly<{ read: ScanInput | ScanInputProblem | null }>) {
+  if (!read) {
+    return (
+      <span className="inline-flex items-start gap-1.5 text-muted-foreground">
+        <Radar className="mt-0.5 size-4 shrink-0" />
+        Type or paste an address and we&apos;ll show exactly what would be
+        visited.
+      </span>
+    );
+  }
+
+  if (isScanProblem(read)) {
+    return (
+      <span className="inline-flex items-start gap-1.5 text-muted-foreground">
+        <ShieldQuestion className="mt-0.5 size-4 shrink-0" />
+        {read.message}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-1.5 text-primary">
+      Would visit
+      {read.targets.map((target) => (
+        <span key={target} className="font-mono text-foreground">
+          {target}
+        </span>
+      ))}
+      <span className="text-muted-foreground">
+        ·{" "}
+        {read.targets.length === 1
+          ? "once per engine"
+          : "both ports, once per engine"}
+      </span>
+    </span>
+  );
+}
 
 /**
  * The active mode's search box.
@@ -109,35 +162,7 @@ export function ScanSearch() {
       {/* What would be visited, named before the analyst commits to anything.
           An IP becomes two URLs, and seeing that here is the point. */}
       <div className="mt-3 min-h-7 text-sm">
-        {/* items-start, because both of these wrap to two lines on a phone and
-            a centered icon then floats away from the first word. */}
-        {!read ? (
-          <span className="inline-flex items-start gap-1.5 text-muted-foreground">
-            <Radar className="mt-0.5 size-4 shrink-0" />
-            Type or paste an address and we&apos;ll show exactly what would be
-            visited.
-          </span>
-        ) : isScanProblem(read) ? (
-          <span className="inline-flex items-start gap-1.5 text-muted-foreground">
-            <ShieldQuestion className="mt-0.5 size-4 shrink-0" />
-            {read.message}
-          </span>
-        ) : (
-          <span className="inline-flex flex-wrap items-baseline gap-x-1.5 text-primary">
-            Would visit
-            {read.targets.map((target) => (
-              <span key={target} className="font-mono text-foreground">
-                {target}
-              </span>
-            ))}
-            <span className="text-muted-foreground">
-              ·{" "}
-              {read.targets.length === 1
-                ? "once per engine"
-                : "both ports, once per engine"}
-            </span>
-          </span>
-        )}
+        <InputHint read={read} />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-3">

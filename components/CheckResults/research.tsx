@@ -26,8 +26,10 @@ import {
     researchLinks,
     researchMetasFor,
     type ResearchCert,
+    type ResearchData,
     type ResearchLink,
     type ResearchResult,
+    type ResearchStatus,
     type UrlScanItem,
     type WaybackSnapshot,
 } from "@/lib/ti/research";
@@ -153,9 +155,9 @@ function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
     return (
         <>
             <div className="divide-y divide-border overflow-hidden rounded-md border border-border">
-                {scans.map((s, i) => (
+                {scans.map((s) => (
                     <div
-                        key={i}
+                        key={s.scanUrl}
                         className="flex items-center gap-3 bg-background p-2 transition-colors hover:bg-muted/30"
                     >
                         <button
@@ -290,9 +292,9 @@ function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
     const shown = expanded ? certs : certs.slice(0, CERT_PREVIEW);
     return (
         <div className="space-y-1.5">
-            {shown.map((c, i) => (
+            {shown.map((c) => (
                 <div
-                    key={i}
+                    key={`${c.issuer}-${c.notBefore}-${c.commonName ?? ""}`}
                     className="flex items-baseline justify-between gap-3 text-[13px]"
                 >
                     <span
@@ -375,63 +377,63 @@ function ProviderShell({
     );
 }
 
+/** What a lane found, rendered per provider. Null when there is nothing to draw,
+ *  which the block turns into a sentence rather than a gap. */
+function ProviderBody({ data }: Readonly<{ data: ResearchData }>) {
+    if (data.type === "urlscan") return <UrlScanList scans={data.scans} />;
+    if (data.type === "wayback") {
+        return data.snapshots.length > 0 ? (
+            <WaybackRow snapshots={data.snapshots} />
+        ) : null;
+    }
+    if (data.certs.length === 0 && data.subdomains.length === 0) return null;
+    return (
+        <div className="space-y-3">
+            {data.subdomains.length > 0 && (
+                <div className="space-y-1.5">
+                    <div className={SUBLABEL}>
+                        Subdomains{" "}
+                        <span className="text-muted-foreground/60">
+                            ({data.subdomains.length})
+                        </span>
+                    </div>
+                    <PivotList values={data.subdomains} max={12} />
+                </div>
+            )}
+            {data.certs.length > 0 && <CertList certs={data.certs} />}
+        </div>
+    );
+}
+
+/** The header note: what the lane says about itself in one phrase. Empty and
+ *  failed runs still report, quietly, so the user knows the lane ran. */
+function noteFor(result: ResearchResult): string {
+    const { status, summary, error } = result;
+    if (status === "ok") return summary ?? "";
+    if (status === "empty") return summary ?? "Nothing found";
+    if (status === "timeout") return "Timed out";
+    return error ?? "Unavailable";
+}
+
+/** What an empty body says. A lane that found nothing has to say so: left blank
+ *  it looks identical to a lane still loading, and the two mean opposite
+ *  things. */
+const BLANK_BODY: Partial<Record<ResearchStatus, string>> = {
+    empty: "Nothing on record here.",
+    timeout: "The source did not answer in time, so nothing is known from it.",
+    error: "The source could not be read, which is not the same as it being empty.",
+};
+
 /** One provider's result block: header (name, summary, outbound link) + body. */
 function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
-    const { provider, status, summary, error, data, link } = result;
-
-    let body: React.ReactNode = null;
-    if (data?.type === "urlscan") {
-        body = <UrlScanList scans={data.scans} />;
-    } else if (data?.type === "wayback") {
-        body =
-            data.snapshots.length > 0 ? (
-                <WaybackRow snapshots={data.snapshots} />
-            ) : null;
-    } else if (data?.type === "crtsh") {
-        body = (
-            <div className="space-y-3">
-                {data.subdomains.length > 0 && (
-                    <div className="space-y-1.5">
-                        <div className={SUBLABEL}>
-                            Subdomains{" "}
-                            <span className="text-muted-foreground/60">
-                                ({data.subdomains.length})
-                            </span>
-                        </div>
-                        <PivotList values={data.subdomains} max={12} />
-                    </div>
-                )}
-                {data.certs.length > 0 && <CertList certs={data.certs} />}
-            </div>
-        );
-    }
-
-    // Empty / failed runs still report, quietly, so the user knows the lane ran.
-    const note =
-        status === "ok"
-            ? summary
-            : status === "empty"
-              ? (summary ?? "Nothing found")
-              : status === "timeout"
-                ? "Timed out"
-                : (error ?? "Unavailable");
-
-    // A lane that found nothing says so in the body too. Leaving it blank looks
-    // identical to a lane still loading, and the two mean opposite things.
-    const blank =
-        status === "empty"
-            ? "Nothing on record here."
-            : status === "timeout"
-              ? "The source did not answer in time, so nothing is known from it."
-              : status === "error"
-                ? "The source could not be read, which is not the same as it being empty."
-                : "Nothing to show.";
+    const { provider, status, data, link } = result;
+    const body = data ? <ProviderBody data={data} /> : null;
 
     return (
-        <ProviderShell name={provider.name} note={note} link={link}>
+        <ProviderShell name={provider.name} note={noteFor(result)} link={link}>
             {body ?? (
                 <p className="flex h-16 items-center text-[13px] text-muted-foreground">
-                    {blank}
+                    {BLANK_BODY[status] ?? "Nothing to show."}
                 </p>
             )}
         </ProviderShell>

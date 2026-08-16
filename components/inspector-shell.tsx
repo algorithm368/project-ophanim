@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ExternalLink, X } from "lucide-react";
 
 /** Shared control styling for anything in an inspector's header bar. */
@@ -12,9 +12,9 @@ export const INSPECTOR_CONTROL =
  *
  * Two things look at evidence up close, a captured screenshot and an archived
  * page, and they differ only in what fills the middle. Everything around it is
- * the same and has to behave the same: Escape closes, the backdrop closes, the
- * page behind does not scroll away underneath, and the header always says what
- * is being looked at and where it came from.
+ * the same and has to behave the same: Escape closes, clicking past the content
+ * closes, focus stays inside, the page behind does not scroll away underneath,
+ * and the header always says what is being looked at and where it came from.
  */
 export function InspectorShell({
   title,
@@ -40,39 +40,39 @@ export function InspectorShell({
   onClose: () => void;
   children: React.ReactNode;
 }>) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  // A real <dialog>, opened modally, rather than a div wearing role="dialog".
+  // The element traps focus and takes Escape itself, which the div could not:
+  // tabbing out of the overlay and into the page behind it was reachable.
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previous;
     };
-  }, [onClose]);
+  }, []);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      ref={ref}
       aria-label={label}
-      className="fixed inset-0 z-50 flex flex-col items-center gap-3 bg-background/95 p-4 backdrop-blur-sm sm:p-6"
+      // Escape fires `cancel`, whose default would close the element while
+      // React still holds the state that renders it. Closing is the caller's
+      // to do.
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      // Clicking the dialog itself means clicking past the content, which is
+      // the backdrop as far as the reader is concerned.
+      onClick={(e) => {
+        if (e.target === ref.current) onClose();
+      }}
+      className="fixed inset-0 z-50 m-0 h-full max-h-none w-full max-w-none flex-col items-center gap-3 bg-background/95 p-4 text-foreground backdrop-blur-sm open:flex sm:p-6"
     >
-      {/* The backdrop is its own button rather than a click handler on the
-          dialog: a div is neither focusable nor in the tab order, and putting it
-          behind the content means the content never has to stop propagation.
-          Escape and the close button are the keyboard paths, so it stays out of
-          the tab order. */}
-      <button
-        type="button"
-        aria-label="Close"
-        tabIndex={-1}
-        onClick={onClose}
-        className="absolute inset-0 cursor-default"
-      />
-
       <div className="relative flex w-full max-w-6xl items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-mono text-[13px] text-foreground" title={title}>
@@ -116,6 +116,6 @@ export function InspectorShell({
           {footer}
         </p>
       )}
-    </div>
+    </dialog>
   );
 }

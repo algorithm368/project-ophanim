@@ -47,8 +47,10 @@ export function ModeSwitch() {
     !indicator || (kind ? scanTargetsFor(indicator, kind).length > 0 : false);
 
   return (
-    <div
-      role="group"
+    // A <nav>, not a div with role="group": both halves are links to pages, so
+    // this is navigation, and the landmark gives it a name without inventing a
+    // role for a container.
+    <nav
       aria-label="Reading mode"
       className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5"
     >
@@ -105,6 +107,6 @@ export function ModeSwitch() {
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

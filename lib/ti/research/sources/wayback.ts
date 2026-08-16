@@ -242,7 +242,9 @@ export const waybackProvider: ResearchProvider = {
       }
 
       if (status < 200 || status >= 300) {
-        return availabilityFallback(indicator, signal);
+        // Awaited, not just returned: a returned promise's rejection would sail
+        // straight past this function's own catch and out of the provider.
+        return await availabilityFallback(indicator, signal);
       }
 
       const parsed = parseWayback(data);

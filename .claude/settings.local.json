@@ -22,8 +22,12 @@
       "Bash(git -C /home/siriwat-dev-debian/Documents/project-ophanim diff lib/ti/cache.ts)"
     ]
   },
+  "enabledMcpjsonServers": [
+    "sonarqube"
+  ],
   "remote": {
     "defaultEnvironmentId": "env_01Q2McoGE919MHw2KGtbFm2P"
   },
-  "prefersReducedMotion": true
+  "prefersReducedMotion": true,
+  "enableAllProjectMcpServers": true
 }

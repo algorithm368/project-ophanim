@@ -39,8 +39,8 @@ export function isScanProblem(
 function canonicalFor(value: string, kind: IOCType): string | null {
   if (kind === "ip") return parseIP(value)?.ip ?? null;
   if (kind === "domain") return parseDomain(value)?.domain ?? null;
-  if (kind === "url") return parseUrl(value)?.canonical ?? null;
-  return null;
+  // A hash returns before this is called, so what is left is a URL.
+  return parseUrl(value)?.canonical ?? null;
 }
 
 /**
@@ -67,13 +67,11 @@ export function readScanInput(raw: string): ScanInput | ScanInputProblem | null 
     };
   }
 
+  // Detection said this is an IP, a domain, or a URL; the parsers get the final
+  // say, and either failing means there is no address behind the input.
   const indicator = canonicalFor(value, kind);
-  if (!indicator) {
-    return { message: `"${value}" does not parse into an address to visit.` };
-  }
-
-  const targets = scanTargetsFor(indicator, kind);
-  if (targets.length === 0) {
+  const targets = indicator ? scanTargetsFor(indicator, kind) : [];
+  if (!indicator || targets.length === 0) {
     return { message: `"${value}" does not parse into an address to visit.` };
   }
 
