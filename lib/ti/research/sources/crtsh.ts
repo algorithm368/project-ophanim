@@ -6,6 +6,7 @@ import type {
   ResearchFinding,
   ResearchProvider,
 } from "../types";
+import { count } from "@/lib/text";
 
 /** Default number of certificates to surface. */
 const MAX_CERTS = 12;
@@ -99,11 +100,10 @@ export const crtshProvider: ResearchProvider = {
         return { status: "empty", summary: "No certificates found" };
       }
       const subs = parsed.subdomains.length;
+      const subdomainPart = subs ? `, ${count(subs, "subdomain")}` : "";
       return {
         status: "ok",
-        summary:
-          `${parsed.certs.length} certs` +
-          (subs ? `, ${subs} subdomain${subs === 1 ? "" : "s"}` : ""),
+        summary: `${parsed.certs.length} certs${subdomainPart}`,
         link: `https://crt.sh/?q=${encodeURIComponent(indicator)}`,
         data: { type: "crtsh", ...parsed },
       };

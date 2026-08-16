@@ -76,6 +76,44 @@ function placeOf(row: GeoRow): string {
   return [g.city, g.region].filter(Boolean).join(", ") || "—";
 }
 
+/**
+ * The country cell for one address.
+ *
+ * Three outcomes, and they are not the same: the lookup failed, the lookup
+ * succeeded and named a country, or it succeeded and had no country to give.
+ * Only the first is worth colouring, and an em dash for "no country" must not
+ * read as "no answer".
+ */
+function CountryCell({
+  row,
+  flag,
+}: Readonly<{ row: GeoRow; flag: string | undefined }>) {
+  if (row.status === "error") {
+    return <span className="text-orange-500">no data</span>;
+  }
+  const g = row.geo;
+  if (!g?.country) return "—";
+  return (
+    <span className="flex items-center gap-1.5">
+      {flag && (
+        // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
+        <img
+          src={flag}
+          alt=""
+          width={20}
+          height={14}
+          loading="lazy"
+          className="h-3.5 w-5 shrink-0 rounded-[2px] border border-foreground/20 object-cover"
+        />
+      )}
+      {g.country}
+      {row.resolution?.country && (
+        <ConfidenceChip confidence={row.resolution.country.confidence} />
+      )}
+    </span>
+  );
+}
+
 export default function BulkGeoResults({ rows }: Readonly<{ rows: GeoRow[] }>) {
   if (!rows.length) return null;
   return (
@@ -115,31 +153,7 @@ export default function BulkGeoResults({ rows }: Readonly<{ rows: GeoRow[] }>) {
                       v{row.version}
                     </td>
                     <td className="px-2 py-2">
-                      {row.status === "error" ? (
-                        <span className="text-orange-500">no data</span>
-                      ) : g?.country ? (
-                        <span className="flex items-center gap-1.5">
-                          {flag && (
-                            // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
-                            <img
-                              src={flag}
-                              alt=""
-                              width={20}
-                              height={14}
-                              loading="lazy"
-                              className="h-3.5 w-5 shrink-0 rounded-[2px] border border-foreground/20 object-cover"
-                            />
-                          )}
-                          {g.country}
-                          {row.resolution?.country && (
-                            <ConfidenceChip
-                              confidence={row.resolution.country.confidence}
-                            />
-                          )}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
+                      <CountryCell row={row} flag={flag} />
                     </td>
                     <td className="px-2 py-2">{placeOf(row)}</td>
                     <td className="px-2 py-2 font-mono text-xs text-muted-foreground">

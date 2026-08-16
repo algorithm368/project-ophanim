@@ -45,7 +45,10 @@ export function ipInfoToGeo(data: IpInfoResponse): GeoContext {
     }
   }
   if (data.org) {
-    const m = /^(AS\d+)\s+(.*)$/.exec(data.org);
+    // The org half starts at the first non-space, rather than `(.*)`: `\s+`
+    // and `.` both match a space, so the two together backtrack quadratically
+    // on an org string that is an ASN followed by nothing but spaces.
+    const m = /^(AS\d+)\s+(\S.*)$/.exec(data.org);
     if (m) {
       geo.asn = m[1];
       geo.asnOrg = m[2];

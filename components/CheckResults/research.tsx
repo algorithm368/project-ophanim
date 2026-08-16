@@ -506,6 +506,31 @@ function LiveResearch({
     );
 }
 
+/**
+ * What this result researches, and as what kind.
+ *
+ * A URL researches its host as a domain: no provider supports a url kind, and
+ * this keeps the card's header and links agreeing with the stream the page
+ * actually requested. URL is checked first because it is the most specific
+ * shape and the other guards would not recognize it.
+ */
+function researchTarget(result: AnyCheckResult | UrlCheckResult): {
+    indicator: string;
+    kind: IOCType;
+} {
+    if (isUrlResult(result)) {
+        return {
+            indicator: parseUrl(result.url)?.host ?? result.url,
+            kind: "domain",
+        };
+    }
+    if (isHashResult(result)) return { indicator: result.hash, kind: "hash" };
+    if (isDomainResult(result)) {
+        return { indicator: result.domain, kind: "domain" };
+    }
+    return { indicator: result.ip, kind: "ip" };
+}
+
 /** Outbound research panel: live free-API context (URLScan/Wayback/crt.sh)
  *  fetched and rendered inline, followed by one-click links that open each
  *  platform's search for this indicator in a new tab. A Copy control puts the
@@ -520,19 +545,7 @@ export function ResearchCard({
 }>) {
     const [copied, copy] = useCopied();
 
-    // A URL researches its host as a domain: no provider supports a url kind,
-    // and this keeps the card's header and links agreeing with the stream the
-    // page actually requested.
-    const { indicator, kind } = isUrlResult(result)
-        ? {
-              indicator: parseUrl(result.url)?.host ?? result.url,
-              kind: "domain" as const,
-          }
-        : isHashResult(result)
-          ? { indicator: result.hash, kind: "hash" as const }
-          : isDomainResult(result)
-            ? { indicator: result.domain, kind: "domain" as const }
-            : { indicator: result.ip, kind: "ip" as const };
+    const { indicator, kind } = researchTarget(result);
 
     const sections = researchLinks(indicator, kind);
 

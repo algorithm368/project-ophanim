@@ -79,7 +79,7 @@ function layerFromResult(
     verdict: UrlLayer["verdict"];
     sources: SourceResult[];
     stats: UrlLayer["stats"];
-    scoreBreakdown?: UrlLayer["scoreBreakdown"];
+    scoreBreakdown?: NonNullable<UrlLayer["scoreBreakdown"]>;
   },
   cachedAt?: string,
 ): UrlLayer {

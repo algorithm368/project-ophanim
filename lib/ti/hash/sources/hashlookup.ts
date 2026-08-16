@@ -93,12 +93,13 @@ export const hashlookupSource: TiSource = {
       }
 
       // A known, non-malicious file is a genuine reassuring signal.
+      const originPart = origin ? ` (${origin})` : "";
+      const namePart = fileName ? `, "${fileName}"` : "";
+
       return {
         status: "ok",
         score: 0,
-        summary: `Known legitimate file${origin ? ` (${origin})` : ""}${
-          fileName ? `, "${fileName}"` : ""
-        }`,
+        summary: `Known legitimate file${originPart}${namePart}`,
         hashContext,
         details,
       };

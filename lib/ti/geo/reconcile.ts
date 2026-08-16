@@ -145,6 +145,43 @@ interface CityCand {
   coordCount: number;
 }
 
+/** An already-merged candidate within CITY_CLUSTER_KM of this one, if any. A
+ *  candidate with no coordinates cannot be clustered, so it matches nothing and
+ *  falls back to standing on its own normalized name. */
+function nearbyCandidate(
+  merged: CityCand[],
+  cand: CityCand,
+): CityCand | undefined {
+  if (cand.coordCount === 0) return undefined;
+  return merged.find(
+    (m) =>
+      m.coordCount > 0 &&
+      haversineKm(
+        { lat: m.lat as number, lon: m.lon as number },
+        { lat: cand.lat as number, lon: cand.lon as number },
+      ) <= CITY_CLUSTER_KM,
+  );
+}
+
+/** Fold a nearby candidate into the one already kept: the heavier name wins the
+ *  label, and the representative point moves to the centre of both. */
+function absorbCity(near: CityCand, cand: CityCand): void {
+  const total = near.coordCount + cand.coordCount;
+  if (cand.weight > near.weight) near.value = cand.value;
+  near.lat =
+    ((near.lat as number) * near.coordCount +
+      (cand.lat as number) * cand.coordCount) /
+    total;
+  near.lon =
+    ((near.lon as number) * near.coordCount +
+      (cand.lon as number) * cand.coordCount) /
+    total;
+  near.ids = [...near.ids, ...cand.ids];
+  near.weight += cand.weight;
+  near.raw += cand.raw;
+  near.coordCount = total;
+}
+
 /** City is reconciled with coordinate awareness: candidates whose representative
  *  coordinates fall within CITY_CLUSTER_KM collapse into one, so adjacent place
  *  names corroborate instead of splitting. Falls back to string grouping when a
@@ -187,35 +224,9 @@ function reconcileCity(
 
   const merged: CityCand[] = [];
   for (const cand of byKey.values()) {
-    const near =
-      cand.coordCount > 0
-        ? merged.find(
-            (m) =>
-              m.coordCount > 0 &&
-              haversineKm(
-                { lat: m.lat as number, lon: m.lon as number },
-                { lat: cand.lat as number, lon: cand.lon as number },
-              ) <= CITY_CLUSTER_KM,
-          )
-        : undefined;
-    if (near) {
-      const total = near.coordCount + cand.coordCount;
-      if (cand.weight > near.weight) near.value = cand.value;
-      near.lat =
-        ((near.lat as number) * near.coordCount +
-          (cand.lat as number) * cand.coordCount) /
-        total;
-      near.lon =
-        ((near.lon as number) * near.coordCount +
-          (cand.lon as number) * cand.coordCount) /
-        total;
-      near.ids = [...near.ids, ...cand.ids];
-      near.weight += cand.weight;
-      near.raw += cand.raw;
-      near.coordCount = total;
-    } else {
-      merged.push({ ...cand });
-    }
+    const near = nearbyCandidate(merged, cand);
+    if (near) absorbCity(near, cand);
+    else merged.push({ ...cand });
   }
 
   return finalizeVotes(
@@ -413,19 +424,23 @@ function reconcileCountry(inputs: GeoInput[]): {
   );
 
   for (const { id, geo } of inputs) {
-    const code = geo.countryCode?.trim().toUpperCase() ?? "";
-    const name = geo.country?.trim() ?? "";
     const key = countryVoteKey(geo, index);
     if (!key) continue;
     const w = getWeight(id, "country");
     reporting++;
     reportingWeight += w;
+
+    const code = geo.countryCode?.trim().toUpperCase() ?? "";
+    const name = geo.country?.trim() ?? "";
     const existing = votes.get(key);
     if (existing) {
       existing.ids.push(id);
       existing.weight += w;
-      if (!existing.name && name) existing.name = name;
-      if (!existing.code && code) existing.code = code;
+      // A code-only provider (RDAP: "US") and a name-only one ("United States")
+      // each fill the half the other left blank, so the merged vote can print
+      // either way round.
+      existing.name ||= name;
+      existing.code ||= code;
     } else {
       votes.set(key, { code, name, ids: [id], weight: w });
     }

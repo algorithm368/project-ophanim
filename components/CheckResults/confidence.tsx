@@ -86,8 +86,8 @@ export function Disagreement<T>({ field }: Readonly<{ field: ResolvedField<T> }>
       </button>
       {open && (
         <ul className="mt-1 space-y-0.5 text-muted-foreground">
-          {alts.map((a, i) => (
-            <li key={i}>
+          {alts.map((a) => (
+            <li key={String(a.value)}>
               {String(a.value)}, {a.sources.join(", ")}
             </li>
           ))}

@@ -97,7 +97,8 @@ export function parseUrl(input: string): ParsedUrl | null {
   const query = url.search ? url.search.slice(1) : undefined;
 
   const authority = port ? `${host}:${port}` : host;
-  const canonical = `${url.protocol}//${authority}${path}${query ? `?${query}` : ""}`;
+  const search = query ? `?${query}` : "";
+  const canonical = `${url.protocol}//${authority}${path}${search}`;
 
   return {
     canonical,

@@ -6,6 +6,7 @@
  * the card must never describe something the data doesn't support.
  */
 import { HASH_ALGO_LABEL } from "@/lib/hash";
+import { count } from "@/lib/text";
 import { FLAG_THRESHOLD, MALICIOUS_FLOOR } from "./aggregate";
 import { ENGINE_NAME } from "./url/active/engines";
 import type { MergedScan } from "./url/active/merge";
@@ -14,6 +15,7 @@ import type {
   CheckResult,
   CheckStats,
   DomainCheckResult,
+  GeoContext,
   HashContext,
   HashCheckResult,
   HistorySnapshot,
@@ -77,40 +79,54 @@ function lowerFirst(s: string): string {
  * make a grammatical sentence. Returns undefined when nothing usable is present,
  * so callers can omit the line rather than print a broken one.
  */
+/** Whether a capability label reads as "it <verb> …" rather than as a machine
+ *  token ("stack_pivot"), a family/label leak ("SectopRAT payload", "Detects
+ *  AnimateClipper"), or an adjective-initial phrase ("Suspicious use of X")
+ *  that would produce "it suspicious use of X". */
+function readsAsBehavior(label: string): boolean {
+  if (!/\s/.test(label) || label.includes("_")) return false;
+  if (/\b(family|payload|variant)\b/i.test(label)) return false;
+  if (/^detect(s|ed)?\b/i.test(label)) return false;
+  return !/^(suspicious|possible|potential|known|generic|anomalous)\b/i.test(
+    label,
+  );
+}
+
+/** The first `cap` distinct values of `mapped`, in order, skipping the ones it
+ *  maps away. One pass with a seen-set, which is what both behaviour passes
+ *  below were doing inline. */
+function firstDistinct<T>(
+  items: readonly T[],
+  cap: number,
+  mapped: (item: T) => string | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    const value = mapped(item);
+    if (!value || seen.has(value.toLowerCase())) continue;
+    seen.add(value.toLowerCase());
+    out.push(value);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
 export function hashBehaviorSummary(
   ctx: HashContext | undefined,
 ): string | undefined {
-  const seen = new Set<string>();
-  const phrases: string[] = [];
-  for (const tag of ctx?.behaviorTags ?? []) {
-    const phrase = BEHAVIOR_TAG_PHRASES[tag.toUpperCase()];
-    if (!phrase || seen.has(phrase)) continue;
-    seen.add(phrase);
-    phrases.push(phrase);
-    if (phrases.length >= 5) break;
-  }
+  const phrases = firstDistinct(
+    ctx?.behaviorTags ?? [],
+    5,
+    (tag) => BEHAVIOR_TAG_PHRASES[tag.toUpperCase()],
+  );
   if (phrases.length) return `When run, it ${joinList(phrases)}.`;
 
-  // Fallback: multi-word capability labels that read as verb phrases. Skip
-  // machine tokens ("stack_pivot") and family/label leaks ("Family: SectopRAT",
-  // "SectopRAT payload", "Detects AnimateClipper") that aren't behaviour.
-  const capSeen = new Set<string>();
-  const caps: string[] = [];
-  for (const c of ctx?.capabilities ?? []) {
+  // Fallback: multi-word capability labels that read as verb phrases.
+  const caps = firstDistinct(ctx?.capabilities ?? [], 4, (c) => {
     const label = c.label.trim();
-    if (!/\s/.test(label) || label.includes("_")) continue;
-    if (/\b(family|payload|variant)\b/i.test(label)) continue;
-    if (/^detect(s|ed)?\b/i.test(label)) continue;
-    // Must read as "it <verb> …": drop adjective/noun-initial labels like
-    // "Suspicious use of X" that would produce "it suspicious use of X".
-    if (/^(suspicious|possible|potential|known|generic|anomalous)\b/i.test(label))
-      continue;
-    const key = label.toLowerCase();
-    if (capSeen.has(key)) continue;
-    capSeen.add(key);
-    caps.push(lowerFirst(label));
-    if (caps.length >= 4) break;
-  }
+    return readsAsBehavior(label) ? lowerFirst(label) : undefined;
+  });
   if (caps.length >= 2) return `When run, it ${joinList(caps)}.`;
   return undefined;
 }
@@ -376,7 +392,7 @@ function abuseHistoryClause(result: ResultLike): string {
       const significant = reports > 0 && confidence >= ABUSE_SIGNIFICANT;
       parts.push(
         significant
-          ? `${plural(reports, "AbuseIPDB report")} at ${confidence}% confidence`
+          ? `${count(reports, "AbuseIPDB report")} at ${confidence}% confidence`
           : "no significant AbuseIPDB reports",
       );
     }
@@ -449,68 +465,107 @@ export function threatSentences(
   return out;
 }
 
-export function buildNarrative(result: CheckResult): string[] {
-  const geo = result.geo;
-  const sentences: string[] = [];
-
-  sentences.push(headline("address", result));
-
-  // What the address is: network type woven with its operator and ASN.
-  if (geo) {
-    let typePhrase: string;
-    let tail = "";
-    if (geo.isProxy) {
-      // When ip-api flags both proxy and hosting, keep both facts — the profile
-      // card shows both trait chips, so collapsing to "anonymizer" alone would
-      // drop the datacenter context (issue #9).
-      typePhrase = geo.isHosting
+/**
+ * What kind of network the address sits on, and what that implies.
+ *
+ * Proxy is checked first and keeps the hosting fact when both are set: the
+ * profile card shows both trait chips, so collapsing to "anonymizer" alone
+ * would drop the datacenter context (issue #9). No flag at all means ip-api
+ * did not classify the address, which is "unclassified" rather than positive
+ * evidence of an end-user network, so the last case hedges the way
+ * classifyType() does instead of asserting it (issue #10).
+ */
+function addressType(geo: GeoContext): { phrase: string; tail: string } {
+  if (geo.isProxy) {
+    return {
+      phrase: geo.isHosting
         ? "an anonymizer (proxy, VPN, or Tor) on hosting/datacenter infrastructure"
-        : "an anonymizer (proxy, VPN, or Tor)";
-      tail = ", so the real origin is hidden";
-    } else if (geo.isHosting) {
-      typePhrase = "hosting or datacenter infrastructure";
-    } else if (geo.isMobile) {
-      typePhrase = "a mobile carrier (cellular) address";
-    } else {
-      // No proxy/hosting/mobile flag means ip-api did not classify the type —
-      // that's "unclassified", not positive evidence of an end-user network, so
-      // hedge it the way classifyType() does ("Residential / Other") rather than
-      // asserting it as fact (issue #10).
-      typePhrase = "likely a residential or business endpoint";
-    }
-    const operator = geo.isp || geo.org || geo.asnOrg || "";
-    const op = operator ? ` operated by ${operator}` : "";
-    // ip-api's ASN field bundles the org name; keep just the AS number here.
-    const asnNum = geo.asn ? (/^AS\d+/.exec(geo.asn)?.[0] ?? geo.asn) : "";
-    const asn = asnNum ? ` (${asnNum})` : "";
-    const prefix = bgpPrefix(result);
-    const prefixClause = prefix
-      ? ` with an active BGP prefix of ${prefix}`
-      : "";
-    sentences.push(
-      `It is ${typePhrase}${op}${asn}${prefixClause}${tail}.`.replace(
-        /\.\.$/,
-        ".",
-      ),
-    );
+        : "an anonymizer (proxy, VPN, or Tor)",
+      tail: ", so the real origin is hidden",
+    };
   }
+  if (geo.isHosting) {
+    return { phrase: "hosting or datacenter infrastructure", tail: "" };
+  }
+  if (geo.isMobile) {
+    return { phrase: "a mobile carrier (cellular) address", tail: "" };
+  }
+  return { phrase: "likely a residential or business endpoint", tail: "" };
+}
 
-  // Where it is, plus its reverse-DNS identity.
+/** What the address is: network type woven with its operator, ASN and prefix. */
+function addressIdentity(geo: GeoContext, result: CheckResult): string {
+  const { phrase, tail } = addressType(geo);
+  const operator = geo.isp || geo.org || geo.asnOrg || "";
+  const op = operator ? ` operated by ${operator}` : "";
+  // ip-api's ASN field bundles the org name; keep just the AS number here.
+  const asnNum = geo.asn ? (/^AS\d+/.exec(geo.asn)?.[0] ?? geo.asn) : "";
+  const asn = asnNum ? ` (${asnNum})` : "";
+  const prefix = bgpPrefix(result);
+  const prefixClause = prefix ? ` with an active BGP prefix of ${prefix}` : "";
+  return `It is ${phrase}${op}${asn}${prefixClause}${tail}.`.replace(
+    /\.\.$/,
+    ".",
+  );
+}
+
+/** Where it is, plus its reverse-DNS identity, in whichever of the two are
+ *  known. */
+function addressLocation(geo: GeoContext | undefined): string | undefined {
   const where = joinPlace([geo?.city, geo?.region, geo?.country]);
   if (where && geo?.reverse) {
-    sentences.push(
-      `It is geolocated to ${where}, with reverse DNS ${geo.reverse}.`,
-    );
-  } else if (where) {
-    sentences.push(`It is geolocated to ${where}.`);
-  } else if (geo?.reverse) {
-    sentences.push(`Its reverse DNS is ${geo.reverse}.`);
+    return `It is geolocated to ${where}, with reverse DNS ${geo.reverse}.`;
   }
+  if (where) return `It is geolocated to ${where}.`;
+  if (geo?.reverse) return `Its reverse DNS is ${geo.reverse}.`;
+  return undefined;
+}
+
+export function buildNarrative(result: CheckResult): string[] {
+  const geo = result.geo;
+  const sentences = [headline("address", result)];
+
+  if (geo) sentences.push(addressIdentity(geo, result));
+  const location = addressLocation(geo);
+  if (location) sentences.push(location);
 
   return [
     ...sentences,
     ...threatSentences(result, "address", abuseHistoryClause(result)),
   ];
+}
+
+/**
+ * Where the domain points right now, or why it points nowhere.
+ *
+ * The three outcomes are deliberately not interchangeable. A flagged-but-
+ * NXDOMAIN name (a taken-down C2 still on blocklists) keeps its verdict but is
+ * said plainly to be dead; the unknown case already leads with NXDOMAIN, so it
+ * is not repeated here. Non-resolution is only claimed for a domain clearly
+ * delegated (it has NS records) that still maps to no address: empty IP fields
+ * on their own can simply mean DNS was never resolved, and calling that
+ * "parked or taken down" would be a false statement about missing data
+ * (issue #4).
+ */
+function domainInfrastructure(result: DomainCheckResult): string | undefined {
+  const ctx = result.context;
+  const ips = ctx?.resolvedIps ?? [];
+  const mx = ctx?.mx ?? [];
+
+  if (ips.length > 0) {
+    const extra = ips.length - 1;
+    const hosts = extra > 0 ? ` and ${count(extra, "other host")}` : "";
+    const mail = mx.length ? `, with mail handled by ${mx[0]}` : "";
+    return `It currently resolves to ${ips[0]}${hosts}${mail}.`;
+  }
+  if (ctx?.nxdomain && result.verdict !== "unknown") {
+    return "It currently returns NXDOMAIN, the name no longer exists in DNS (unregistered, expired, or taken down).";
+  }
+  const delegated = (ctx?.nameservers?.length ?? 0) > 0;
+  if (ctx && delegated && (ctx.ipv6?.length ?? 0) === 0) {
+    return "It does not currently resolve to an address (parked, expired, or taken down).";
+  }
+  return undefined;
 }
 
 export function buildDomainNarrative(result: DomainCheckResult): string[] {
@@ -552,36 +607,53 @@ export function buildDomainNarrative(result: DomainCheckResult): string[] {
     sentences.push(`It is${catText.replace(/^,\s*/, " ")}.`);
   }
 
-  // Infrastructure: where the domain points right now.
-  const ips = ctx?.resolvedIps ?? [];
-  const mx = ctx?.mx ?? [];
-  if (ips.length > 0) {
-    const extra = ips.length - 1;
-    const hosts = extra > 0 ? ` and ${plural(extra, "other host")}` : "";
-    const mail = mx.length ? `, with mail handled by ${mx[0]}` : "";
-    sentences.push(`It currently resolves to ${ips[0]}${hosts}${mail}.`);
-  } else if (ctx?.nxdomain && result.verdict !== "unknown") {
-    // Flagged-but-NXDOMAIN (e.g. a taken-down C2 still on blocklists): the
-    // verdict stands, but say plainly that the name is currently dead. The
-    // unknown case already leads with NXDOMAIN, so don't repeat it.
-    sentences.push(
-      "It currently returns NXDOMAIN, the name no longer exists in DNS (unregistered, expired, or taken down).",
-    );
-  } else if (
-    ctx &&
-    (ctx.nameservers?.length ?? 0) > 0 &&
-    (ctx.ipv6?.length ?? 0) === 0
-  ) {
-    // Only claim non-resolution when the domain is clearly delegated (has NS
-    // records) yet maps to no address. Empty IP fields on their own can simply
-    // mean DNS wasn't resolved, and asserting "parked/taken down" would be a
-    // false statement about missing data (issue #4).
-    sentences.push(
-      "It does not currently resolve to an address (parked, expired, or taken down).",
-    );
-  }
+  const infrastructure = domainInfrastructure(result);
+  if (infrastructure) sentences.push(infrastructure);
 
   return [...sentences, ...threatSentences(result, "domain")];
+}
+
+/**
+ * The file's type as a noun phrase.
+ *
+ * Size is a trailing parenthetical rather than an "of {size}" infix; the
+ * article matches the type's initial sound; and a redundant " file" is dropped
+ * when the type already names the kind ("PDF document", "PE32 executable").
+ */
+function typePhrase(type: string, size: string | undefined): string {
+  const article = /^[aeiou]/i.test(type) ? "an" : "a";
+  const names =
+    /\b(file|document|executable|text|image|archive|script|library)\b/i.test(
+      type,
+    );
+  const bytes = size ? ` (${size})` : "";
+  return `${article} ${type}${names ? "" : " file"}${bytes}`;
+}
+
+/** What the file is: family, type, size and name woven into one read, then
+ *  when it was first observed. */
+function fileIdentitySentences(ctx: HashContext): string[] {
+  const parts: string[] = [];
+  if (ctx.malwareFamily) parts.push(`identified as ${ctx.malwareFamily}`);
+  else if (ctx.threatLabel) parts.push(`classified as ${ctx.threatLabel}`);
+
+  const type = ctx.fileType ?? ctx.mimeType;
+  const size = formatBytes(ctx.fileSize);
+  if (type) parts.push(typePhrase(type, size));
+  else if (size) parts.push(`${size} in size`);
+
+  const out: string[] = [];
+  if (parts.length) {
+    // fileName is the best-known name, not provably the earliest seen.
+    const name = ctx.fileName ? `, seen as "${ctx.fileName}"` : "";
+    out.push(`It is ${parts.join(", ")}${name}.`);
+  } else if (ctx.fileName) {
+    out.push(`It has been seen as "${ctx.fileName}".`);
+  }
+
+  const first = formatDate(ctx.firstSeen);
+  if (first) out.push(`First observed ${first}.`);
+  return out;
 }
 
 export function buildHashNarrative(result: HashCheckResult): string[] {
@@ -601,41 +673,8 @@ export function buildHashNarrative(result: HashCheckResult): string[] {
 
   sentences.push(headline("file", result));
 
-  // What the file is: family, type, size, name woven into one read.
   if (ctx) {
-    const parts: string[] = [];
-    if (ctx.malwareFamily) {
-      parts.push(`identified as ${ctx.malwareFamily}`);
-    } else if (ctx.threatLabel) {
-      parts.push(`classified as ${ctx.threatLabel}`);
-    }
-    const type = ctx.fileType ?? ctx.mimeType;
-    const size = formatBytes(ctx.fileSize);
-    if (type) {
-      // Size is a trailing parenthetical, not an "of {size}" infix; the article
-      // matches the type's initial sound; and a redundant " file" is dropped
-      // when the type already names the kind ("PDF document", "PE32 executable").
-      const article = /^[aeiou]/i.test(type) ? "an" : "a";
-      const noun =
-        /\b(file|document|executable|text|image|archive|script|library)\b/i.test(
-          type,
-        )
-          ? ""
-          : " file";
-      const bytes = size ? ` (${size})` : "";
-      parts.push(`${article} ${type}${noun}${bytes}`);
-    } else if (size) parts.push(`${size} in size`);
-    if (parts.length) {
-      // fileName is the best-known name, not provably the earliest seen.
-      const name = ctx.fileName ? `, seen as "${ctx.fileName}"` : "";
-      sentences.push(`It is ${parts.join(", ")}${name}.`);
-    } else if (ctx.fileName) {
-      sentences.push(`It has been seen as "${ctx.fileName}".`);
-    }
-    if (ctx.firstSeen) {
-      const d = formatDate(ctx.firstSeen);
-      if (d) sentences.push(`First observed ${d}.`);
-    }
+    sentences.push(...fileIdentitySentences(ctx));
   } else if (!hasData) {
     sentences.push("No source returned metadata describing the file.");
   }
@@ -776,11 +815,6 @@ function countWord(n: number): string {
   return `${n} times`;
 }
 
-/** "1 day" / "2 days": a count with a noun that agrees with it. */
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
-}
-
 /**
  * The paragraph an analyst pastes into a ticket.
  *
@@ -867,7 +901,7 @@ function downloadSentence(links: string[]): string | undefined {
   ] as string[];
   const from = hosts.length ? `, served from ${joinList(hosts)}` : "";
   const verb = links.length === 1 ? "executes" : "execute";
-  return `It links to ${plural(links.length, "file")} that ${verb} when opened, ${joinList(files)}${from}.`;
+  return `It links to ${count(links.length, "file")} that ${verb} when opened, ${joinList(files)}${from}.`;
 }
 
 /** 3. How new the name and the certificate are, and what the domain is filed
@@ -921,7 +955,7 @@ function certificateSentence(d: ScanDetail): string | undefined {
   const issuer = d.tlsIssuer ? `issued by ${d.tlsIssuer}` : "issued";
   const age =
     d.tlsAgeDays !== undefined
-      ? `is ${plural(d.tlsAgeDays, "day")} old, ${issuer}`
+      ? `is ${count(d.tlsAgeDays, "day")} old, ${issuer}`
       : `was ${issuer}`;
   const valid =
     d.tlsValidDays !== undefined ? `, valid for ${d.tlsValidDays} days` : "";

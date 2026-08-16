@@ -1,11 +1,11 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout } from "../../http";
-import { hostOf, loadOpenphishFeed } from "../../feeds/openphish";
+import { loadOpenphishFeed } from "../../feeds/openphish";
 
 // The feed loader and its cache live in lib/ti/feeds/openphish.ts, shared with
 // the URL-level source so one download serves both. Re-exported here because
 // this module's tests, and its callers, already know hostOf by this path.
-export { hostOf };
+export { hostOf } from "../../feeds/openphish";
 
 /** OpenPhish - community phishing URL feed (no key, cached download). */
 export const openPhishSource: TiSource = {

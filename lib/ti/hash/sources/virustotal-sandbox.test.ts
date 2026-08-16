@@ -298,3 +298,22 @@ describe("virusTotalSandboxSource.check", () => {
     expect(f.hashContext?.behaviorTags).toEqual(["PERSISTENCE", "CRYPTO"]);
   });
 });
+
+describe("sandboxRuntime — ip_traffic shapes", () => {
+  it("omits the port when the sandbox did not record one", () => {
+    const runtime = sandboxRuntime({
+      ip_traffic: [{ destination_ip: "1.2.3.4" }],
+    } as never);
+    expect(runtime?.network).toContain("ip 1.2.3.4");
+  });
+
+  // A row with no destination address is not a contact anyone can pivot on,
+  // so it is dropped rather than rendered as a bare port.
+  it("drops a row with no destination address", () => {
+    const runtime = sandboxRuntime({
+      ip_traffic: [{ destination_port: 443 }, { destination_ip: "9.9.9.9" }],
+    } as never);
+    const ips = (runtime?.network ?? []).filter((n) => n.startsWith("ip "));
+    expect(ips).toEqual(["ip 9.9.9.9"]);
+  });
+});

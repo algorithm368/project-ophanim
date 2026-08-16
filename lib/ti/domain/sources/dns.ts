@@ -15,6 +15,7 @@ import {
   extractSpf,
   normalizeMxHosts,
 } from "../../dns/parse";
+import { count } from "@/lib/text";
 
 const CF = RESOLVERS.cloudflare;
 
@@ -103,9 +104,7 @@ export const dnsSource: TiSource = {
         const first = resolvedIps[0] ?? ipv6[0];
         const hostCount = resolvedIps.length + ipv6.length;
         const extra =
-          hostCount > 1
-            ? ` (+${hostCount - 1} more host${hostCount - 1 > 1 ? "s" : ""})`
-            : "";
+          hostCount > 1 ? ` (+${count(hostCount - 1, "more host")})` : "";
         const mail =
           mxHosts.length > 0
             ? ` Mail routed via ${mxHosts[0]}.`

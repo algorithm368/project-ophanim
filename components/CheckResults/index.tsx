@@ -258,17 +258,24 @@ export default function CheckResults({
     /** Progressive live-research state, fetched in parallel with the main check. */
     research: ResearchStreamState;
 }>) {
-    // Checked first: a URL result is the most specific shape, and the other
-    // guards would not recognize it.
-    const body = isUrlResult(result) ? (
-        <UrlResults result={result} onRefresh={onRefresh} research={research} />
-    ) : isHashResult(result) ? (
-        <HashResults result={result} onRefresh={onRefresh} research={research} />
-    ) : isDomainResult(result) ? (
-        <DomainResults result={result} onRefresh={onRefresh} research={research} />
-    ) : (
-        <Results result={result} onRefresh={onRefresh} research={research} />
-    );
+    // A URL result is checked first: it is the most specific shape, and the
+    // other guards would not recognize it.
+    let body: React.ReactNode;
+    if (isUrlResult(result)) {
+        body = (
+            <UrlResults result={result} onRefresh={onRefresh} research={research} />
+        );
+    } else if (isHashResult(result)) {
+        body = (
+            <HashResults result={result} onRefresh={onRefresh} research={research} />
+        );
+    } else if (isDomainResult(result)) {
+        body = (
+            <DomainResults result={result} onRefresh={onRefresh} research={research} />
+        );
+    } else {
+        body = <Results result={result} onRefresh={onRefresh} research={research} />;
+    }
     return (
         <PivotContext.Provider value={onPivot ?? null}>
             {body}

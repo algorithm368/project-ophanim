@@ -48,4 +48,86 @@ describe("maltiverseSource", () => {
     const finding = await maltiverseSource.check("a".repeat(64), new AbortController().signal);
     expect(finding.hashContext?.fileNames).toEqual(["a.exe", "b.exe"]);
   });
+  // blacklist[].description is sometimes one label and sometimes a comma-joined
+  // set, so both shapes have to split into distinct chips rather than one
+  // run-on string.
+  it("splits comma-joined blacklist descriptions into distinct labels", async () => {
+    vi.spyOn(http, "getJson").mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        classification: "malicious",
+        blacklist: [
+          { description: "ransomware,wcry" },
+          { description: "wcry" },
+          { description: "" },
+        ],
+      },
+    } as never);
+    const finding = await maltiverseSource.check(
+      "a".repeat(64),
+      new AbortController().signal,
+    );
+    expect(finding.hashContext?.detectionNames).toEqual(["ransomware", "wcry"]);
+  });
+
+  it("turns contacted hosts into typed, deduped pivots", async () => {
+    vi.spyOn(http, "getJson").mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        classification: "malicious",
+        contacted_host: ["evil.com", "evil.com", "8.8.8.8", "", 42],
+      },
+    } as never);
+    const finding = await maltiverseSource.check(
+      "a".repeat(64),
+      new AbortController().signal,
+    );
+    expect(finding.relations).toEqual([
+      {
+        value: "evil.com",
+        type: "domain",
+        relation: "contacts",
+        sources: ["maltiverse"],
+        tier: "observed",
+      },
+      {
+        value: "8.8.8.8",
+        type: "ip",
+        relation: "contacts",
+        sources: ["maltiverse"],
+        tier: "observed",
+      },
+    ]);
+  });
+
+  it("caps contacted-host pivots at ten", async () => {
+    vi.spyOn(http, "getJson").mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        classification: "malicious",
+        contacted_host: Array.from({ length: 25 }, (_, i) => `h${i}.example.com`),
+      },
+    } as never);
+    const finding = await maltiverseSource.check(
+      "a".repeat(64),
+      new AbortController().signal,
+    );
+    expect(finding.relations).toHaveLength(10);
+  });
+
+  it("reads a single filename string as a one-entry list", async () => {
+    vi.spyOn(http, "getJson").mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { classification: "malicious", filename: "only.exe" },
+    } as never);
+    const finding = await maltiverseSource.check(
+      "a".repeat(64),
+      new AbortController().signal,
+    );
+    expect(finding.hashContext?.fileNames).toEqual(["only.exe"]);
+  });
 });

@@ -79,6 +79,55 @@ interface Vote {
  * most distinct sources, breaking ties by source name-trust then lexically.
  * Junk names (hash-as-name, bare hex, generic placeholders) are dropped.
  */
+/** The usable names one source offered: trimmed, junk dropped, deduped, so a
+ *  source that repeats a name in both `fileNames` and `fileName` still votes
+ *  once for it. */
+function namesOffered(
+  ctx: NonNullable<SourceResult["hashContext"]>,
+  hashSet: Set<string>,
+): string[] {
+  const offered = ctx.fileNames?.length
+    ? ctx.fileNames
+    : [ctx.fileName].filter((n): n is string => Boolean(n));
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of offered) {
+    if (typeof raw !== "string") continue;
+    const name = raw.trim();
+    if (!name || isJunk(name, hashSet)) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+/** Record one source's votes, merging into any name another source already
+ *  nominated and keeping the best trust rank seen for it. */
+function castNameVotes(
+  votes: Map<string, Vote>,
+  r: SourceResult,
+  names: string[],
+): void {
+  const rank = trustRank(r.source.id);
+  for (const name of names) {
+    const key = name.toLowerCase();
+    const existing = votes.get(key);
+    if (existing) {
+      existing.sources.add(r.source.id);
+      existing.bestRank = Math.min(existing.bestRank, rank);
+    } else {
+      votes.set(key, {
+        display: name,
+        sources: new Set([r.source.id]),
+        bestRank: rank,
+      });
+    }
+  }
+}
+
 export function resolveFileName(
   results: SourceResult[],
   hashes: { md5?: string; sha1?: string; sha256?: string },
@@ -90,32 +139,9 @@ export function resolveFileName(
   );
 
   const votes = new Map<string, Vote>();
-
   for (const r of results) {
     if (r.status !== "ok" || !r.hashContext) continue;
-    const ctx = r.hashContext;
-    const names = ctx.fileNames?.length
-      ? ctx.fileNames
-      : ctx.fileName
-        ? [ctx.fileName]
-        : [];
-    const rank = trustRank(r.source.id);
-    const seen = new Set<string>();
-    for (const raw of names) {
-      if (typeof raw !== "string") continue;
-      const name = raw.trim();
-      if (!name || isJunk(name, hashSet)) continue;
-      const key = name.toLowerCase();
-      if (seen.has(key)) continue; // one vote per (source, name)
-      seen.add(key);
-      const existing = votes.get(key);
-      if (existing) {
-        existing.sources.add(r.source.id);
-        existing.bestRank = Math.min(existing.bestRank, rank);
-      } else {
-        votes.set(key, { display: name, sources: new Set([r.source.id]), bestRank: rank });
-      }
-    }
+    castNameVotes(votes, r, namesOffered(r.hashContext, hashSet));
   }
 
   if (votes.size === 0) return { fileName: undefined, fileNames: undefined };

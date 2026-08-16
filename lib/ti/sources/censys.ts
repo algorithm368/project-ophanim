@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
+import { count } from "@/lib/text";
 
 interface CensysLabel {
   value?: string;
@@ -135,14 +136,14 @@ export const censysSource: TiSource = {
       if (risky.length) score += 25;
       score = Math.min(100, score);
 
+      const riskyPart = risky.length ? ` · ${risky.join(", ")}` : "";
+
       return {
         status: "ok",
         score,
         categories: labels.slice(0, 12),
         summary: services.length
-          ? `${services.length} exposed service(s)${
-              risky.length ? ` · ${risky.join(", ")}` : ""
-            }`
+          ? `${count(services.length, "exposed service")}${riskyPart}`
           : "No exposed services",
         details: {
           ports,

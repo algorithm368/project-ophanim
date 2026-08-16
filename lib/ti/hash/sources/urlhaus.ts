@@ -2,6 +2,13 @@ import type { RelatedIndicator, SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout, postForm } from "../../http";
 import { hostFromUrl } from "@/lib/url";
 
+/** URLhaus payload lookups accept MD5 or SHA-256, not SHA-1, keyed by the hex
+ *  length that identifies each. An unlisted length has no field and no query. */
+const URLHAUS_HASH_FIELD: Record<number, string | undefined> = {
+  32: "md5_hash",
+  64: "sha256_hash",
+};
+
 interface UrlhausUrlEntry {
   url?: string;
   url_status?: string;
@@ -52,12 +59,7 @@ export const urlhausHashSource: TiSource = {
     if (!key) return { status: "skipped" };
 
     // URLhaus payload lookups accept MD5 or SHA-256, not SHA-1.
-    const field =
-      hash.length === 32
-        ? "md5_hash"
-        : hash.length === 64
-          ? "sha256_hash"
-          : null;
+    const field = URLHAUS_HASH_FIELD[hash.length] ?? null;
     if (!field) {
       return {
         status: "skipped",

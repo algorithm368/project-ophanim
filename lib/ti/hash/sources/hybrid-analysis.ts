@@ -113,6 +113,27 @@ export function haMitre(
   return out;
 }
 
+/** The overview fields the finding is built from, each normalized to either a
+ *  usable value or undefined so the caller never has to re-check for blanks. */
+function readOverview(data: HaOverview): {
+  verdict: string;
+  threatScore: number | undefined;
+  family: string | undefined;
+  fileType: string | undefined;
+  lastFileName: string | undefined;
+} {
+  return {
+    verdict: data.verdict ?? "unknown",
+    threatScore:
+      typeof data.threat_score === "number" ? data.threat_score : undefined,
+    family: data.vx_family?.trim() || undefined,
+    fileType:
+      data.type?.trim() ||
+      (data.type_short?.length ? data.type_short.join(", ") : undefined),
+    lastFileName: data.last_file_name ?? undefined,
+  };
+}
+
 export const hybridAnalysisSource: TiSource = {
   meta: {
     id: "hybrid-analysis",
@@ -153,14 +174,8 @@ export const hybridAnalysisSource: TiSource = {
         return { status: "error", error: data?.message ?? `HTTP ${status}` };
       }
 
-      const verdict = data.verdict ?? "unknown";
-      const threatScore =
-        typeof data.threat_score === "number" ? data.threat_score : undefined;
-      const family = data.vx_family?.trim() || undefined;
-      const fileType =
-        data.type?.trim() ||
-        (data.type_short?.length ? data.type_short.join(", ") : undefined);
-      const lastFileName = data.last_file_name ?? undefined;
+      const { verdict, threatScore, family, fileType, lastFileName } =
+        readOverview(data);
 
       const score = hybridAnalysisScore(verdict, threatScore, data.whitelisted);
       const relations = haRelatedHashes(
@@ -169,6 +184,10 @@ export const hybridAnalysisSource: TiSource = {
         hash,
       );
 
+      const familyPart = family ? ` (${family})` : "";
+      const threatPart =
+        threatScore !== undefined ? `, threat score ${threatScore}/100` : "";
+
       return {
         status: "ok",
         malicious: verdict === "malicious",
@@ -176,9 +195,7 @@ export const hybridAnalysisSource: TiSource = {
         score,
         categories: family ? [family] : [],
         lastSeen: data.analysis_start_time ?? undefined,
-        summary: `Sandbox verdict: ${verdict}${family ? ` (${family})` : ""}${
-          threatScore !== undefined ? `, threat score ${threatScore}/100` : ""
-        }`,
+        summary: `Sandbox verdict: ${verdict}${familyPart}${threatPart}`,
         hashContext: {
           sha256: data.sha256?.toLowerCase(),
           fileName: lastFileName,

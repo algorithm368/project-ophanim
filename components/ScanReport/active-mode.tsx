@@ -28,6 +28,16 @@ export function ActiveModeButton({
   );
 }
 
+/** What the engage button says: mid-flight, a single target, or how many. */
+function engageLabel(
+  submitting: boolean | undefined,
+  one: boolean,
+  total: number,
+): string {
+  if (submitting) return "Engaging";
+  return one ? "Engage" : `Engage all ${total}`;
+}
+
 export function ArmedPanel({
   targets,
   submitting,
@@ -81,7 +91,7 @@ export function ArmedPanel({
           onClick={onEngage}
           className="bg-background text-foreground hover:bg-background/85"
         >
-          {submitting ? "Engaging" : one ? "Engage" : `Engage all ${targets.length}`}
+          {engageLabel(submitting, one, targets.length)}
         </Button>
         <Button
           type="button"

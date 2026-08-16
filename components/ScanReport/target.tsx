@@ -7,9 +7,10 @@ import { buildScanNarrative, formatDate, midSentence } from "@/lib/ti/narrative"
 import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import { attribution, type MergedScan } from "@/lib/ti/url/active/merge";
 import type { ScanCapability } from "@/lib/ti/url/active/capability";
-import type { ScanDetail } from "@/lib/ti/url/active/detail";
+import type { ScanDetail, ScanVerdictLane } from "@/lib/ti/url/active/detail";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
 import { CopyableSummary } from "@/components/CheckResults/primitives";
+import { count } from "@/lib/text";
 
 /**
  * A claim with the scanner that made it, so it can be defended in a ticket.
@@ -76,11 +77,6 @@ function stop(text: string): string {
   return text.endsWith(".") ? text : `${text}.`;
 }
 
-/** "2 IPs" / "1 IP", so a count never reads as a mislabelled plural. */
-function count(n: number, noun: string, plural = `${noun}s`): string {
-  return `${n} ${n === 1 ? noun : plural}`;
-}
-
 /** A collapsed evidence section. The count lives in the summary, so a closed
  *  section still tells the truth about what it holds. */
 function Evidence({
@@ -143,6 +139,58 @@ function certificateLine(d: ScanDetail): string | undefined {
     .join(" · ");
 }
 
+/** Where the trip ended, with the number of hops when there were any. */
+function endsUpAtLine(d: ScanDetail, hops: number): string | undefined {
+  if (!d.finalUrl) return undefined;
+  const trip = hops > 0 ? `  ·  ${count(hops, "redirect")}` : "";
+  return `${d.finalUrl}${trip}`;
+}
+
+/** One engine's reading as a phrase: the verdict, then whatever it named for
+ *  it. A malicious call leads with its score and categories; short of that,
+ *  the risk categories stand in; an engine that finished with neither said
+ *  nothing, and says so. */
+function verdictWords(lane: ScanVerdictLane, risks: string[]): string {
+  if (lane.malicious) {
+    const score = lane.score !== undefined ? `score ${lane.score}` : undefined;
+    const named = [score, ...(lane.categories ?? [])]
+      .filter(Boolean)
+      .join(" · ");
+    return `MALICIOUS  ${named}`;
+  }
+  if (risks.length) return `RISK  ${risks.join(", ")}`;
+  return "no verdict";
+}
+
+/** The cookies the page set, marking the ones carrying Secure. */
+function cookieLine(d: ScanDetail): string {
+  if (!d.cookies?.length) return "";
+  const named = d.cookies.map((c) => `${c.name}${c.secure ? " (secure)" : ""}`);
+  return `Cookies: ${named.join(", ")}. `;
+}
+
+/** The domains the page links out to, shown short. The remainder is counted
+ *  rather than dropped, so a truncated list never reads as the whole set. */
+function linkLine(d: ScanDetail): string {
+  if (!d.linkDomains?.length) return "";
+  const total = d.linkDomainCount ?? d.linkDomains.length;
+  const rest = total > 12 ? `, and ${total - 12} more` : "";
+  return `Links to: ${d.linkDomains.slice(0, 12).join(", ")}${rest}. `;
+}
+
+/** What DNSSEC validation found, or nothing when it was never checked. Not
+ *  checked and unsigned are different facts, and only one is a finding. */
+function dnssecLine(valid: boolean | undefined): string | undefined {
+  if (valid === undefined) return undefined;
+  return valid ? "DNSSEC valid" : "DNSSEC unsigned";
+}
+
+/** The first few console messages the page emitted. */
+function consoleLine(d: ScanDetail): string {
+  if (!d.consoleMessages?.length) return "";
+  return `Console: ${d.consoleMessages.slice(0, 4).join(" | ")}`;
+}
+
 /** What nobody collected, named rather than left as an empty section. */
 function notCollectedLines(merged: MergedScan): string[] {
   const { detail, capability, incomplete, engines } = merged;
@@ -161,6 +209,267 @@ function notCollectedLines(merged: MergedScan): string[] {
     ...unfinished,
     ...(engines.includes("urlscan") ? [] : ["No urlscan verdict lanes."]),
   ];
+}
+
+
+/** The capture, or an honest note about why there isn't one. */
+function Capture({
+  target,
+  shot,
+  onInspect,
+}: Readonly<{
+  target: string;
+  shot: ActiveScan | undefined;
+  onInspect: (src: string | null) => void;
+}>) {
+  const screenshot = shot?.verdict?.screenshot;
+  if (!screenshot) {
+    return (
+      <p className="self-start rounded border border-dashed border-foreground/15 p-3 text-xs text-foreground/45">
+        No screenshot. Cloudflare serves its capture from an authenticated
+        endpoint, so only a urlscan.io scan produces one here.
+      </p>
+    );
+  }
+  return (
+    <figure className="space-y-1">
+      {/* The capture is evidence, and at this size it can only be glanced at.
+          Clicking opens it full screen with zoom, which is where a misspelt
+          footer or a wrong favicon is actually read. */}
+      <button
+        type="button"
+        onClick={() => onInspect(screenshot)}
+        aria-label={`Inspect the screenshot of ${target}`}
+        title="Inspect the screenshot"
+        className="group relative block w-full cursor-zoom-in overflow-hidden rounded border border-foreground/12"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
+        <img
+          src={screenshot}
+          alt={`Screenshot of ${target}`}
+          className="w-full object-cover object-top"
+          loading="lazy"
+        />
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100 group-focus-visible:bg-foreground/30 group-focus-visible:opacity-100">
+          <Maximize2 className="size-5" />
+        </span>
+      </button>
+      <figcaption className="text-[11px] text-foreground/45">
+        screenshot · {ENGINE_NAME[shot.engine]} · click to inspect
+      </figcaption>
+    </figure>
+  );
+}
+
+/** One engine's line in the "who says what" strip. */
+function EngineReading({ scan }: Readonly<{ scan: ActiveScan }>) {
+  const reading = scan.detail as ScanDetail;
+  const lane = reading.verdicts.overall;
+  const categories = reading.contentCategories ?? [];
+  const words = verdictWords(lane, reading.riskCategories ?? []);
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 text-sm">
+      <span className="w-28 shrink-0 text-[13px] text-muted-foreground">
+        {ENGINE_NAME[scan.engine]}
+      </span>
+      <span
+        className={
+          lane.malicious
+            ? "text-red-600 dark:text-red-400"
+            : "text-foreground/75"
+        }
+      >
+        {words}
+      </span>
+      {/* What the site is filed as, next to the verdict rather than inside it:
+          a category is not an accusation, and a login page on a domain filed as
+          Parked is the mismatch worth seeing. */}
+      {categories.length > 0 && (
+        <span className="text-xs text-foreground/50">
+          filed as {categories.join(", ")}
+          {reading.categoryInheritedFrom
+            ? `, via ${reading.categoryInheritedFrom}`
+            : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** The trip the URL took, when it took one. */
+function RedirectEvidence({
+  d,
+  hops,
+}: Readonly<{ d: ScanDetail; hops: number }>) {
+  if (hops === 0) return null;
+  return (
+    <Evidence title="Redirect chain" detail={count(hops, "hop")}>
+      <ol className="space-y-0.5">
+        {d.redirects?.map((hop) => (
+          <li key={`${hop.from}-${hop.to}`} className="font-mono">
+            {hop.from} → {hop.to}
+            {hop.status ? ` (${hop.status})` : ""}
+          </li>
+        ))}
+      </ol>
+    </Evidence>
+  );
+}
+
+/** What the page was served from: addresses, networks, places, software. */
+function NetworkEvidence({ d }: Readonly<{ d: ScanDetail }>) {
+  const summary = [
+    d.ips?.length ? count(d.ips.length, "IP") : undefined,
+    d.asns?.length ? count(d.asns.length, "ASN") : undefined,
+    d.countries?.length
+      ? count(d.countries.length, "country", "countries")
+      : undefined,
+    d.servers?.length ? count(d.servers.length, "server") : undefined,
+  ].filter(Boolean);
+  if (summary.length === 0) return null;
+
+  return (
+    <Evidence title="Network" detail={summary.join(", ")}>
+      <p className="font-mono">
+        {[
+          d.ips?.join(", "),
+          d.asns?.join(", "),
+          d.countries?.join(", "),
+          d.servers?.join(", "),
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
+    </Evidence>
+  );
+}
+
+/** What the page carried: cookies, outbound links, console noise. */
+function ContentEvidence({ d }: Readonly<{ d: ScanDetail }>) {
+  const summary = [
+    d.cookies?.length ? count(d.cookies.length, "cookie") : undefined,
+    d.linkDomainCount ? count(d.linkDomainCount, "link domain") : undefined,
+    d.consoleMessages?.length
+      ? count(d.consoleMessages.length, "console message")
+      : undefined,
+  ].filter(Boolean);
+  if (summary.length === 0) return null;
+
+  return (
+    <Evidence title="Page content" detail={summary.join(", ")}>
+      <p>
+        {cookieLine(d)}
+        {linkLine(d)}
+        {consoleLine(d)}
+      </p>
+    </Evidence>
+  );
+}
+
+/** The certificates presented on the connection. */
+function CertificateEvidence({ d }: Readonly<{ d: ScanDetail }>) {
+  if (!d.certificates?.length) return null;
+  return (
+    <Evidence
+      title="Certificates"
+      detail={count(d.certificates.length, "certificate")}
+    >
+      <ul className="space-y-0.5">
+        {d.certificates.map((cert) => (
+          <li key={`${cert.subject}-${cert.validFrom}`}>
+            {[cert.subject, cert.issuer, cert.validFrom, cert.validTo]
+              .filter(Boolean)
+              .join(" · ")}
+          </li>
+        ))}
+      </ul>
+    </Evidence>
+  );
+}
+
+/** Who the name is registered through and how it is delegated. */
+function DnsWhoisEvidence({ d }: Readonly<{ d: ScanDetail }>) {
+  const known =
+    d.registrar ?? d.nameservers?.length ?? d.dnssecValid !== undefined;
+  if (!known) return null;
+
+  const summary = [
+    d.registrar,
+    d.nameservers?.length ? count(d.nameservers.length, "nameserver") : undefined,
+    dnssecLine(d.dnssecValid),
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const facts = [
+    d.registrar ? stop(`Registrar: ${d.registrar}`) : "",
+    d.domainExpires ? stop(`Expires ${formatDate(d.domainExpires)}`) : "",
+    d.nameservers?.length ? stop(`Nameservers: ${d.nameservers.join(", ")}`) : "",
+    d.radarRankBucket ? stop(`Radar rank bucket ${d.radarRankBucket}`) : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <Evidence title="DNS and WHOIS" detail={summary}>
+      <p>{facts}</p>
+    </Evidence>
+  );
+}
+
+/** Other domains the site's own robots.txt named. */
+function SiblingEvidence({ d }: Readonly<{ d: ScanDetail }>) {
+  if (!d.siblingDomains?.length) return null;
+  return (
+    <Evidence
+      title="Sibling domains from robots.txt"
+      detail={count(d.siblingDomains.length, "domain")}
+    >
+      <p className="font-mono">{d.siblingDomains.join(", ")}</p>
+    </Evidence>
+  );
+}
+
+/** Links whose path ends in something that runs. */
+function DownloadEvidence({ cap }: Readonly<{ cap: ScanCapability }>) {
+  if (cap.downloadLinks.length === 0) return null;
+  return (
+    <Evidence
+      title="Executable links"
+      detail={count(cap.downloadLinks.length, "link")}
+    >
+      <ul className="space-y-0.5 font-mono">
+        {cap.downloadLinks.map((link) => (
+          <li key={link}>{link}</li>
+        ))}
+      </ul>
+    </Evidence>
+  );
+}
+
+/** The collapsed evidence behind the rows above: every section self-hides when
+ *  the scan produced nothing for it, so an open section always holds something. */
+function EvidenceSections({
+  merged,
+  hops,
+}: Readonly<{ merged: MergedScan; hops: number }>) {
+  if (merged.engines.length === 0) return null;
+  const d = merged.detail;
+
+  return (
+    <div>
+      <h4 className="mb-1 font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
+        Evidence
+      </h4>
+      <RedirectEvidence d={d} hops={hops} />
+      <NetworkEvidence d={d} />
+      <ContentEvidence d={d} />
+      <CertificateEvidence d={d} />
+      <DnsWhoisEvidence d={d} />
+      <SiblingEvidence d={d} />
+      <DownloadEvidence cap={merged.capability} />
+    </div>
+  );
 }
 
 /**
@@ -203,21 +512,6 @@ export function TargetReport({
   const certificate = certificateLine(d);
   const notCollected = notCollectedLines(merged);
 
-  const network = [
-    d.ips?.length ? count(d.ips.length, "IP") : undefined,
-    d.asns?.length ? count(d.asns.length, "ASN") : undefined,
-    d.countries?.length ? count(d.countries.length, "country", "countries") : undefined,
-    d.servers?.length ? count(d.servers.length, "server") : undefined,
-  ].filter(Boolean);
-
-  const content = [
-    d.cookies?.length ? count(d.cookies.length, "cookie") : undefined,
-    d.linkDomainCount ? count(d.linkDomainCount, "link domain") : undefined,
-    d.consoleMessages?.length
-      ? count(d.consoleMessages.length, "console message")
-      : undefined,
-  ].filter(Boolean);
-
   return (
     <section className="space-y-6 border-b border-foreground/10 pb-8 last:border-b-0">
       <h3 className="font-mono text-xs break-all text-foreground/60">
@@ -237,50 +531,18 @@ export function TargetReport({
             </p>
           )}
         </div>
-        {shot?.verdict?.screenshot ? (
-          <figure className="space-y-1">
-            {/* The capture is evidence, and at this size it can only be
-                glanced at. Clicking opens it full screen with zoom, which is
-                where a misspelt footer or a wrong favicon is actually read. */}
-            <button
-              type="button"
-              onClick={() => setInspecting(shot.verdict?.screenshot ?? null)}
-              aria-label={`Inspect the screenshot of ${merged.target}`}
-              title="Inspect the screenshot"
-              className="group relative block w-full cursor-zoom-in overflow-hidden rounded border border-foreground/12"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
-              <img
-                src={shot.verdict.screenshot}
-                alt={`Screenshot of ${merged.target}`}
-                className="w-full object-cover object-top"
-                loading="lazy"
-              />
-              <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100 group-focus-visible:bg-foreground/30 group-focus-visible:opacity-100">
-                <Maximize2 className="size-5" />
-              </span>
-            </button>
-            <figcaption className="text-[11px] text-foreground/45">
-              screenshot · {ENGINE_NAME[shot.engine]} · click to inspect
-            </figcaption>
-          </figure>
-        ) : (
-          <p className="self-start rounded border border-dashed border-foreground/15 p-3 text-xs text-foreground/45">
-            No screenshot. Cloudflare serves its capture from an authenticated
-            endpoint, so only a urlscan.io scan produces one here.
-          </p>
-        )}
+        <Capture
+          target={merged.target}
+          shot={shot}
+          onInspect={setInspecting}
+        />
       </div>
 
       {/* The five questions the owner named, each attributed. */}
       <div>
         <Row
           label="Ends up at"
-          value={
-            d.finalUrl
-              ? `${d.finalUrl}${hops > 0 ? `  ·  ${count(hops, "redirect")}` : ""}`
-              : undefined
-          }
+          value={endsUpAtLine(d, hops)}
           engines={by(scans, "finalUrl")}
         />
         <Row
@@ -316,47 +578,7 @@ export function TargetReport({
         </h4>
         {scans
           .filter((s) => s.status === "done" && s.detail)
-          .map((s) => {
-            const reading = s.detail as ScanDetail;
-            const lane = reading.verdicts.overall;
-            const risks = reading.riskCategories ?? [];
-            const categories = reading.contentCategories ?? [];
-            const words = lane.malicious
-              ? `MALICIOUS  ${[lane.score !== undefined ? `score ${lane.score}` : undefined, ...(lane.categories ?? [])].filter(Boolean).join(" · ")}`
-              : risks.length
-                ? `RISK  ${risks.join(", ")}`
-                : "no verdict";
-            return (
-              <div
-                key={s.engine}
-                className="flex flex-wrap items-baseline gap-x-3 text-sm"
-              >
-                <span className="w-28 shrink-0 text-[13px] text-muted-foreground">
-                  {ENGINE_NAME[s.engine]}
-                </span>
-                <span
-                  className={
-                    lane.malicious
-                      ? "text-red-600 dark:text-red-400"
-                      : "text-foreground/75"
-                  }
-                >
-                  {words}
-                </span>
-                {/* What the site is filed as, next to the verdict rather than
-                    inside it: a category is not an accusation, and a login page
-                    on a domain filed as Parked is the mismatch worth seeing. */}
-                {categories.length > 0 && (
-                  <span className="text-xs text-foreground/50">
-                    filed as {categories.join(", ")}
-                    {reading.categoryInheritedFrom
-                      ? `, via ${reading.categoryInheritedFrom}`
-                      : ""}
-                  </span>
-                )}
-              </div>
-            );
-          })}
+          .map((s) => <EngineReading key={s.engine} scan={s} />)}
         {passive}
         {merged.disagreements.map((disagreement) => (
           <p
@@ -372,131 +594,7 @@ export function TargetReport({
         ))}
       </div>
 
-      {merged.engines.length > 0 && (
-        <div>
-          <h4 className="mb-1 font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
-            Evidence
-          </h4>
-          {hops > 0 && (
-            <Evidence title="Redirect chain" detail={count(hops, "hop")}>
-              <ol className="space-y-0.5">
-                {d.redirects?.map((hop) => (
-                  <li key={`${hop.from}-${hop.to}`} className="font-mono">
-                    {hop.from} → {hop.to}
-                    {hop.status ? ` (${hop.status})` : ""}
-                  </li>
-                ))}
-              </ol>
-            </Evidence>
-          )}
-          {network.length > 0 && (
-            <Evidence title="Network" detail={network.join(", ")}>
-              <p className="font-mono">
-                {[
-                  d.ips?.join(", "),
-                  d.asns?.join(", "),
-                  d.countries?.join(", "),
-                  d.servers?.join(", "),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </Evidence>
-          )}
-          {content.length > 0 && (
-            <Evidence title="Page content" detail={content.join(", ")}>
-              <p>
-                {d.cookies?.length
-                  ? `Cookies: ${d.cookies.map((c) => `${c.name}${c.secure ? " (secure)" : ""}`).join(", ")}. `
-                  : ""}
-                {/* The list is shown short but the remainder is named, so a
-                    truncated list never reads as the whole set. */}
-                {d.linkDomains?.length
-                  ? `Links to: ${d.linkDomains.slice(0, 12).join(", ")}${
-                      (d.linkDomainCount ?? d.linkDomains.length) > 12
-                        ? `, and ${(d.linkDomainCount ?? d.linkDomains.length) - 12} more`
-                        : ""
-                    }. `
-                  : ""}
-                {d.consoleMessages?.length
-                  ? `Console: ${d.consoleMessages.slice(0, 4).join(" | ")}`
-                  : ""}
-              </p>
-            </Evidence>
-          )}
-          {d.certificates?.length ? (
-            <Evidence
-              title="Certificates"
-              detail={count(d.certificates.length, "certificate")}
-            >
-              <ul className="space-y-0.5">
-                {d.certificates.map((cert) => (
-                  <li key={`${cert.subject}-${cert.validFrom}`}>
-                    {[cert.subject, cert.issuer, cert.validFrom, cert.validTo]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </li>
-                ))}
-              </ul>
-            </Evidence>
-          ) : null}
-          {(d.registrar ?? d.nameservers?.length ?? d.dnssecValid !== undefined) ? (
-            <Evidence
-              title="DNS and WHOIS"
-              detail={[
-                d.registrar,
-                d.nameservers?.length
-                  ? count(d.nameservers.length, "nameserver")
-                  : undefined,
-                d.dnssecValid === undefined
-                  ? undefined
-                  : d.dnssecValid
-                    ? "DNSSEC valid"
-                    : "DNSSEC unsigned",
-              ]
-                .filter(Boolean)
-                .join(", ")}
-            >
-              <p>
-                {[
-                  d.registrar ? stop(`Registrar: ${d.registrar}`) : "",
-                  d.domainExpires
-                    ? stop(`Expires ${formatDate(d.domainExpires)}`)
-                    : "",
-                  d.nameservers?.length
-                    ? stop(`Nameservers: ${d.nameservers.join(", ")}`)
-                    : "",
-                  d.radarRankBucket
-                    ? stop(`Radar rank bucket ${d.radarRankBucket}`)
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              </p>
-            </Evidence>
-          ) : null}
-          {d.siblingDomains?.length ? (
-            <Evidence
-              title="Sibling domains from robots.txt"
-              detail={count(d.siblingDomains.length, "domain")}
-            >
-              <p className="font-mono">{d.siblingDomains.join(", ")}</p>
-            </Evidence>
-          ) : null}
-          {cap.downloadLinks.length > 0 && (
-            <Evidence
-              title="Executable links"
-              detail={count(cap.downloadLinks.length, "link")}
-            >
-              <ul className="space-y-0.5 font-mono">
-                {cap.downloadLinks.map((link) => (
-                  <li key={link}>{link}</li>
-                ))}
-              </ul>
-            </Evidence>
-          )}
-        </div>
-      )}
+      <EvidenceSections merged={merged} hops={hops} />
 
       {notCollected.length > 0 && (
         <div className="space-y-1">

@@ -141,7 +141,7 @@ function RelationTable({ related }: Readonly<{ related: RelatedIndicator[] }>) {
                         )}
                         <span className="flex items-center gap-1.5">
                             <span className="inline-block size-1.5 rounded-full border border-muted-foreground/50" />
-                            observed, sandbox contact, may include noise
+                            <span>observed, sandbox contact, may include noise</span>
                         </span>
                     </p>
                 )}

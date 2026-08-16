@@ -18,8 +18,7 @@ import type { UrlLayer } from "./types";
  * suppression was meant to address is handled by layer cache reuse instead.
  */
 export function annotateSharedHost(layer: UrlLayer): UrlLayer {
-  const reverse = layer.sources.find((s) => s.source.id === "reverse-ip");
-  if (!reverse) return layer;
+  if (!layer.sources.some((s) => s.source.id === "reverse-ip")) return layer;
 
   const geo = layer.sources.find((s) => s.geo?.asn ?? s.geo?.asnOrg)?.geo;
   const provider = cloudProvider(geo?.asn, geo?.asnOrg ?? geo?.org);

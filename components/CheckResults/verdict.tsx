@@ -194,6 +194,14 @@ function VerdictShell({
     );
 }
 
+/** The narrative builder that matches the result's shape. Order matters only in
+ *  that the plain IP builder is the fallback, not a case. */
+function narrativeFor(result: AnyCheckResult): string {
+    if (isHashResult(result)) return buildHashNarrative(result).join(" ");
+    if (isDomainResult(result)) return buildDomainNarrative(result).join(" ");
+    return buildNarrative(result).join(" ");
+}
+
 export function VerdictHero({
     result,
     onRefresh,
@@ -201,11 +209,7 @@ export function VerdictHero({
     result: AnyCheckResult;
     onRefresh: () => void;
 }>) {
-    const narrative = isHashResult(result)
-        ? buildHashNarrative(result).join(" ")
-        : isDomainResult(result)
-          ? buildDomainNarrative(result).join(" ")
-          : buildNarrative(result).join(" ");
+    const narrative = narrativeFor(result);
     return (
         <VerdictShell
             result={result}

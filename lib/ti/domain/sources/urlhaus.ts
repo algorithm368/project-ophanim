@@ -113,15 +113,18 @@ export const urlhausSource: TiSource = {
       const score = Math.max(url.score, blacklist.score);
       const malicious = url.malicious || blacklist.listed;
 
+      const onlinePart = online > 0 ? `, ${online} online` : "";
+      const listedPart = blacklist.listed
+        ? `; ${blacklist.categories.join(", ")}`
+        : "";
+
       return {
         status: "ok",
         malicious,
         score,
         categories: [...threats, ...tags, ...blacklist.categories].slice(0, 12),
         lastSeen: data.firstseen,
-        summary:
-          `Hosts ${total} malicious URL(s)${online > 0 ? `, ${online} online` : ""}` +
-          (blacklist.listed ? `; ${blacklist.categories.join(", ")}` : ""),
+        summary: `Hosts ${total} malicious URL(s)${onlinePart}${listedPart}`,
         details: {
           urlCount: total,
           onlineUrls: online,

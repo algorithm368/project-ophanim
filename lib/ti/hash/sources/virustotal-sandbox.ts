@@ -199,23 +199,32 @@ export function severityRank(severity: string | undefined): number {
  * with the ATT&CK technique that cites it. A match's technique is recovered from
  * `mitre_attack_techniques[].refs` (`{ ref: "#signature_matches", value: "<idx>" }`).
  */
+/** Signature index → the technique ids citing it, from
+ *  `mitre_attack_techniques[].refs` (`{ ref: "#signature_matches", value }`). */
+function techniquesBySignature(
+  b: VtBehaviourSummary["data"],
+): Map<string, string[]> {
+  const bySig = new Map<string, string[]>();
+  for (const t of b?.mitre_attack_techniques ?? []) {
+    if (!t.id) continue;
+    for (const r of t.refs ?? []) {
+      if (r.ref !== "#signature_matches" || r.value === undefined) continue;
+      const ids = bySig.get(r.value) ?? [];
+      if (!ids.includes(t.id)) ids.push(t.id);
+      bySig.set(r.value, ids);
+    }
+  }
+  return bySig;
+}
+
 export function sandboxCapabilities(
   b: VtBehaviourSummary["data"],
   cap = MITRE_CAP,
 ): { label: string; mitre?: string[] }[] {
   const matches = b?.signature_matches ?? [];
   if (matches.length === 0) return [];
-  // Map signature index -> technique ids that reference it.
-  const techBySig = new Map<string, string[]>();
-  for (const t of b?.mitre_attack_techniques ?? []) {
-    if (!t.id) continue;
-    for (const r of t.refs ?? []) {
-      if (r.ref !== "#signature_matches" || r.value === undefined) continue;
-      const arr = techBySig.get(r.value) ?? [];
-      if (!arr.includes(t.id)) arr.push(t.id);
-      techBySig.set(r.value, arr);
-    }
-  }
+
+  const techBySig = techniquesBySignature(b);
   const seen = new Set<string>();
   const out: { label: string; mitre?: string[] }[] = [];
   for (const m of matches) {
@@ -290,11 +299,11 @@ export function sandboxRuntime(
     3,
   ).map((h) => `dns ${h}`);
   const ips = distinct(
-    (b.ip_traffic ?? []).map((t) =>
-      t.destination_ip
-        ? `${t.destination_ip}${t.destination_port ? `:${t.destination_port}` : ""}`
-        : undefined,
-    ),
+    (b.ip_traffic ?? []).map((t) => {
+      if (!t.destination_ip) return undefined;
+      const port = t.destination_port ? `:${t.destination_port}` : "";
+      return `${t.destination_ip}${port}`;
+    }),
     3,
   ).map((x) => `ip ${x}`);
   const urls = distinct(

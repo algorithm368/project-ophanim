@@ -59,31 +59,35 @@ export function mergeRelations(nodes: RelatedIndicator[]): RelatedIndicator[] {
   for (const n of nodes) {
     const key = n.value.toLowerCase();
     const existing = byKey.get(key);
-    if (!existing) {
+    if (existing) {
+      absorb(existing, n);
+    } else {
       order.push(key);
       byKey.set(key, { ...n, sources: n.sources ? [...n.sources] : undefined });
-      continue;
     }
-    // Union sources.
-    if (n.sources?.length) {
-      const merged = new Set([...(existing.sources ?? []), ...n.sources]);
-      existing.sources = [...merged];
-    }
-    // Keep the first non-empty relation label.
-    if (!existing.relation && n.relation) existing.relation = n.relation;
-    // Strongest tier wins: confirmed > observed > undefined.
-    if (n.tier === "confirmed") existing.tier = "confirmed";
-    else if (n.tier === "observed" && existing.tier !== "confirmed")
-      existing.tier = "observed";
   }
-  // Promote to confirmed when corroborated by two or more distinct sources.
-  const out: RelatedIndicator[] = [];
-  for (const key of order) {
+
+  return order.map((key) => {
     const rel = byKey.get(key)!;
+    // Promote to confirmed when corroborated by two or more distinct sources.
     if (rel.tier && (rel.sources?.length ?? 0) >= 2) rel.tier = "confirmed";
-    out.push(rel);
+    return rel;
+  });
+}
+
+/** Fold a duplicate report of the same pivot into the one already kept. */
+function absorb(existing: RelatedIndicator, n: RelatedIndicator): void {
+  // Union sources.
+  if (n.sources?.length) {
+    existing.sources = [...new Set([...(existing.sources ?? []), ...n.sources])];
   }
-  return out;
+  // Keep the first non-empty relation label.
+  existing.relation ??= n.relation;
+  // Strongest tier wins: confirmed > observed > undefined.
+  if (n.tier === "confirmed") existing.tier = "confirmed";
+  else if (n.tier === "observed" && existing.tier !== "confirmed") {
+    existing.tier = "observed";
+  }
 }
 
 /** Passive-DNS resolutions as pivots: for an IP lookup the records are domains

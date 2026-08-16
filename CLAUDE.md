@@ -161,6 +161,35 @@ are easy to get wrong:
   The `sonar` job skips with a warning when `SONAR_TOKEN` is unset, so a missing
   secret reads as skipped rather than as clean.
 
+Two of the rules Sonar enforces also run in `bun run lint`, scoped to
+`app/`, `components/` and `lib/`: `sonarjs/cognitive-complexity` (S3776, at
+Sonar's own default of 15) and `no-nested-ternary` (S3358). They are the same
+rule implementations the server uses, so the numbers match, and between them
+they were 63 of the 94 issues in the backlog. They are errors rather than
+warnings, because a warning saying "this function is too complex" is one nobody
+reads. The local `no-nested-ternary` is slightly narrower than S3358, which also
+counts a ternary nested in a template literal that is itself a ternary branch,
+so a clean lint is necessary but not sufficient.
+
+The `sonar` CLI cannot authenticate here: it wants a browser and the system
+keychain, and it ignores `SONAR_TOKEN`. Use `scripts/sonar.mjs` instead, which
+talks to the REST API with that token and reads the project key from
+`sonar-project.properties`, so it can never report on a different project than
+CI does:
+
+```bash
+node scripts/sonar.mjs by-rule            # open issue counts per rule
+node scripts/sonar.mjs list --rules S3776 # each one, with file, line, and key
+node scripts/sonar.mjs gate               # quality gate, exits non-zero on fail
+node scripts/sonar.mjs close <key> falsepositive "why the rule is wrong here"
+node scripts/sonar.mjs close <key> accept "why we are keeping it anyway"
+```
+
+`close` requires a comment: a closed issue with no reason is one nobody can
+reopen the argument about later. Note that Sonar's line numbers are against the
+commit CI analysed, which may be ahead of your checkout, so locate a finding by
+rule and construct rather than by line.
+
 Coverage comes from `bun run coverage`; the vitest coverage settings live in
 `vitest.config.ts` and are scoped to `lib/`, which is where the tests and the
 logic are. The scanner reads `coverage/lcov.info` as it analyses, so a missing

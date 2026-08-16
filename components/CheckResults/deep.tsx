@@ -42,7 +42,13 @@ function CertificateTable({ certs }: Readonly<{ certs: CertificateRecord[] }>) {
                 <span className="text-right">SANs</span>
             </div>
             {shown.map((c, i) => (
-                <div key={i} className={`${COLS} text-[13px]`}>
+                // No field on a certificate record is guaranteed unique, so the
+                // key is the identifying fields plus the position, the same
+                // shape the resolutions table below uses.
+                <div
+                    key={`${c.issuer}-${c.commonName ?? ""}-${c.firstSeen ?? ""}-${i}`}
+                    className={`${COLS} text-[13px]`}
+                >
                     <span className="truncate" title={c.commonName ?? c.issuer}>
                         {c.issuer}
                     </span>
