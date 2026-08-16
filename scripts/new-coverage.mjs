@@ -11,7 +11,7 @@
  *
  * Usage:
  *   bun run coverage                     # writes coverage/lcov.info first
- *   node scripts/new-coverage.mjs [base] # base defaults to origin/main
+ *   node scripts/new-coverage.mjs [ref]  # a branch or tag, default origin/main
  *
  * Only paths in the coverage scope count, matching sonar-project.properties:
  * `lib/`, excluding tests. app/, components/ and scripts/ are excluded there,
@@ -97,55 +97,49 @@ if (!GIT) {
 }
 
 /**
- * A revision this script is willing to hand to git.
+ * Every ref this repository has, plus HEAD, as git itself lists them.
  *
- * The base comes from argv, so it is untrusted input reaching an OS command.
- * execFileSync takes no shell, which rules out shell metacharacters, but git
- * itself will read an argument beginning with "-" as an option, so the leading
- * character is constrained too. Anything outside the ref character set is
- * refused rather than passed along and hoped for.
+ * The arguments are constant, so nothing from argv reaches this command.
  */
-function safeRevision(rev) {
-  // `~` and `^` are here because HEAD~1 and main^ are ordinary things to pass;
-  // neither can turn the argument into an option, which is what the
-  // alphanumeric-only first character rules out.
-  if (!/^[A-Za-z0-9][A-Za-z0-9._/~^-]*$/.test(rev)) {
-    console.error(`Refusing "${rev}" as a git revision.`);
-    process.exit(2);
-  }
-  return rev;
+function knownRevisions() {
+  const out = execFileSync(
+    GIT,
+    ["for-each-ref", "--format=%(refname:short)"],
+    { cwd: ROOT, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
+  );
+  return ["HEAD", ...out.split("\n").map((r) => r.trim()).filter(Boolean)];
 }
 
 /**
- * The commit id a revision names, and the only form of it this script will
- * hand to `git diff`.
+ * The commit id to diff against, chosen from the refs this repository has.
  *
- * Resolving first means the diff never receives argv text at all: it gets forty
- * hex characters that git produced and this function re-checked. The resolve
- * call is the one place the argument is read, and there it is both charset-
- * limited by safeRevision and placed after --end-of-options, so git cannot read
- * it as a flag however it is spelled.
+ * The argument is looked up in that list and never passed onward: what goes to
+ * git is the matching element of git's own output, so the text from argv is
+ * only ever compared, never executed. Validating the string and passing it
+ * along would read as equally safe and is not the same thing, which is the
+ * distinction the security rule is drawing.
+ *
+ * The cost is that only a ref works, not an arbitrary revision expression like
+ * HEAD~1. Comparing against a branch is what this tool is for, and it is worth
+ * more than the expression syntax.
  */
 function resolveCommit(rev) {
-  const safe = safeRevision(rev);
-  let out = "";
-  try {
-    out = execFileSync(
-      GIT,
-      ["rev-parse", "--verify", "--quiet", "--end-of-options", `${safe}^{commit}`],
-      { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    ).trim();
-  } catch {
-    // --verify exits non-zero for a name that resolves to nothing, which is a
-    // user error rather than a crash.
-    out = "";
+  const known = knownRevisions();
+  const match = known.find((candidate) => candidate === rev);
+  if (match === undefined) {
+    console.error(
+      `"${rev}" is not a ref in this repository.\n` +
+        "Pass a branch or tag name; if it is a remote branch, `git fetch` first.",
+    );
+    process.exit(2);
   }
+  const out = execFileSync(GIT, ["rev-parse", "--verify", `${match}^{commit}`], {
+    cwd: ROOT,
+    encoding: "utf8",
+  }).trim();
   const sha = /^[0-9a-f]{40}$/.exec(out)?.[0];
   if (!sha) {
-    console.error(
-      `"${rev}" does not name a commit here. ` +
-        "If it is a remote branch, `git fetch` first.",
-    );
+    console.error(`"${match}" does not resolve to a commit.`);
     process.exit(2);
   }
   return sha;
