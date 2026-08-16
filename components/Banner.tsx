@@ -3,16 +3,25 @@
 import Link from "next/link";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { iocFromPath } from "@/lib/ioc";
 
-// Checker owns the URL: it reflects each lookup with history.pushState (so a
-// result is shareable) and never remounts — Back/Forward are handled by a
-// popstate listener that re-syncs the view, clearing to the empty home state
-// when the path is "/". A plain <Link href="/"> can't trigger that: the route
-// segment never actually changed, so navigating "home" reconciles the same
-// Checker instance and leaves the old result on screen. So when we're not
-// already at "/", reset in place through that same popstate path: push "/" and
-// fire popstate, which clears the search box and result. Modifier/middle
-// clicks fall through to the link's normal open-in-new-tab behavior.
+// Checker owns the URL on the passive result page: it reflects each lookup with
+// history.pushState (so a result is shareable) and never remounts — Back/Forward
+// are handled by a popstate listener that re-syncs the view, clearing to the
+// empty home state when the path is "/". A plain <Link href="/"> can't trigger
+// that: "/" and "/check/<ioc>" both render <Checker> at the same spot in the
+// tree, so navigating "home" reconciles the same instance and leaves the old
+// result on screen. So on those paths we reset in place through that same
+// popstate path: push "/" and fire popstate, which clears the search box and
+// result. Modifier/middle clicks fall through to the link's normal
+// open-in-new-tab behavior.
+//
+// The interception is scoped to exactly the paths Checker is mounted on, which
+// is what `iocFromPath` answers — the same function the popstate handler uses to
+// decide what to restore. Anywhere else (the active pages under /scan, most of
+// all) nothing is listening, so preventing the default here used to push "/"
+// into the address bar and then leave the old page on screen, with no way home
+// short of a reload. Those paths get an ordinary client-side navigation.
 //
 // Declared at module scope rather than inside Banner (typescript:S7721): it
 // closes over nothing from the component, so re-creating it on every render
@@ -20,7 +29,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 function handleHomeClick(e: React.MouseEvent<HTMLAnchorElement>) {
   const plainClick =
     e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
-  if (!plainClick || window.location.pathname === "/") return;
+  if (!plainClick || iocFromPath(window.location.pathname) === null) return;
   e.preventDefault();
   window.history.pushState(null, "", "/");
   window.dispatchEvent(new PopStateEvent("popstate"));
