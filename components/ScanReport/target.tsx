@@ -114,8 +114,7 @@ function Evidence({
  */
 function asksForLine(cap: ScanCapability): string | undefined {
   if (cap.error) return undefined;
-  const crossDomain = cap.forms.filter((f) => f.crossDomain && f.host);
-  const elsewhere = crossDomain[0]?.host;
+  const elsewhere = cap.forms.find((f) => f.crossDomain && f.host)?.host;
   if (cap.passwordField && elsewhere) {
     return `a password, posted to ${elsewhere}, a different domain`;
   }

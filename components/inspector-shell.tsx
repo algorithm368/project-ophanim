@@ -66,13 +66,20 @@ export function InspectorShell({
         e.preventDefault();
         onClose();
       }}
-      // Clicking the dialog itself means clicking past the content, which is
-      // the backdrop as far as the reader is concerned.
-      onClick={(e) => {
-        if (e.target === ref.current) onClose();
-      }}
       className="fixed inset-0 z-50 m-0 h-full max-h-none w-full max-w-none flex-col items-center gap-3 bg-background/95 p-4 text-foreground backdrop-blur-sm open:flex sm:p-6"
     >
+      {/* Clicking past the content closes, and that click lands on a real
+          button rather than on the dialog element: a click handler on a
+          non-interactive element is unreachable by keyboard. Escape and the
+          close button are the keyboard paths, so this stays out of the tab
+          order. */}
+      <button
+        type="button"
+        aria-label="Close"
+        tabIndex={-1}
+        onClick={onClose}
+        className="absolute inset-0 cursor-default"
+      />
       <div className="relative flex w-full max-w-6xl items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-mono text-[13px] text-foreground" title={title}>

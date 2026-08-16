@@ -109,7 +109,7 @@ describe("waybackProvider.check", () => {
 
     const r = await waybackProvider.check("a.test", "domain", signal());
     expect(r.status).toBe("ok");
-    expect(calls.filter((u) => u.includes("/cdx/")).length).toBe(2);
+    expect(calls.filter((u) => u.includes("/cdx/"))).toHaveLength(2);
   });
 
   it("falls back to the light endpoint when the index will not answer", async () => {

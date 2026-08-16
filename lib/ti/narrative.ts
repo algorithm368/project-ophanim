@@ -846,23 +846,27 @@ function scanCapability(merged: MergedScan): string[] {
     );
   }
 
-  if (cap.downloadLinks.length > 0) {
-    const count = cap.downloadLinks.length;
-    const shown = cap.downloadLinks.slice(0, 3);
-    const files = shown
-      .map((link) => link.split("/").pop())
-      .filter((name): name is string => Boolean(name));
-    const hosts = [
-      ...new Set(shown.map((link) => hostOf(link)).filter(Boolean)),
-    ] as string[];
-    const from = hosts.length ? `, served from ${joinList(hosts)}` : "";
-    const verb = count === 1 ? "executes" : "execute";
-    sentences.push(
-      `It links to ${plural(count, "file")} that ${verb} when opened, ${joinList(files)}${from}.`,
-    );
-  }
+  const downloads = downloadSentence(cap.downloadLinks);
+  if (downloads) sentences.push(downloads);
 
   return sentences;
+}
+
+/** The files the page hands over, which is how a page that looks harmless
+ *  delivers. Named with where they are served from, since that is often not the
+ *  site being looked at. */
+function downloadSentence(links: string[]): string | undefined {
+  if (links.length === 0) return undefined;
+  const shown = links.slice(0, 3);
+  const files = shown
+    .map((link) => link.split("/").pop())
+    .filter((name): name is string => Boolean(name));
+  const hosts = [
+    ...new Set(shown.map((link) => hostOf(link)).filter(Boolean)),
+  ] as string[];
+  const from = hosts.length ? `, served from ${joinList(hosts)}` : "";
+  const verb = links.length === 1 ? "executes" : "execute";
+  return `It links to ${plural(links.length, "file")} that ${verb} when opened, ${joinList(files)}${from}.`;
 }
 
 /** 3. How new the name and the certificate are, and what the domain is filed
