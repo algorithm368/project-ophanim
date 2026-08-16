@@ -78,6 +78,42 @@ function lcovHits() {
 }
 
 /**
+ * git, as an absolute path.
+ *
+ * Resolved from a fixed list rather than left to PATH: PATH is writeable by
+ * whoever is running this, so a `git` earlier on it would be executed instead,
+ * and a script that shells out on demand is a convenient place to hide one.
+ */
+const GIT = [
+  "/usr/bin/git",
+  "/bin/git",
+  "/usr/local/bin/git",
+  "/opt/homebrew/bin/git",
+].find((candidate) => existsSync(candidate));
+
+if (!GIT) {
+  console.error("git was not found in any standard location.");
+  process.exit(2);
+}
+
+/**
+ * A revision this script is willing to hand to git.
+ *
+ * The base comes from argv, so it is untrusted input reaching an OS command.
+ * execFileSync takes no shell, which rules out shell metacharacters, but git
+ * itself will read an argument beginning with "-" as an option, so the leading
+ * character is constrained too. Anything outside the ref character set is
+ * refused rather than passed along and hoped for.
+ */
+function safeRevision(rev) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(rev)) {
+    console.error(`Refusing "${rev}" as a git revision.`);
+    process.exit(2);
+  }
+  return rev;
+}
+
+/**
  * The line numbers this change added or modified, per file.
  *
  * Read from a zero-context diff against the merge base, which is the same set
@@ -85,8 +121,8 @@ function lcovHits() {
  */
 function changedLines(base) {
   const diff = execFileSync(
-    "git",
-    ["diff", "--unified=0", "--diff-filter=d", `${base}...HEAD`],
+    GIT,
+    ["diff", "--unified=0", "--diff-filter=d", `${safeRevision(base)}...HEAD`],
     { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
   const byFile = new Map();

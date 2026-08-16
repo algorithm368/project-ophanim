@@ -50,7 +50,8 @@ function projectKey() {
 
 /** The token as an HTTP Basic credential: SonarCloud takes it as the username
  *  with an empty password. */
-const AUTH = `Basic ${Buffer.from(`${TOKEN}:`).toString("base64")}`;
+const CREDENTIAL = Buffer.from(`${TOKEN}:`).toString("base64");
+const AUTH = `Basic ${CREDENTIAL}`;
 
 /** Code-unit order, the same deterministic comparison lib/ti/sort.ts uses. A
  *  bare .sort() coerces to strings and compares by locale, which reorders the
