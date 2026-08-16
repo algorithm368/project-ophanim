@@ -864,6 +864,17 @@ export function buildScanNarrative(merged: MergedScan): string[] {
     sentences.push(`Its certificate ${age}${valid}.`);
   }
 
+  // What the site is about, stated before what is wrong with it: the mismatch
+  // between the two is the finding, and an analyst reads it in that order.
+  if (d.contentCategories?.length) {
+    const inherited = d.categoryInheritedFrom
+      ? `, inherited from ${d.categoryInheritedFrom}`
+      : "";
+    sentences.push(
+      `Cloudflare categorizes the site as ${joinList(d.contentCategories)}${inherited}.`,
+    );
+  }
+
   if (d.riskCategories?.length) {
     sentences.push(
       `Cloudflare puts the domain in ${joinList(d.riskCategories)}.`,

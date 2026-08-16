@@ -1,6 +1,8 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { ExternalLink, Maximize2 } from "lucide-react";
+import { ImageInspector } from "@/components/ImageInspector";
 import { buildScanNarrative, formatDate, midSentence } from "@/lib/ti/narrative";
 import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import { attribution, type MergedScan } from "@/lib/ti/url/active/merge";
@@ -118,6 +120,7 @@ export function TargetReport({
   const d = merged.detail;
   const cap = merged.capability;
   const narrative = buildScanNarrative(merged).join(" ");
+  const [inspecting, setInspecting] = useState<string | null>(null);
 
   // Only a urlscan screenshot is a public file. Cloudflare's is an
   // authenticated API endpoint and an <img> pointed at it renders broken.
@@ -216,15 +219,29 @@ export function TargetReport({
         </div>
         {shot?.verdict?.screenshot ? (
           <figure className="space-y-1">
-            {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
-            <img
-              src={shot.verdict.screenshot}
-              alt={`Screenshot of ${merged.target}`}
-              className="w-full rounded border border-foreground/12 object-cover object-top"
-              loading="lazy"
-            />
+            {/* The capture is evidence, and at this size it can only be
+                glanced at. Clicking opens it full screen with zoom, which is
+                where a misspelt footer or a wrong favicon is actually read. */}
+            <button
+              type="button"
+              onClick={() => setInspecting(shot.verdict?.screenshot ?? null)}
+              aria-label={`Inspect the screenshot of ${merged.target}`}
+              title="Inspect the screenshot"
+              className="group relative block w-full cursor-zoom-in overflow-hidden rounded border border-foreground/12"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
+              <img
+                src={shot.verdict.screenshot}
+                alt={`Screenshot of ${merged.target}`}
+                className="w-full object-cover object-top"
+                loading="lazy"
+              />
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100 group-focus-visible:bg-foreground/30 group-focus-visible:opacity-100">
+                <Maximize2 className="size-5" />
+              </span>
+            </button>
             <figcaption className="text-[11px] text-foreground/45">
-              screenshot · {ENGINE_NAME[shot.engine]}
+              screenshot · {ENGINE_NAME[shot.engine]} · click to inspect
             </figcaption>
           </figure>
         ) : (
@@ -280,8 +297,10 @@ export function TargetReport({
         {scans
           .filter((s) => s.status === "done" && s.detail)
           .map((s) => {
-            const lane = (s.detail as ScanDetail).verdicts.overall;
-            const risks = (s.detail as ScanDetail).riskCategories ?? [];
+            const reading = s.detail as ScanDetail;
+            const lane = reading.verdicts.overall;
+            const risks = reading.riskCategories ?? [];
+            const categories = reading.contentCategories ?? [];
             const words = lane.malicious
               ? `MALICIOUS  ${[lane.score !== undefined ? `score ${lane.score}` : undefined, ...(lane.categories ?? [])].filter(Boolean).join(" · ")}`
               : risks.length
@@ -304,6 +323,17 @@ export function TargetReport({
                 >
                   {words}
                 </span>
+                {/* What the site is filed as, next to the verdict rather than
+                    inside it: a category is not an accusation, and a login page
+                    on a domain filed as Parked is the mismatch worth seeing. */}
+                {categories.length > 0 && (
+                  <span className="text-xs text-foreground/50">
+                    filed as {categories.join(", ")}
+                    {reading.categoryInheritedFrom
+                      ? `, via ${reading.categoryInheritedFrom}`
+                      : ""}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -476,6 +506,23 @@ export function TargetReport({
             </a>
           ))}
       </div>
+
+      {inspecting && (
+        <ImageInspector
+          src={inspecting}
+          alt={`Screenshot of ${merged.target}`}
+          title={d.finalUrl ?? merged.target}
+          subtitle={[
+            shot ? `captured by ${ENGINE_NAME[shot.engine]}` : undefined,
+            d.title,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          href={shot?.resultUrl}
+          hrefLabel="Open the scanner's report"
+          onClose={() => setInspecting(null)}
+        />
+      )}
     </section>
   );
 }
