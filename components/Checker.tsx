@@ -159,10 +159,8 @@ function validateInput(value: string, mode: Mode): string | null {
     if (!parseUrl(value)) {
       return `"${value}" isn't a checkable URL. Paste an http or https link.`;
     }
-  } else {
-    if (!parseHash(value)) {
-      return `"${value}" isn't a valid file hash. Paste an MD5, SHA-1, or SHA-256 digest.`;
-    }
+  } else if (!parseHash(value)) {
+    return `"${value}" isn't a valid file hash. Paste an MD5, SHA-1, or SHA-256 digest.`;
   }
   return null;
 }

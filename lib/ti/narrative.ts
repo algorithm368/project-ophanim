@@ -9,6 +9,7 @@ import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { FLAG_THRESHOLD, MALICIOUS_FLOOR } from "./aggregate";
 import { ENGINE_NAME } from "./url/active/engines";
 import type { MergedScan } from "./url/active/merge";
+import type { ScanDetail } from "./url/active/detail";
 import type {
   CheckResult,
   CheckStats,
@@ -883,16 +884,8 @@ function scanProvenance(merged: MergedScan): string[] {
     sentences.push(`Its domain was registered ${formatAge(d.domainAgeDays)}.`);
   }
 
-  if (d.tlsAgeDays !== undefined || d.tlsIssuer) {
-    const issuer = d.tlsIssuer ? `issued by ${d.tlsIssuer}` : "issued";
-    const age =
-      d.tlsAgeDays !== undefined
-        ? `is ${plural(d.tlsAgeDays, "day")} old, ${issuer}`
-        : `was ${issuer}`;
-    const valid =
-      d.tlsValidDays !== undefined ? `, valid for ${d.tlsValidDays} days` : "";
-    sentences.push(`Its certificate ${age}${valid}.`);
-  }
+  const cert = certificateSentence(d);
+  if (cert) sentences.push(cert);
 
   // What the site is about, stated before what is wrong with it: the mismatch
   // between the two is the finding, and an analyst reads it in that order.
@@ -909,15 +902,30 @@ function scanProvenance(merged: MergedScan): string[] {
     sentences.push(`Cloudflare puts the domain in ${joinList(d.riskCategories)}.`);
   }
 
-  if (d.siblingDomains?.length) {
-    const noun =
-      d.siblingDomains.length === 1 ? "a sibling domain" : "sibling domains";
+  const siblings = d.siblingDomains ?? [];
+  if (siblings.length) {
+    const noun = siblings.length === 1 ? "a sibling domain" : "sibling domains";
     sentences.push(
-      `Its robots.txt names ${joinList(d.siblingDomains)}, ${noun} worth checking too.`,
+      `Its robots.txt names ${joinList(siblings)}, ${noun} worth checking too.`,
     );
   }
 
   return sentences;
+}
+
+/** The certificate's age, issuer and validity, in whatever parts were seen. A
+ *  certificate days old on a domain days old is the cheapest strong phishing
+ *  signal there is. */
+function certificateSentence(d: ScanDetail): string | undefined {
+  if (d.tlsAgeDays === undefined && !d.tlsIssuer) return undefined;
+  const issuer = d.tlsIssuer ? `issued by ${d.tlsIssuer}` : "issued";
+  const age =
+    d.tlsAgeDays !== undefined
+      ? `is ${plural(d.tlsAgeDays, "day")} old, ${issuer}`
+      : `was ${issuer}`;
+  const valid =
+    d.tlsValidDays !== undefined ? `, valid for ${d.tlsValidDays} days` : "";
+  return `Its certificate ${age}${valid}.`;
 }
 
 /**
