@@ -3,7 +3,8 @@ export {
   type ResearchLink,
   type ResearchSection,
 } from "./links";
-export { runResearch } from "./run";
+export { runResearch, researchMetasFor } from "./run";
+export { archiveFrameUrl } from "./sources/wayback";
 export { researchProviders } from "./registry";
 export type {
   ResearchResult,
