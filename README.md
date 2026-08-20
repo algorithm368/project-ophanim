@@ -42,7 +42,6 @@ Enabled only when an API key is set (free signup):
 | AbuseIPDB      | `ABUSEIPDB_API_KEY`                  |
 | GreyNoise      | `GREYNOISE_API_KEY`                  |
 | ThreatFox      | `THREATFOX_API_KEY`                  |
-| Criminal IP    | `CRIMINALIP_API_KEY`                 |
 
 Sources without a key are shown in the UI as "No key" and skipped - add a key in
 `.env.local` and they light up automatically.

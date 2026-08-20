@@ -2,7 +2,8 @@
 
 Backlog from an analyst-perspective review of the tool (2026-06-13). Framed for
 day-to-day triage (SOC L3) and incident/forensic work (DFIR). Constraints kept
-in mind: **free sources only** (no Censys / paid Shodan full-host), and relation
+in mind: **free sources only** (no Censys / paid Shodan full-host, and no
+Criminal IP since 2026-08-20, whose free quota is too small to lean on), and relation
 data stays a **readable detail document, not a node-edge graph**.
 
 ## Field-test note

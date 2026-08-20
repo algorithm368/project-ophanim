@@ -23,7 +23,6 @@ import { abuseIpdbSource } from "./sources/abuseipdb";
 import { pdnsSource } from "./sources/pdns";
 import { greyNoiseSource } from "./sources/greynoise";
 import { threatFoxSource } from "./sources/threatfox";
-import { criminalIpSource } from "./sources/criminalip";
 
 /** All registered TI sources, in display order. */
 export const sources: TiSource[] = [
@@ -51,5 +50,4 @@ export const sources: TiSource[] = [
   pdnsSource,
   greyNoiseSource,
   threatFoxSource,
-  criminalIpSource,
 ];
