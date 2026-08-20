@@ -20,9 +20,10 @@ import {
     buildHashNarrative,
     buildNarrative,
     consensusBuckets,
-    scoreExplanation,
     type ResultLike,
 } from "@/lib/ti/narrative";
+import { scoreRationale } from "@/lib/ti/rationale";
+import { threatTypeOf } from "@/lib/ti/threat-type";
 import { scoreConfidence } from "@/lib/ti/confidence";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -122,6 +123,13 @@ function VerdictShell({
     narrative: string;
 }>) {
     const style = VERDICT_STYLE[result.verdict];
+    // What kind of threat, as opposed to how bad. A C2, a spam bot, a Tor exit
+    // and a research scanner all read "malicious 75", and the analyst does
+    // something different with each one.
+    const threat = threatTypeOf(result.sources, {
+        verdict: result.verdict,
+        benignOverride: result.scoreBreakdown?.benignOverride,
+    });
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -131,13 +139,27 @@ function VerdictShell({
                     monochrome band over a monochrome meter. */}
                 <div className="space-y-2.5">
                     <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-                        <span
-                            className={cn(
-                                "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
-                                style.text,
+                        <span className="flex flex-wrap items-baseline gap-x-2">
+                            <span
+                                className={cn(
+                                    "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
+                                    style.text,
+                                )}
+                            >
+                                {style.headline}
+                            </span>
+                            {threat && (
+                                <span
+                                    title={`Reported by ${threat.sources.join(", ")}${
+                                        threat.also.length
+                                            ? `. Also described as ${threat.also.join(", ")}.`
+                                            : ""
+                                    }`}
+                                    className="font-mono text-base font-bold uppercase leading-none tracking-tight text-muted-foreground"
+                                >
+                                    · {threat.type}
+                                </span>
                             )}
-                        >
-                            {style.headline}
                         </span>
                         <span className="font-mono font-bold uppercase leading-none text-foreground">
                             <span className="text-2xl sm:text-3xl">
@@ -212,11 +234,11 @@ function VerdictShell({
  */
 function ScoreRationale({ result }: Readonly<{ result: ResultLike }>) {
     const [open, setOpen] = useState(false);
-    const lines = scoreExplanation(result);
-    if (lines.length === 0) return null;
+    const rationale = scoreRationale(result);
+    if (!rationale) return null;
 
     return (
-        <div className="space-y-1.5">
+        <div className="space-y-2">
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
@@ -226,11 +248,38 @@ function ScoreRationale({ result }: Readonly<{ result: ResultLike }>) {
                 {open ? "hide rationale" : "why this score"}
             </button>
             {open && (
-                <ul className="space-y-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                    {lines.map((line) => (
-                        <li key={line}>{line}</li>
-                    ))}
-                </ul>
+                <div className="space-y-2">
+                    {/* Numbers only. The two rows that answer the question sit
+                        next to each other: what the loudest source said, and
+                        what everything else averaged to. */}
+                    <dl className="font-mono text-[11px] text-muted-foreground">
+                        {rationale.terms.map((term, i) => (
+                            <div
+                                key={`${term.label}-${i}`}
+                                className={cn(
+                                    "flex items-baseline gap-x-3 py-0.5",
+                                    term.derived &&
+                                        "border-t border-foreground/12 text-foreground",
+                                )}
+                            >
+                                <dt className="w-24 shrink-0 uppercase tracking-wider">
+                                    {term.label}
+                                </dt>
+                                <dd className="w-14 shrink-0 text-right font-bold tabular-nums text-foreground">
+                                    {term.value}
+                                </dd>
+                                <dd className="min-w-0 flex-1 truncate text-muted-foreground">
+                                    {term.note}
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                    {rationale.note && (
+                        <p className="text-[13px] leading-relaxed text-muted-foreground">
+                            {rationale.note}
+                        </p>
+                    )}
+                </div>
             )}
         </div>
     );

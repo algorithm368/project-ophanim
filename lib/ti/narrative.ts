@@ -7,7 +7,8 @@
  */
 import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { count } from "@/lib/text";
-import { FLAG_THRESHOLD, MALICIOUS_FLOOR } from "./aggregate";
+import { FLAG_THRESHOLD } from "./aggregate";
+import { isUsageCategory } from "./threat-type";
 import { ENGINE_NAME } from "./url/active/engines";
 import type { MergedScan } from "./url/active/merge";
 import type { ScanDetail } from "./url/active/detail";
@@ -353,6 +354,11 @@ function isMeaningfulCategory(name: string): boolean {
   if (/^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(n)) return false;
   if (PLATFORM_NOISE.has(n)) return false;
   if (FORMAT_NOISE.has(n)) return false;
+  // AbuseIPDB reports what an address is used for alongside what it did, and
+  // both arrive as categories. Left in, the clause reads "flagged it for Fixed
+  // Line ISP, web app attack", which puts a connection type in a list of
+  // accusations.
+  if (isUsageCategory(n)) return false;
   return true;
 }
 
@@ -706,66 +712,6 @@ export function buildHashNarrative(result: HashCheckResult): string[] {
   }
 
   return [...sentences, ...threatSentences(result, "file")];
-}
-
-/**
- * Plain-language account of how the aggregate score was reached. Reads the
- * intermediates aggregateRisk() recorded in `result.scoreBreakdown` rather than
- * re-deriving them, so the explanation can never drift from the score.
- */
-export function scoreExplanation(result: ResultLike): string[] {
-  const bd = result.scoreBreakdown;
-
-  // A forced-benign override (e.g. EICAR) supersedes the blend entirely.
-  if (bd?.benignOverride === "eicar-test-file") {
-    return [
-      "Forced clean, this is the EICAR standard anti-malware test file, a benign artifact used to verify scanners. Vendor detections are expected and do not make it harmful.",
-    ];
-  }
-
-  const scored = result.sources.filter(
-    (s) =>
-      s.status === "ok" &&
-      typeof s.score === "number" &&
-      (s.source.weight ?? 1) > 0,
-  );
-  if (scored.length === 0) return [];
-
-  const dominant = bd?.dominantSourceId
-    ? result.sources.find((s) => s.source.id === bd.dominantSourceId)
-    : undefined;
-  const dominantName = dominant?.source.name ?? "the strongest source";
-  const dominantScore = dominant?.score ?? 0;
-
-  const out = [
-    `The ${result.riskScore}/100 is weighted most heavily toward ${dominantName} (which rated it ${dominantScore}), blended with the weighted average across ${scored.length} scoring source${scored.length === 1 ? "" : "s"}. More authoritative feeds count for more, so the dominant source isn't always the highest raw score.`,
-  ];
-
-  if (bd?.floorApplied && bd.floorValue) {
-    const by = bd.flooredBy
-      ? result.sources.find((s) => s.source.id === bd.flooredBy)?.source.name
-      : undefined;
-    const byText = by ? ` by ${by}` : "";
-    out.push(
-      bd.floorValue >= MALICIOUS_FLOOR
-        ? `It has a definitive malicious listing${byText}, which holds the score at ${bd.floorValue} or above.`
-        : `Two or more agreeing listings${byText} raised the score to a floor of ${bd.floorValue}.`,
-    );
-  }
-
-  if (bd?.allowlistSuppressed) {
-    out.push(
-      "An allowlist source vouches for this indicator, so a weak listing did not raise the floor.",
-    );
-  }
-
-  if (bd?.borderline) {
-    out.push(
-      "This score sits within five points of a verdict boundary, so treat the label as borderline.",
-    );
-  }
-
-  return out;
 }
 
 /**
