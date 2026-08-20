@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import type { IOCType } from "@/lib/ioc";
 import { runResearch, researchMetasFor } from "@/lib/ti/research/run";
+import { requireSession } from "@/lib/require-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ const STREAM_HEADERS = {
  * provider skeleton that fills in progressively); otherwise it returns one JSON
  * blob once every provider has resolved.
  */
-export async function GET(request: NextRequest) {
+async function runResearchRoute(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const indicator = params.get("indicator")?.trim();
   const kind = params.get("kind");
@@ -69,4 +70,10 @@ export async function GET(request: NextRequest) {
   });
 
   return new Response(stream, { headers: STREAM_HEADERS });
+}
+
+// The second lock. proxy.ts already refuses anonymous callers; this is what
+// still refuses if the proxy's matcher is ever edited out from under us.
+export async function GET(request: NextRequest) {
+  return (await requireSession()) ?? runResearchRoute(request);
 }

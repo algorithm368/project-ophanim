@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { sources } from "@/lib/ti/registry";
 import { domainSources } from "@/lib/ti/domain/registry";
 import { hashSources } from "@/lib/ti/hash/registry";
+import { requireSession } from "@/lib/require-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ const REGISTRIES = {
 type RegistryType = keyof typeof REGISTRIES;
 
 /** Lists registered sources and whether each is currently enabled (key present). */
-export async function GET(request: NextRequest) {
+async function listSources(request: NextRequest) {
   const param = request.nextUrl.searchParams.get("type");
   const type: RegistryType =
     param === "domain" || param === "hash" ? param : "ip";
@@ -26,4 +27,10 @@ export async function GET(request: NextRequest) {
       enabled: s.isEnabled(),
     })),
   });
+}
+
+// The second lock. proxy.ts already refuses anonymous callers; this is what
+// still refuses if the proxy's matcher is ever edited out from under us.
+export async function GET(request: NextRequest) {
+  return (await requireSession()) ?? listSources(request);
 }

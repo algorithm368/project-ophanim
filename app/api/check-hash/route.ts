@@ -7,6 +7,7 @@ import {
   setCachedHashResult,
 } from "@/lib/ti/cache";
 import { makeIndicatorRoute, type Validated } from "@/lib/ti/route-handler";
+import { requireSession } from "@/lib/require-session";
 import type { HashCheckResult } from "@/lib/ti/types";
 
 export const runtime = "nodejs";
@@ -36,10 +37,7 @@ function validateHash(raw: string | null): Validated<ParsedHashInput> {
   return { value: { hash: parsed.hash, algorithm: parsed.algorithm } };
 }
 
-export const { GET, POST } = makeIndicatorRoute<
-  ParsedHashInput,
-  HashCheckResult
->({
+const route = makeIndicatorRoute<ParsedHashInput, HashCheckResult>({
   paramName: "hash",
   label: "hash",
   sources: hashSources,
@@ -49,3 +47,13 @@ export const { GET, POST } = makeIndicatorRoute<
   run: ({ hash, algorithm }, onSettled) =>
     checkHash(hash, algorithm, onSettled),
 });
+
+// The second lock. proxy.ts already refuses anonymous callers; this is what
+// still refuses if the proxy's matcher is ever edited out from under us.
+export async function GET(...args: Parameters<typeof route.GET>) {
+  return (await requireSession()) ?? route.GET(...args);
+}
+
+export async function POST(...args: Parameters<typeof route.POST>) {
+  return (await requireSession()) ?? route.POST(...args);
+}

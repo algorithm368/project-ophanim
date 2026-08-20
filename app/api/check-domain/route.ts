@@ -6,6 +6,7 @@ import {
   setCachedDomainResult,
 } from "@/lib/ti/cache";
 import { makeIndicatorRoute, type Validated } from "@/lib/ti/route-handler";
+import { requireSession } from "@/lib/require-session";
 import type { DomainCheckResult } from "@/lib/ti/types";
 
 export const runtime = "nodejs";
@@ -41,7 +42,7 @@ function validateDomain(raw: string | null): Validated<string> {
   return { value: parsed.domain };
 }
 
-export const { GET, POST } = makeIndicatorRoute<string, DomainCheckResult>({
+const route = makeIndicatorRoute<string, DomainCheckResult>({
   paramName: "domain",
   label: "domain",
   sources: domainSources,
@@ -50,3 +51,13 @@ export const { GET, POST } = makeIndicatorRoute<string, DomainCheckResult>({
   setCached: (domain, result) => setCachedDomainResult(domain, result),
   run: (domain, onSettled) => checkDomain(domain, onSettled),
 });
+
+// The second lock. proxy.ts already refuses anonymous callers; this is what
+// still refuses if the proxy's matcher is ever edited out from under us.
+export async function GET(...args: Parameters<typeof route.GET>) {
+  return (await requireSession()) ?? route.GET(...args);
+}
+
+export async function POST(...args: Parameters<typeof route.POST>) {
+  return (await requireSession()) ?? route.POST(...args);
+}
