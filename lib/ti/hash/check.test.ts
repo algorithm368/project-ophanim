@@ -51,6 +51,12 @@ describe("hash registry algorithm limits", () => {
 
   it("leaves every other source answering all three", () => {
     const limited = hashSources.filter((s) => s.meta.algorithms);
-    expect(limited.map((s) => s.meta.id).sort()).toEqual(["cymru-mhr", "threatfox"]);
+    // YARAify also takes SHA3-384, which is not an algorithm this app accepts
+    // as an indicator, so its list is the three it shares with us.
+    expect(limited.map((s) => s.meta.id).sort()).toEqual([
+      "cymru-mhr",
+      "threatfox",
+      "yaraify",
+    ]);
   });
 });

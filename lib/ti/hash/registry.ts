@@ -12,6 +12,7 @@ import { pulsediveSource } from "./sources/pulsedive";
 import { kasperskyOpenTipSource } from "./sources/kaspersky-opentip";
 import { maltiverseSource } from "./sources/maltiverse";
 import { triageSource } from "./sources/triage";
+import { yaraifySource } from "./sources/yaraify";
 
 /**
  * All registered file-hash TI sources, in display order: authoritative
@@ -31,4 +32,5 @@ export const hashSources: TiSource[] = [
   hybridAnalysisSource,
   cymruMhrSource,
   hashlookupSource,
+  yaraifySource,
 ];

@@ -126,6 +126,21 @@ describe("threatTypeOf", () => {
     expect(t?.sources).toContain("greynoise");
   });
 
+  it("hears an identification source that carries no weight at all", () => {
+    // scanner-id is context-only by design, so it is weight 0. Gating on weight
+    // before checking the identifier list silenced the one source that exists
+    // to answer what an address is.
+    const t = threatTypeOf(
+      [
+        src({ id: "abuseipdb", categories: ["Brute-Force"], score: 100, malicious: true }),
+        src({ id: "scanner-id", categories: ["internet-scanner"], score: 0, weight: 0 }),
+      ],
+      { verdict: "malicious" },
+    );
+    expect(t?.type).toBe("scanner");
+    expect(t?.sources).toContain("scanner-id");
+  });
+
   it("takes an identification from a source that reported no risk", () => {
     // GreyNoise scores a benign scanner 0, so requiring a flag would discard
     // the only source that knows what the address is.

@@ -155,12 +155,17 @@ export interface ThreatTypeVerdict {
  * Shodan census host, gets typed "brute force" off the back of abuse reports
  * filed by people who were scanned.
  */
-const IDENTIFIERS = new Set(["greynoise", "tor-project"]);
+const IDENTIFIERS = new Set(["greynoise", "scanner-id", "tor-project"]);
 
 function contributes(s: SourceResult): boolean {
-  if (s.status !== "ok" || (s.source.weight ?? 1) === 0) return false;
-  if (s.malicious === true || (s.score ?? 0) >= FLAG_THRESHOLD) return true;
-  return IDENTIFIERS.has(s.source.id);
+  if (s.status !== "ok") return false;
+  // The weight gate must come after this. An identification source is
+  // context-only by design, so scanner-id carries weight 0, and checking the
+  // weight first silently excluded the source that exists to answer this
+  // question.
+  if (IDENTIFIERS.has(s.source.id)) return true;
+  if ((s.source.weight ?? 1) === 0) return false;
+  return s.malicious === true || (s.score ?? 0) >= FLAG_THRESHOLD;
 }
 
 /**

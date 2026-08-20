@@ -18,6 +18,8 @@ Works out of the box, **no API key required**:
 | freeipapi.com      | Third geolocation/ASN opinion (reconciled)      |
 | RDAP (RIR)         | Authoritative allocation country + network name |
 | Reverse DNS (FCrDNS)| PTR + forward-confirmed reverse DNS             |
+| Research scanner ID| Names Shodan/Censys/Shadowserver/… from their own PTR |
+| Cloud provider ranges| AWS/GCP/Cloudflare published prefixes, with region + service |
 | RIPEstat           | Announced BGP prefix + origin ASN (RIPE NCC)    |
 | PeeringDB          | Network class (ISP/Content/Hosting/…), traffic level |
 | Shodan InternetDB  | Open ports, known CVEs, host tags               |
@@ -27,6 +29,7 @@ Works out of the box, **no API key required**:
 | Feodo Tracker      | Known botnet C2 IPs (abuse.ch)                  |
 | ET Open            | Known compromised hosts (Emerging Threats)      |
 | Tor Project        | Tor relay / exit node membership                |
+| DShield (SANS ISC) | Which public feeds have seen the IP, and the date range for each |
 
 Geolocation is **reconciled across multiple providers**: matching values raise a
 per-field confidence (country, city, ASN, coordinates), disagreements are
@@ -58,6 +61,7 @@ Works out of the box, **no API key required**:
 | SURBL         | Domain reputation block list                      |
 | Quad9         | Security-DNS blocking (vs. a control resolver)     |
 | OpenPhish     | Community phishing feed (active phishing hosts)    |
+| Tranco        | Research-grade popularity rank, a benign signal for well-known domains |
 
 Enabled only when an API key is set:
 
@@ -94,9 +98,10 @@ Enabled only when an API key is set:
 | ThreatFox      | `THREATFOX_API_KEY`                  | IOC intel, malware family (abuse.ch)   |
 | URLhaus        | `THREATFOX_API_KEY`                  | Hashes seen as malware payloads        |
 | Hybrid Analysis| `HYBRID_ANALYSIS_API_KEY`            | Sandbox detonation verdict             |
+| YARAify        | `THREATFOX_API_KEY`                  | Which YARA rules match, and who wrote them |
 
 > A single abuse.ch Auth-Key (`THREATFOX_API_KEY`) enables ThreatFox,
-> MalwareBazaar, and URLhaus across all modes.
+> MalwareBazaar, URLhaus, and YARAify across all modes.
 
 ## Live research
 

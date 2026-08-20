@@ -23,6 +23,9 @@ import { abuseIpdbSource } from "./sources/abuseipdb";
 import { pdnsSource } from "./sources/pdns";
 import { greyNoiseSource } from "./sources/greynoise";
 import { threatFoxSource } from "./sources/threatfox";
+import { dshieldSource } from "./sources/dshield";
+import { scannerIdSource } from "./sources/scanner-id";
+import { cloudRangeSource } from "./sources/cloud-range";
 
 /** All registered TI sources, in display order. */
 export const sources: TiSource[] = [
@@ -34,6 +37,8 @@ export const sources: TiSource[] = [
   freeIpApiSource,
   reverseDnsSource,
   reverseIpSource,
+  scannerIdSource,
+  cloudRangeSource,
   ripeStatSource,
   peeringDbSource,
   shodanInternetDbSource,
@@ -50,4 +55,5 @@ export const sources: TiSource[] = [
   pdnsSource,
   greyNoiseSource,
   threatFoxSource,
+  dshieldSource,
 ];

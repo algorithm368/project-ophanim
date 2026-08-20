@@ -11,6 +11,7 @@ import { safeBrowsingSource } from "./sources/safebrowsing";
 import { virusTotalDomainSource } from "./sources/virustotal";
 import { pdnsDomainSource } from "./sources/pdns";
 import { threatFoxDomainSource } from "./sources/threatfox";
+import { trancoSource } from "./sources/tranco";
 
 /** All registered domain TI sources, in display order. */
 export const domainSources: TiSource[] = [
@@ -26,4 +27,5 @@ export const domainSources: TiSource[] = [
   virusTotalDomainSource,
   pdnsDomainSource,
   threatFoxDomainSource,
+  trancoSource,
 ];
