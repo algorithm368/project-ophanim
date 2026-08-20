@@ -115,13 +115,27 @@ All three work without any key.
 ## Getting started
 
 ```bash
-cp .env.example .env.local   # optional: add any API keys you have
+cp .env.example .env.local   # fill in the Auth.js block; API keys are optional
 bun install
 bun run dev
 ```
 
 Open http://localhost:3000. Each checked indicator also has a shareable
 permalink at `/check/<indicator>`.
+
+### Sign-in
+
+The app is behind a Google sign-in restricted to one Google Workspace domain,
+so the four `AUTH_*` / `ALLOWED_GOOGLE_HD` values in `.env.example` are the one
+part that is not optional. Generate `AUTH_SECRET` with `openssl rand -base64 33`,
+create an OAuth client in Google Cloud Console (**APIs & Services > Credentials
+> OAuth client ID > Web application**, redirect URI
+`http://localhost:3000/api/auth/callback/google`) for `AUTH_GOOGLE_ID` and
+`AUTH_GOOGLE_SECRET`, and set `ALLOWED_GOOGLE_HD` to your domain.
+
+Sign-in is matched against Google's `hd` claim, which only Workspace accounts
+carry, so personal Gmail accounts are refused. With `ALLOWED_GOOGLE_HD` unset,
+everyone is refused rather than everyone admitted.
 
 ## API
 
