@@ -20,10 +20,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: "/auth-error",
   },
   callbacks: {
-    // The gate. Returning false sends the visitor to `pages.error`, which is
-    // the page that explains the refusal in words.
+    // Who may sign in at all. Returning false sends the visitor to
+    // `pages.error`, which is the page that explains the refusal in words.
     signIn({ profile }) {
       return isAllowedProfile(profile, process.env.ALLOWED_GOOGLE_HD);
+    },
+
+    // What the proxy enforces on every request. This callback is what makes
+    // proxy.ts a gate: Auth.js defaults `authorized` to true, so exporting
+    // `auth` as the proxy without this would read the session, authorize
+    // everyone, and protect nothing.
+    authorized({ request, auth: session }) {
+      if (session?.user) return true;
+
+      // A caller of /api wants a status it can branch on, not a login page in
+      // its JSON parser. Everything else gets the redirect, which carries a
+      // callbackUrl back to where the visitor was headed.
+      if (request.nextUrl.pathname.startsWith("/api/")) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      return false;
     },
   },
 });
