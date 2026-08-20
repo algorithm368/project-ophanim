@@ -137,6 +137,12 @@ Sign-in is matched against Google's `hd` claim, which only Workspace accounts
 carry, so personal Gmail accounts are refused. With `ALLOWED_GOOGLE_HD` unset,
 everyone is refused rather than everyone admitted.
 
+If you reach the app through a tunnel or reverse proxy (ngrok, for example)
+rather than on `localhost` or Vercel, also set `AUTH_TRUST_HOST=true`, and add
+that host's `/api/auth/callback/google` to the OAuth client. Without it Auth.js
+rejects the request as an untrusted host, and since that failure is a failure to
+read the session, every page redirects to sign-in and sign-in never completes.
+
 ## API
 
 - `GET  /api/check?ip=8.8.8.8` - normalized result for an IP
