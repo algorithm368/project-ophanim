@@ -39,13 +39,11 @@ export const cymruMhrSource: TiSource = {
     category: "reputation",
     requiresKey: false,
     weight: 0.7,
+    // MHR is keyed on MD5 and SHA-1 only.
+    algorithms: ["md5", "sha1"],
   },
   isEnabled: () => true,
   async check(hash): Promise<SourceFinding> {
-    if (hash.length !== 32 && hash.length !== 40) {
-      return { status: "ok", summary: "MHR supports MD5/SHA-1 only" };
-    }
-
     // node:dns has no AbortSignal support; bound the lookup with its own timeout.
     const resolver = new Resolver({ timeout: 4000, tries: 1 });
     try {

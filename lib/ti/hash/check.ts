@@ -1,5 +1,5 @@
-import type { HashCheckResult, SourceResult } from "../types";
-import type { HashAlgorithm } from "@/lib/hash";
+import type { HashCheckResult, SourceResult, TiSource } from "../types";
+import { HASH_ALGO_LABEL, type HashAlgorithm } from "@/lib/hash";
 import { hashSources } from "./registry";
 import { runAll } from "../orchestrate";
 import { assembleHashResult } from "../assemble";
@@ -37,12 +37,51 @@ async function enrichFamily(result: HashCheckResult): Promise<HashCheckResult> {
   };
 }
 
+/** Whether a source can answer for this hash algorithm. Unset means all three. */
+export function supportsAlgorithm(
+  source: TiSource,
+  algorithm: HashAlgorithm,
+): boolean {
+  return (source.meta.algorithms ?? ["md5", "sha1", "sha256"]).includes(
+    algorithm,
+  );
+}
+
 export async function checkHash(
   hash: string,
   algorithm: HashAlgorithm,
   onSettled?: (result: SourceResult) => void,
 ): Promise<HashCheckResult> {
-  const results = await runAll(hashSources, hash, onSettled);
+  const supported: TiSource[] = [];
+  const unsupported: TiSource[] = [];
+  for (const source of hashSources) {
+    (supportsAlgorithm(source, algorithm) ? supported : unsupported).push(source);
+  }
+
+  // Same treatment checkIp() gives an IP family it cannot answer for: reported
+  // as skipped with `enabled: true`, so it reads as "does not take this
+  // question" rather than as a failure, and costs no request. ThreatFox used to
+  // round-trip a 4xx to discover we should not have asked.
+  const skipped: SourceResult[] = unsupported.map((source) => ({
+    source: source.meta,
+    enabled: true,
+    status: "skipped",
+    summary: `Does not support ${HASH_ALGO_LABEL[algorithm]}`,
+    durationMs: 0,
+  }));
+  for (const result of skipped) onSettled?.(result);
+
+  const ran = await runAll(supported, hash, onSettled);
+
+  // Restore registry order so display order does not depend on which sources
+  // happened to be skipped.
+  const byId = new Map(
+    [...ran, ...skipped].map((result) => [result.source.id, result]),
+  );
+  const results = hashSources
+    .map((source) => byId.get(source.meta.id))
+    .filter((result): result is SourceResult => result !== undefined);
+
   const result = assembleHashResult(
     hash,
     algorithm,

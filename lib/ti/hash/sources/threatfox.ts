@@ -31,6 +31,8 @@ export const threatFoxHashSource: TiSource = {
     category: "reputation",
     requiresKey: true,
     weight: 0.95,
+    // The API takes MD5 and SHA-256 only; a SHA-1 came back as a 4xx error.
+    algorithms: ["md5", "sha256"],
     keyEnv: "THREATFOX_API_KEY",
     // abuse.ch is EU-hosted; give it headroom for the sin1 round trip.
     timeoutMs: 15000,
