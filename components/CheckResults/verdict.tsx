@@ -21,9 +21,11 @@ import {
     consensusBuckets,
     type ResultLike,
 } from "@/lib/ti/narrative";
+import { scoreConfidence } from "@/lib/ti/confidence";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CONF_ICON } from "./confidence";
 import { CopyableSummary } from "./primitives";
 import type { IconType } from "./types";
 
@@ -238,10 +240,29 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
     ];
     const segments = buckets.filter((b) => b.count > 0);
 
+    // How much the score is worth believing, as distinct from how bad it is.
+    // It leads this row because the detector tally below it is the evidence the
+    // level is drawn from, so the two belong on one line.
+    const confidence = scoreConfidence(result);
+    const ConfIcon = confidence ? CONF_ICON[confidence.level] : undefined;
+
     // A plain monochrome breakdown reads more clearly than a tiny color bar and
     // keeps color reserved for the verdict word.
     return (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-muted-foreground">
+            {confidence && ConfIcon && (
+                <span
+                    title={confidence.reason}
+                    className="inline-flex items-center gap-1 font-medium tracking-wider uppercase"
+                >
+                    <ConfIcon
+                        className="size-3 shrink-0 text-foreground/50"
+                        aria-hidden
+                    />
+                    <span className="text-foreground">{confidence.level}</span>
+                    {" confidence ·"}
+                </span>
+            )}
             <span className="font-medium tracking-wider uppercase">
                 <span className="text-foreground">{c.responded}</span>/{c.total}{" "}
                 detectors

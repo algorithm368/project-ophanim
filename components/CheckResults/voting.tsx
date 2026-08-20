@@ -1,50 +1,15 @@
 "use client";
 
 import { Fragment } from "react";
-import {
-    Asterisk,
-    Check,
-    Circle,
-    SignalHigh,
-    SignalLow,
-    SignalMedium,
-    Star,
-} from "lucide-react";
-import type { Confidence, GeoResolution } from "@/lib/ti/types";
+import { Asterisk, Check, Circle, Star } from "lucide-react";
+import type { GeoResolution } from "@/lib/ti/types";
 import {
     buildVoteTable,
     providerLabel,
     type VoteCell,
     type VoteColumn,
 } from "@/lib/ti/geo/votes";
-import { geoConfidenceReason } from "./confidence";
-import type { IconType } from "./types";
-
-/** Fixed three-letter codes so the confidence levels are equal width in mono. */
-const CONF_ABBR: Record<Confidence, string> = {
-    high: "HIG",
-    medium: "MED",
-    low: "LOW",
-};
-
-/** Plain signal-strength icon, bars reflecting the level. */
-const CONF_ICON: Record<Confidence, IconType> = {
-    high: SignalHigh,
-    medium: SignalMedium,
-    low: SignalLow,
-};
-
-/** Confidence as a plain icon plus a fixed three-letter code, all grey mono so
- *  the levels line up wherever they appear. */
-function ConfidenceLevel({ confidence }: Readonly<{ confidence: Confidence }>) {
-    const Icon = CONF_ICON[confidence];
-    return (
-        <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-            <Icon className="size-3 shrink-0 text-foreground/50" aria-hidden />
-            {CONF_ABBR[confidence]}
-        </span>
-    );
-}
+import { ConfidenceLevel, geoConfidenceReason } from "./confidence";
 
 /** Compact resolved-value reference: the field label, the consensus value, and
  *  that field's confidence. Renders three grid cells so the columns line up

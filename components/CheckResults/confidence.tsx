@@ -1,8 +1,38 @@
 "use client";
 
 import { useState } from "react";
+import { SignalHigh, SignalLow, SignalMedium } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Confidence, GeoResolution, ResolvedField } from "@/lib/ti/types";
+import type { IconType } from "./types";
+
+/** Fixed three-letter codes so the confidence levels are equal width in mono. */
+export const CONF_ABBR: Record<Confidence, string> = {
+  high: "HIG",
+  medium: "MED",
+  low: "LOW",
+};
+
+/** Plain signal-strength icon, bars reflecting the level. */
+export const CONF_ICON: Record<Confidence, IconType> = {
+  high: SignalHigh,
+  medium: SignalMedium,
+  low: SignalLow,
+};
+
+/** Confidence as a plain icon plus a fixed three-letter code, all grey mono so
+ *  the levels line up wherever they appear. */
+export function ConfidenceLevel({
+  confidence,
+}: Readonly<{ confidence: Confidence }>) {
+  const Icon = CONF_ICON[confidence];
+  return (
+    <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+      <Icon className="size-3 shrink-0 text-foreground/50" aria-hidden />
+      {CONF_ABBR[confidence]}
+    </span>
+  );
+}
 
 const TONE: Record<Confidence, string> = {
   high: "border-emerald-600/40 text-emerald-700 dark:text-emerald-400",
