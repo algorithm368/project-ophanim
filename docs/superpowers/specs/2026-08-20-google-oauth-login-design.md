@@ -57,7 +57,7 @@ string. The `signIn` callback in `auth.ts` rejects sign-in unless
 The check is extracted into a pure function, `lib/auth-domain.ts`:
 
 ```ts
-export function isAllowedProfile(profile: { hd?: string }, allowedHd: string): boolean
+export function isAllowedProfile(profile: unknown, allowedHd: string | undefined): boolean
 ```
 
 so it is unit-testable per the project's "no network in tests" convention;
@@ -66,14 +66,23 @@ tested.
 
 ### Route protection
 
-`middleware.ts` re-exports Auth.js's `auth` as the middleware function, with
-a matcher that excludes `/api/auth/*` (the Auth.js routes themselves),
-`/sign-in` and `/auth-error` (or the middleware would redirect the sign-in
-page to itself), `/_next/*`, and static assets. Everything else — every other
-page and every `/api/*` route — requires a session. This is a deliberate
-change from the project's current stance (a passive tool anyone can query);
-it is accepted here because the whole point of this feature is to close that
-off.
+**Next 16 renamed `middleware.ts` to `proxy.ts`** (the old name is deprecated;
+`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/middleware.md`).
+So the file is `proxy.ts` at the repo root, exporting Auth.js's `auth` as the
+default export, with a `config.matcher` that excludes `/api/auth/*` (the
+Auth.js routes themselves), `/sign-in` and `/auth-error` (or the proxy would
+redirect the sign-in page to itself), `/_next/*`, and static assets.
+Everything else — every other page and every `/api/*` route — requires a
+session. This is a deliberate change from the project's current stance (a
+passive tool anyone can query); it is accepted here because the whole point
+of this feature is to close that off.
+
+Next's own guidance is that proxy checks are *optimistic* and should not be
+the only authorization layer. Reading a signed JWT session cookie is a
+cryptographic check rather than a guess, so it is sound here, but the API
+routes are the ones that actually do work and cost quota, so they get a
+second `auth()` check server-side. That check is a shared helper rather than
+repeated per route.
 
 ### Pages
 
@@ -113,8 +122,10 @@ New variables, documented in `CLAUDE.md`/README, not committed:
 ## Testing
 
 - `lib/auth-domain.test.ts` covers `isAllowedProfile`: matching domain,
-  mismatched domain, missing `hd` claim (personal Gmail accounts have none).
-- `auth.ts`, `middleware.ts`, and the sign-in/error pages are not
+  mismatched domain, missing `hd` claim (personal Gmail accounts have none),
+  and an unset/empty `ALLOWED_GOOGLE_HD` (which must deny rather than allow
+  everyone — a misconfiguration should fail closed).
+- `auth.ts`, `proxy.ts`, and the sign-in/error pages are not
   network-testable under Vitest's no-network convention; verified manually via
   `bun run dev` with a real Google OAuth app (one in-domain account, one
   out-of-domain account).
