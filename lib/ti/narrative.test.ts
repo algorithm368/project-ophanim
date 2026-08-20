@@ -126,7 +126,12 @@ describe("threatSentences — category attribution (issue #2)", () => {
     };
 
     const text = threatSentences(result, "address").join(" ");
-    expect(text).toContain("1 of 2 TI sources flagged it for c2, malware.");
+    // Censys at 10 is adverse but under the threshold, so it is reported as
+    // such rather than counted as clean, and its labels still stay out of the
+    // "flagged for …" reason.
+    expect(text).toContain(
+      "1 of 2 TI sources flagged it for c2, malware, and 1 more source reports adverse data below the flagging threshold.",
+    );
     // The quiet source's labels must NOT appear in the "flagged for …" reason.
     expect(text).not.toContain("cdn");
     expect(text).not.toContain("hosting");
@@ -500,7 +505,7 @@ describe("threatSentences — denominator excludes context sources (issue #5)", 
     };
     // ip-api must not be counted, so it's "1" responding TI source, not 2.
     expect(threatSentences(result, "address").join(" ")).toContain(
-      "None of the 1 TI sources flagged this address.",
+      "None of the 1 TI sources flagged this address, though 1 source reports adverse data below the flagging threshold.",
     );
   });
 });
@@ -642,6 +647,101 @@ describe("consensusBuckets — separates key-gated skips from unsupported ones",
     expect(b.unsupported).toBe(1);
     // Reporting "2 no key" here would tell an analyst to go find an API key
     // for a source that simply cannot answer for this address family.
+  });
+});
+
+describe("threatSentences — adverse data under the flag threshold is reported", () => {
+  const loud = makeSource({ name: "AbuseIPDB", score: 100 });
+  const quiet = makeSource({ name: "DNSBL", score: 38 });
+  const quieter = makeSource({ name: "IPsum", score: 10 });
+  const silent = makeSource({ name: "Feodo", score: 0 });
+  const base = {
+    riskScore: 75,
+    verdict: "malicious" as const,
+    checkedAt: "2026-08-21T00:00:00Z",
+    stats: makeStats(),
+  };
+
+  it("counts the sources that fell short as well as the ones that flagged", () => {
+    const text = threatSentences(
+      { ...base, sources: [loud, quiet, quieter, silent] },
+      "address",
+    ).join(" ");
+    expect(text).toContain(
+      "and 2 more sources report adverse data below the flagging threshold",
+    );
+  });
+
+  it("concedes rather than adds when nothing flagged at all", () => {
+    // "1 more source" implies something to be more than. With no flags there is
+    // nothing, so the conjunction has to change with it.
+    const text = threatSentences(
+      { ...base, riskScore: 10, verdict: "clean", sources: [quieter, silent] },
+      "address",
+    ).join(" ");
+    expect(text).toContain(
+      "None of the 2 TI sources flagged this address, though 1 source reports adverse data below the flagging threshold.",
+    );
+  });
+
+  it("says nothing extra when every source is genuinely quiet", () => {
+    const text = threatSentences(
+      { ...base, riskScore: 0, verdict: "clean", sources: [silent] },
+      "address",
+    ).join(" ");
+    expect(text).toContain("None of the 1 TI sources flagged this address.");
+    expect(text).not.toContain("below the flagging threshold");
+  });
+
+  it("says nothing extra when every adverse source also flagged", () => {
+    const text = threatSentences({ ...base, sources: [loud, silent] }, "address").join(" ");
+    expect(text).not.toContain("below the flagging threshold");
+  });
+});
+
+describe("consensusBuckets — adverse, clean and no-record are three states", () => {
+  /** The 103.83.237.2 shape: one source over the line, several under it. */
+  const mixed: ResultLike = {
+    riskScore: 75,
+    verdict: "malicious",
+    checkedAt: "2026-08-21T00:00:00Z",
+    sources: [
+      makeSource({ name: "AbuseIPDB", score: 100 }),
+      makeSource({ name: "DNSBL", score: 38 }), // listed on Spamhaus ZEN
+      makeSource({ name: "IPsum", score: 10 }),
+      makeSource({ name: "Feodo", score: 0 }),
+      makeSource({ name: "Tor", score: 0 }),
+      makeSource({ name: "ThreatFox" }), // no score at all: no record
+    ],
+    stats: makeStats(),
+  };
+
+  it("counts every source with anything adverse to say, not just the flagging ones", () => {
+    const c = consensusBuckets(mixed);
+    expect(c.adverse).toBe(3);
+    expect(c.flagged).toBe(1);
+  });
+
+  it("does not count a source under the flag threshold as clean", () => {
+    // The bug this replaces: an IP listed on Spamhaus ZEN scores 38, two points
+    // under FLAG_THRESHOLD, and was reported as one of the "clean" detectors.
+    const c = consensusBuckets(mixed);
+    expect(c.clean).toBe(2);
+    expect(c.clean + c.adverse + c.noRecord).toBe(c.responded);
+  });
+
+  it("separates having no record from having looked and found nothing", () => {
+    expect(consensusBuckets(mixed).noRecord).toBe(1);
+  });
+
+  it("still treats a definitive listing as adverse when it carries no score", () => {
+    const c = consensusBuckets({
+      ...mixed,
+      sources: [makeSource({ name: "Feodo", malicious: true })],
+    });
+    expect(c.adverse).toBe(1);
+    expect(c.flagged).toBe(1);
+    expect(c.noRecord).toBe(0);
   });
 });
 

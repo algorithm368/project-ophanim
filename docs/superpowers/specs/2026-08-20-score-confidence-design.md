@@ -207,5 +207,12 @@ URL results in one change.
   answers on the next. Correct by definition, but it means a re-check can move
   the tier with nothing about the indicator having changed. Worth watching
   before deciding whether it needs damping.
+- Agreement counts a narrow blocklist's zero as a dissenting vote. Feodo
+  answers "is this a botnet C2", Tor answers "is this a relay", and neither is
+  disagreeing with AbuseIPDB about a web-app-attack bot; they are answering a
+  question nobody asked. Those zeros inflate the dispersion, which is most of
+  why the floor-pinned IPs sit at 0.45 to 0.55 agreement. `SourceCategory`
+  already distinguishes `reputation` from `blocklist`, so weighting the dissent
+  by category is the tractable fix. Issue #30.
 - Issue #28, the empty-file verdict.
 - Issue #29, unsupported hash algorithms reported as errors.

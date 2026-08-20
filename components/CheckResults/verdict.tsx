@@ -229,8 +229,20 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
     const c = consensusBuckets(result);
 
     const buckets = [
-        { key: "flagged", count: c.flagged, label: "flagged" },
+        // "Adverse" leads and "flagged" qualifies it. Showing only the flagging
+        // count understated the evidence: a source listed on Spamhaus ZEN
+        // scores 38, just under FLAG_THRESHOLD, and landed in "clean".
+        {
+            key: "adverse",
+            count: c.adverse,
+            label:
+                c.flagged && c.flagged < c.adverse
+                    ? `adverse (${c.flagged} flagged)`
+                    : "adverse",
+        },
         { key: "clean", count: c.clean, label: "clean" },
+        // A source with no record of the indicator never assessed it.
+        { key: "norecord", count: c.noRecord, label: "no record" },
         { key: "errored", count: c.errored, label: "errors" },
         { key: "rate", count: c.rateLimited, label: "rate limited" },
         { key: "skipped", count: c.noKey, label: "no key" },

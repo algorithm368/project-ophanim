@@ -428,6 +428,30 @@ export function threatSentences(
   const flaggedSources = scoringSources.filter(
     (x) => x.malicious === true || (x.score ?? 0) >= FLAG_THRESHOLD,
   );
+  // Everything with anything adverse to say, flagging or not. Reporting only
+  // the flagging count understates the evidence: 103.83.237.2 has six sources
+  // reporting against it, including a live Spamhaus ZEN listing at 38, and read
+  // as "1 of 13 TI sources flagged it".
+  const adverseSources = scoringSources.filter(
+    (x) => x.malicious === true || (x.score ?? 0) > 0,
+  );
+  const belowThreshold = adverseSources.length - flaggedSources.length;
+  /**
+   * The "and there is more" clause. "N more sources" only makes sense when
+   * something was flagged to be more than; with nothing flagged it becomes a
+   * concession instead, so the conjunction changes with it.
+   */
+  function alsoClause(anyFlagged: boolean): string {
+    if (belowThreshold === 0) return "";
+    const subject = count(
+      belowThreshold,
+      anyFlagged ? "more source" : "source",
+    );
+    const verb = belowThreshold === 1 ? "reports" : "report";
+    const lead = anyFlagged ? "and" : "though";
+    return `, ${lead} ${subject} ${verb} adverse data below the flagging threshold`;
+  }
+
   if (flaggedSources.length > 0) {
     // Categories must come from the flagging sources only, so the "for …"
     // clause reflects why it was flagged — not labels from quiet/context
@@ -450,13 +474,15 @@ export function threatSentences(
     out.push(
       `${flaggedSources.length} of ${responded} TI sources flagged it${
         cats.length ? ` for ${cats.join(", ")}` : ""
-      }.`,
+      }${alsoClause(true)}.`,
     );
     const flaggedBy = byStrength.map((x) => x.source.name).slice(0, 4);
     out.push(`Flagged by ${flaggedBy.join(", ")}.`);
   } else if (responded > 0) {
+    // "None flagged" on its own reads as a clean bill of health, which is wrong
+    // when several sources reported against it and merely fell under the line.
     out.push(
-      `None of the ${responded} TI sources flagged this ${noun}${
+      `None of the ${responded} TI sources flagged this ${noun}${alsoClause(false)}${
         historyClause ? `, with ${historyClause}` : ""
       }.`,
     );
@@ -753,8 +779,10 @@ export function scoreExplanation(result: ResultLike): string[] {
 export function consensusBuckets(result: ResultLike): {
   total: number;
   responded: number;
+  adverse: number;
   flagged: number;
   clean: number;
+  noRecord: number;
   errored: number;
   rateLimited: number;
   skipped: number;
@@ -762,11 +790,22 @@ export function consensusBuckets(result: ResultLike): {
   unsupported: number;
 } {
   const scoring = result.sources.filter((s) => (s.source.weight ?? 1) > 0);
-  const responded = scoring.filter((s) => s.status === "ok").length;
-  const flagged = scoring.filter(
-    (s) =>
-      s.status === "ok" &&
-      (s.malicious === true || (s.score ?? 0) >= FLAG_THRESHOLD),
+  const answered = scoring.filter((s) => s.status === "ok");
+  const responded = answered.length;
+  // Three states, not two. "Reported something adverse" and "cleared the
+  // flagging threshold" are different facts, and reporting only the second
+  // understates the evidence badly: an IP listed on Spamhaus ZEN scores 38,
+  // two points under FLAG_THRESHOLD, and used to be counted as clean.
+  const adverse = answered.filter(
+    (s) => s.malicious === true || (s.score ?? 0) > 0,
+  ).length;
+  const flagged = answered.filter(
+    (s) => s.malicious === true || (s.score ?? 0) >= FLAG_THRESHOLD,
+  ).length;
+  // A source with no score at all has no record of the indicator, which is not
+  // the same as having looked and found it clean.
+  const noRecord = answered.filter(
+    (s) => s.score === undefined && s.malicious !== true,
   ).length;
   const errored = scoring.filter(
     (s) => s.status === "error" || s.status === "timeout",
@@ -781,8 +820,10 @@ export function consensusBuckets(result: ResultLike): {
   return {
     total: scoring.length,
     responded,
+    adverse,
     flagged,
-    clean: Math.max(0, responded - flagged),
+    clean: Math.max(0, responded - adverse - noRecord),
+    noRecord,
     errored,
     rateLimited,
     skipped: skips.length,
