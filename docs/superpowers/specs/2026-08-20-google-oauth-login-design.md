@@ -82,7 +82,19 @@ the only authorization layer. Reading a signed JWT session cookie is a
 cryptographic check rather than a guess, so it is sound here, but the API
 routes are the ones that actually do work and cost quota, so they get a
 second `auth()` check server-side. That check is a shared helper rather than
-repeated per route.
+repeated per route, and it covers all eight API routes (`check`,
+`check-domain`, `check-hash`, `check-url`, `geo`, `research`, `scan-url`,
+`sources`), not only the indicator ones.
+
+Two things about the wiring are load-bearing and easy to get wrong:
+
+- **Auth.js defaults `callbacks.authorized` to `true`.** Exporting `auth` as
+  the proxy without supplying that callback reads the session, authorizes
+  everyone, and protects nothing. The callback is what makes the file a gate.
+- **The helper imports `auth` lazily.** A top-level import would pull the
+  Auth.js graph into every route module, and `lib/ti/route-validate.test.ts`
+  imports `app/api/check/route.ts` for its pure `validateIp`; next-auth's
+  `next/server` import does not resolve under Vitest's node environment.
 
 ### Pages
 
@@ -105,11 +117,17 @@ New variables, documented in `CLAUDE.md`/README, not committed:
   convention: picked up automatically by provider name, no explicit
   `clientId`/`clientSecret` wiring needed)
 - `ALLOWED_GOOGLE_HD` — the single allowed Workspace domain
+- `AUTH_TRUST_HOST` — only when the app is reached on a host Auth.js cannot
+  infer (an ngrok tunnel, a reverse proxy, `next start` on a non-default port).
+  Vercel is detected automatically. Without it Auth.js raises `UntrustedHost`,
+  and because that is a failure to *read* the session it presents as an endless
+  redirect to `/sign-in` rather than as an error.
 
 ## Data flow
 
-1. Unauthenticated request to any protected route → middleware redirects to
-   `/sign-in`.
+1. Unauthenticated request to any protected route → the proxy redirects to
+   `/sign-in` (or, under `/api/`, answers `401` JSON, since a JSON client wants
+   a status it can branch on rather than a login page in its parser).
 2. User clicks "Sign in with Google" → Google OAuth consent → Google redirects
    back with a profile including `hd`.
 3. `signIn` callback: `isAllowedProfile(profile, process.env.ALLOWED_GOOGLE_HD)`
