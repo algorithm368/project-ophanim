@@ -1,5 +1,6 @@
 import { extractIps } from "@/lib/ioc";
 import { bulkGeolocate } from "@/lib/ti/geo";
+import { requireSession } from "@/lib/require-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ function readIpsField(val: unknown): string | null {
   return val.filter((x): x is string => typeof x === "string").join("\n");
 }
 
-export async function POST(request: Request) {
+async function bulkGeo(request: Request) {
   let raw: string | null = null;
   try {
     const body = (await request.json()) as Record<string, unknown>;
@@ -55,4 +56,10 @@ export async function POST(request: Request) {
       { status: 502 },
     );
   }
+}
+
+// The second lock. proxy.ts already refuses anonymous callers; this is what
+// still refuses if the proxy's matcher is ever edited out from under us.
+export async function POST(request: Request) {
+  return (await requireSession()) ?? bulkGeo(request);
 }

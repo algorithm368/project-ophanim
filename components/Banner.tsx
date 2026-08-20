@@ -39,8 +39,15 @@ function handleHomeClick(e: React.MouseEvent<HTMLAnchorElement>) {
   document.title = "Project Ophanim";
 }
 
-/** Full-width brand banner shown at the top of every page. */
-export function Banner() {
+/**
+ * Full-width brand banner shown at the top of every page.
+ *
+ * `signOut` arrives as a prop rather than being imported here: reading the
+ * session is server work and this file is a client component, so the layout
+ * (which is a server component) renders it and passes it through. It is absent
+ * when signed out.
+ */
+export function Banner({ signOut }: { signOut?: React.ReactNode }) {
   return (
     <header className="relative border-b border-border bg-background">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:py-4">
@@ -62,6 +69,7 @@ export function Banner() {
               on the home page, where there is no indicator to read either way. */}
           <ModeSwitch />
           <ThemeToggle />
+          {signOut}
         </div>
       </div>
     </header>

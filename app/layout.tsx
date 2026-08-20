@@ -4,6 +4,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Banner } from "@/components/Banner";
+import { SignOutButton } from "@/components/SignOutButton";
 
 // Type is served from native system stacks (see --font-sans / --font-mono in
 // globals.css): zero webfont requests, zero font layout shift.
@@ -33,7 +34,7 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <Banner />
+          <Banner signOut={<SignOutButton />} />
           {children}
         </ThemeProvider>
         <Analytics />

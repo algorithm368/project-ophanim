@@ -132,6 +132,16 @@ accepts what the route would refuse.
   `.env.local` taking priority). `.env*` files are gitignored; never commit keys.
   The cache reads either `UPSTASH_REDIS_REST_*` or the `KV_REST_API_*` names that
   Vercel's Upstash integration injects.
+- **Auth**: the whole app sits behind a Google sign-in limited to one Workspace
+  domain. `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and
+  `ALLOWED_GOOGLE_HD` are required; see `.env.example`. Unlike the cache, auth
+  does not degrade gracefully: with `ALLOWED_GOOGLE_HD` unset nobody can sign
+  in, which is deliberate, since a misconfigured allowlist must fail closed.
+  The gate is `proxy.ts` (Next 16's rename of `middleware.ts`), the config is
+  `auth.ts`, and the one piece of testable logic is `isAllowedProfile` in
+  `lib/auth-domain.ts`, which reads Google's `hd` claim rather than the email
+  suffix. API routes check the session a second time via `lib/require-session.ts`,
+  because Next treats a proxy check as optimistic.
 
 ## Verifying changes
 

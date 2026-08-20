@@ -10,6 +10,7 @@ import {
 import { rememberBatch } from "@/lib/ti/url/active/scan-history";
 import { urlIndicatorProblem } from "@/lib/ti/url/validate";
 import type { ActiveScan, ActiveScanBatch } from "@/lib/ti/url/active/types";
+import { requireSession } from "@/lib/require-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,7 +68,7 @@ function readIndicator(
  * tab must not buy the same scan twice. Pass `force: true` to deliberately scan
  * again.
  */
-export async function POST(request: NextRequest): Promise<Response> {
+async function submitScanRoute(request: NextRequest): Promise<Response> {
   const creds = readCredentials();
   if (!creds.any) return Response.json(MISSING_KEY, { status: 503 });
 
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest): Promise<Response> {
  * already spent and the provider is still working, so the only correct answer
  * is "not yet".
  */
-export async function GET(request: NextRequest): Promise<Response> {
+async function pollScanRoute(request: NextRequest): Promise<Response> {
   const creds = readCredentials();
   if (!creds.any) return Response.json(MISSING_KEY, { status: 503 });
 
@@ -179,4 +180,14 @@ export async function GET(request: NextRequest): Promise<Response> {
     await setCachedScanBatch(read.indicator, updated);
   }
   return Response.json(updated);
+}
+
+// The second lock. proxy.ts already refuses anonymous callers; this is what
+// still refuses if the proxy's matcher is ever edited out from under us.
+export async function POST(request: NextRequest): Promise<Response> {
+  return (await requireSession()) ?? submitScanRoute(request);
+}
+
+export async function GET(request: NextRequest): Promise<Response> {
+  return (await requireSession()) ?? pollScanRoute(request);
 }
