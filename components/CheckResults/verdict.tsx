@@ -14,11 +14,13 @@ import {
     isHashResult,
     type Verdict,
 } from "@/lib/ti/types";
+import { useState } from "react";
 import {
     buildDomainNarrative,
     buildHashNarrative,
     buildNarrative,
     consensusBuckets,
+    scoreExplanation,
     type ResultLike,
 } from "@/lib/ti/narrative";
 import { scoreConfidence } from "@/lib/ti/confidence";
@@ -166,6 +168,8 @@ function VerdictShell({
 
                 <CopyableSummary text={narrative} />
 
+                <ScoreRationale result={result} />
+
                 <ConsensusLine result={result} />
 
                 {/* Meta: plain muted line, no bordered chips. */}
@@ -193,6 +197,42 @@ function VerdictShell({
                 </div>
             </CardContent>
         </Card>
+    );
+}
+
+/**
+ * How the score was reached, on demand.
+ *
+ * `scoreExplanation()` reads the intermediates `aggregateRisk()` recorded rather
+ * than re-deriving them, so this cannot drift from the number above it. It is
+ * behind a disclosure because the answer to "can I defend this verdict" is
+ * wanted only when the verdict is being questioned, and the card is already
+ * dense. The fact that it is worth questioning is surfaced on the always-visible
+ * consensus line instead.
+ */
+function ScoreRationale({ result }: Readonly<{ result: ResultLike }>) {
+    const [open, setOpen] = useState(false);
+    const lines = scoreExplanation(result);
+    if (lines.length === 0) return null;
+
+    return (
+        <div className="space-y-1.5">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
+            >
+                {open ? "hide rationale" : "why this score"}
+            </button>
+            {open && (
+                <ul className="space-y-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                    {lines.map((line) => (
+                        <li key={line}>{line}</li>
+                    ))}
+                </ul>
+            )}
+        </div>
     );
 }
 
@@ -243,6 +283,7 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
         { key: "clean", count: c.clean, label: "clean" },
         // A source with no record of the indicator never assessed it.
         { key: "norecord", count: c.noRecord, label: "no record" },
+        // Counts only; the borderline marker below is not a tally.
         { key: "errored", count: c.errored, label: "errors" },
         { key: "rate", count: c.rateLimited, label: "rate limited" },
         { key: "skipped", count: c.noKey, label: "no key" },
@@ -284,6 +325,19 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
                     · {s.count} {s.label}
                 </span>
             ))}
+            {/* Every floor-pinned verdict is borderline by construction: the
+                floor is 75 and the malicious cutoff is 70, so it lands five
+                points into a band it did not reach on consensus. Those are the
+                verdicts worth a second look, so the flag is stated here rather
+                than only inside the rationale. */}
+            {result.scoreBreakdown?.borderline && (
+                <span
+                    title="Within five points of a verdict boundary, so the label could fall either way."
+                    className="font-medium tracking-wider uppercase text-foreground"
+                >
+                    · borderline
+                </span>
+            )}
         </div>
     );
 }
