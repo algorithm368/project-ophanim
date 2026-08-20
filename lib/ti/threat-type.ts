@@ -198,6 +198,16 @@ export function threatTypeOf(
   }
   if (backers.size === 0) return null;
 
+  // An identification source that could not be consulted may have been the
+  // tie-breaker. GreyNoise's free tier runs out of daily quota, and when it
+  // does 71.6.146.185 stops typing as "scanner" and starts typing as "brute
+  // force" off abuse reports filed by the people it scanned. Same address, same
+  // code, a different answer depending on how much the tool was used earlier
+  // that day. A withheld label is better than one that contradicts itself.
+  const identifierMissing = sources.some(
+    (s) => IDENTIFIERS.has(s.source.id) && s.status !== "ok",
+  );
+
   const identified = (backing: Set<string>) =>
     [...backing].some((id) => IDENTIFIERS.has(id));
 
@@ -214,6 +224,11 @@ export function threatTypeOf(
     if (byIdentity !== 0) return byIdentity;
     return Number(Boolean(CATCH_ALL[a[0]])) - Number(Boolean(CATCH_ALL[b[0]]));
   });
+
+  // Only a genuine tie is at risk: with a clear winner the missing
+  // identification would have had to invent a category to change the outcome.
+  const tied = ranked.length > 1 && ranked[0][1].size === ranked[1][1].size;
+  if (identifierMissing && tied && !identified(ranked[0][1])) return null;
 
   return {
     type: ranked[0][0],

@@ -139,6 +139,44 @@ describe("threatTypeOf", () => {
     expect(t?.type).toBe("scanner");
   });
 
+  it("withholds a tied label when the identification source could not be consulted", () => {
+    // GreyNoise's free tier runs out of daily quota. Without this, the same
+    // address types as "scanner" in the morning and "brute force" in the
+    // afternoon, purely from how much the tool was used in between.
+    const sources = [
+      src({
+        id: "abuseipdb",
+        categories: ["Brute-Force", "Port Scan"],
+        score: 100,
+        malicious: true,
+      }),
+      {
+        ...src({ id: "greynoise", categories: [], score: 0 }),
+        status: "rate_limited" as const,
+      },
+    ];
+    expect(threatTypeOf(sources, { verdict: "malicious" })).toBeNull();
+  });
+
+  it("still answers on a clear winner when the identification source is down", () => {
+    // A missing identification could only have broken a tie, so withholding
+    // every label whenever GreyNoise is out of quota would throw away good ones.
+    const sources = [
+      src({ id: "abuseipdb", categories: ["Web App Attack", "Hacking"], score: 100 }),
+      { ...src({ id: "greynoise", categories: [], score: 0 }), status: "error" as const },
+    ];
+    expect(threatTypeOf(sources, { verdict: "malicious" })?.type).toBe("web attack");
+  });
+
+  it("keeps a tied label the identification source itself won", () => {
+    const sources = [
+      src({ id: "abuseipdb", categories: ["Brute-Force"], score: 100 }),
+      src({ id: "tor-project", categories: ["tor-exit"], score: 50 }),
+      { ...src({ id: "greynoise", categories: [], score: 0 }), status: "timeout" as const },
+    ];
+    expect(threatTypeOf(sources, { verdict: "malicious" })?.type).toBe("anonymizer");
+  });
+
   it("prefers a specific type over a catch-all on equal support", () => {
     const t = threatTypeOf(
       [src({ id: "vt", categories: ["malware", "ransomware.wcry"], score: 90 })],
