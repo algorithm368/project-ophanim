@@ -25,6 +25,7 @@ import {
 import { scoreRationale } from "@/lib/ti/rationale";
 import { threatTypeOf } from "@/lib/ti/threat-type";
 import { scoreConfidence } from "@/lib/ti/confidence";
+import { isNewlyFlagged, reputationTrend } from "@/lib/ti/trend";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -345,6 +346,8 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
     // It leads this row because the detector tally below it is the evidence the
     // level is drawn from, so the two belong on one line.
     const confidence = scoreConfidence(result);
+    const trend = reputationTrend(result.history);
+    const newlyFlagged = isNewlyFlagged(result.history, result.verdict);
 
     // A plain monochrome breakdown reads more clearly than a tiny color bar and
     // keeps color reserved for the verdict word.
@@ -377,6 +380,24 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
                 points into a band it did not reach on consensus. Those are the
                 verdicts worth a second look, so the flag is stated here rather
                 than only inside the rationale. */}
+            {/* What the recorded checks say. Reported, never scored: today's
+                verdict becomes tomorrow's history, so feeding it back would let
+                a verdict confirm itself. */}
+            {trend && (
+                <span
+                    title={
+                        trend.steady
+                            ? "Every recorded check reached the same verdict."
+                            : `Verdicts on record: ${trend.seen.join(", ")}.`
+                    }
+                    className={cn(
+                        "tracking-wide",
+                        newlyFlagged && "font-medium text-foreground",
+                    )}
+                >
+                    · {newlyFlagged ? "newly flagged" : trend.summary}
+                </span>
+            )}
             {result.scoreBreakdown?.borderline && (
                 <span
                     title="Within five points of a verdict boundary, so the label could fall either way."

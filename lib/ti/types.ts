@@ -380,6 +380,9 @@ export interface ScoreBreakdown {
   allowlistSuppressed: boolean;
   /** A forced-benign override fired (e.g. "eicar-test-file"). */
   benignOverride?: string;
+  /** The score reached the malicious band but only one source backed it, so the
+   *  verdict was held one band down. */
+  uncorroborated?: boolean;
 }
 
 export interface CheckResult {

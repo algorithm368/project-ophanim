@@ -1,4 +1,9 @@
-import type { Confidence, ScoreBreakdown, SourceResult } from "./types";
+import type {
+  Confidence,
+  ScoreBreakdown,
+  SourceCategory,
+  SourceResult,
+} from "./types";
 
 // Tier cutoffs (inclusive lower bounds), placed on the two natural gaps in a
 // sixteen-indicator calibration run rather than picked a priori.
@@ -62,6 +67,47 @@ function poolOf(sources: SourceResult[]): SourceResult[] {
 }
 
 /**
+ * How much a source's silence counts as disagreement.
+ *
+ * A reputation source returning 0 has assessed the indicator and found nothing:
+ * VirusTotal 0/60 and AbuseIPDB 0% are real statements. A blocklist returning 0
+ * has only said "not in my list", and its list answers one narrow question.
+ * Feodo tracks botnet C2, Tor tracks relays, ThreatFox tracks malware IOCs, and
+ * none of them is disagreeing with AbuseIPDB about a web-app-attack bot; they
+ * are answering a question nobody asked.
+ *
+ * Counting those as dissent is most of why every floor-pinned address landed at
+ * 0.45 to 0.55 agreement regardless of what it was.
+ */
+const NARROW: SourceCategory[] = ["blocklist", "dnsbl"];
+
+/** True when a source answered but its answer is "not in my list". */
+function isNarrowSilence(s: SourceResult): boolean {
+  return (
+    NARROW.includes(s.source.category) &&
+    s.malicious !== true &&
+    (s.score ?? 0) === 0
+  );
+}
+
+/**
+ * The sources whose answers are opinions about this indicator.
+ *
+ * Down-weighting narrow silence rather than dropping it does not work: fewer
+ * zeros pulls the mean up, which pushes every remaining zero further from it,
+ * and the dispersion ends up wider than before. Measured on 103.83.237.2, a
+ * quarter-weight version scored *lower* than counting them in full. Dropping
+ * them is the version that does what the reasoning intends.
+ *
+ * If nothing survives, the narrow sources are all there is, and their agreement
+ * is the only agreement available.
+ */
+function opinions(scored: SourceResult[]): SourceResult[] {
+  const kept = scored.filter((s) => !isNarrowSilence(s));
+  return kept.length > 0 ? kept : scored;
+}
+
+/**
  * How closely the sources that answered agree with each other, 0-1.
  *
  * Deliberately blind to whether the scores are high or low. Unanimously clean
@@ -71,12 +117,13 @@ function poolOf(sources: SourceResult[]): SourceResult[] {
  * a unanimously clean 8.8.8.8 at 0.01.
  */
 export function agreementOf(scored: SourceResult[]): number {
-  const total = sumWeight(scored);
+  const voices = opinions(scored);
+  const total = sumWeight(voices);
   if (total === 0) return 0;
   const mean =
-    scored.reduce((n, s) => n + weightOf(s) * (s.score as number), 0) / total;
+    voices.reduce((n, s) => n + weightOf(s) * (s.score as number), 0) / total;
   const deviation =
-    scored.reduce(
+    voices.reduce(
       (n, s) => n + weightOf(s) * Math.abs((s.score as number) - mean),
       0,
     ) / total;

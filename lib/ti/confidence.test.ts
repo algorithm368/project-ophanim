@@ -198,3 +198,60 @@ describe("scoreConfidence", () => {
     ).toContain("sources disagree sharply");
   });
 });
+
+describe("agreement excludes a narrow list's silence", () => {
+  /** A source in a given category, so the silence rule can be exercised. */
+  function cat(
+    id: string,
+    category: SourceResult["source"]["category"],
+    score: number,
+    weight = 1,
+  ): SourceResult {
+    const s = src({ status: "ok", score, weight, id });
+    return { ...s, source: { ...s.source, category } };
+  }
+
+  it("does not count 'not in my list' as disagreement", () => {
+    // Feodo tracks botnet C2 and Tor tracks relays. Neither is disagreeing with
+    // AbuseIPDB about a web-app-attack bot; they answered a different question.
+    const loud = cat("abuseipdb", "reputation", 100);
+    const narrow = [
+      cat("feodo", "blocklist", 0),
+      cat("tor-project", "blocklist", 0, 0.4),
+      cat("dnsbl", "dnsbl", 0, 0.5),
+    ];
+    const withNarrow = scoreConfidence({ sources: [loud, ...narrow] });
+    const alone = scoreConfidence({ sources: [loud] });
+    expect(withNarrow?.agreement).toBeCloseTo(alone!.agreement, 10);
+  });
+
+  it("still counts a reputation source's zero, which is a real assessment", () => {
+    // VirusTotal 0/60 has looked and found nothing.
+    const c = scoreConfidence({
+      sources: [
+        cat("abuseipdb", "reputation", 100),
+        cat("virustotal", "reputation", 0),
+      ],
+    });
+    expect(c!.agreement).toBeLessThan(0.5);
+  });
+
+  it("still counts a narrow list that actually listed the indicator", () => {
+    const c = scoreConfidence({
+      sources: [
+        cat("abuseipdb", "reputation", 100),
+        cat("dnsbl", "dnsbl", 74, 0.5),
+      ],
+    });
+    expect(c!.agreement).toBeGreaterThan(0.5);
+    expect(c!.agreement).toBeLessThan(1);
+  });
+
+  it("falls back to the narrow sources when they are all there is", () => {
+    // Dropping every voice would leave nothing to measure.
+    const c = scoreConfidence({
+      sources: [cat("feodo", "blocklist", 0), cat("dnsbl", "dnsbl", 0, 0.5)],
+    });
+    expect(c?.agreement).toBe(1);
+  });
+});

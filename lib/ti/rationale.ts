@@ -5,6 +5,7 @@ import {
   MAX_SIGNAL_WEIGHT,
   SUSPICIOUS_AT,
 } from "./aggregate";
+import { BENIGN_REASON, type BenignReason } from "./benign";
 import type { ScoreBreakdown, SourceResult } from "./types";
 
 /**
@@ -100,10 +101,11 @@ export function scoreRationale(
 ): ScoreRationale | null {
   const bd = result.scoreBreakdown;
 
-  if (bd?.benignOverride === "eicar-test-file") {
+  const benign = bd?.benignOverride;
+  if (benign && benign in BENIGN_REASON) {
     return {
       terms: [{ label: "final", value: result.riskScore, derived: true }],
-      note: "EICAR standard anti-malware test file, forced clean. Vendor detections are the file working as intended.",
+      note: BENIGN_REASON[benign as BenignReason],
     };
   }
 
