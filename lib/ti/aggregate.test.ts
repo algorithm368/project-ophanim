@@ -67,6 +67,27 @@ describe("aggregateRisk", () => {
     ]);
     // 0.6*effectiveMax(90) + 0.4*weightedAvg(45) = 72
     expect(r.riskScore).toBe(72);
+    // Past the malicious cutoff on the number, but one source said 90 and the
+    // other said 0, so the verdict is held one band down and the score is left
+    // alone. This is the shape MAX_SIGNAL_WEIGHT produces on its own: 0.6 x 90
+    // is 54 points before any consensus is consulted.
+    expect(r.verdict).toBe("suspicious");
+    expect(r.breakdown.uncorroborated).toBe(true);
+  });
+
+  it("reaches malicious once a second source agrees", () => {
+    const r = aggregateRisk([
+      src({ status: "ok", score: 90, id: "a" }),
+      src({ status: "ok", score: 60, id: "b" }),
+      src({ status: "ok", score: 0, id: "c" }),
+    ]);
+    expect(r.verdict).toBe("malicious");
+    expect(r.breakdown.uncorroborated).toBeUndefined();
+  });
+
+  it("treats a unanimous panel as corroborated however small it is", () => {
+    // One source that is the whole panel has not been contradicted by anyone.
+    const r = aggregateRisk([src({ status: "ok", score: 80 })]);
     expect(r.verdict).toBe("malicious");
   });
 
@@ -202,5 +223,44 @@ describe("aggregateRisk — gated two-tier floor (B1)", () => {
     // vt effective 80 beats ipsum effective 27 -> vt dominant.
     expect(r.breakdown.dominantSourceId).toBe("vt");
     expect(r.breakdown.effectiveMax).toBe(80);
+  });
+});
+
+describe("aggregateRisk — a vouch quorum can contest an authoritative floor", () => {
+  const listing = { status: "ok" as const, score: 90, malicious: true, id: "urlhaus", weight: 0.9 };
+
+  it("still floors when only one source vouches", () => {
+    // One feed can be wrong, and a compromised major site must stay reportable.
+    const r = aggregateRisk([
+      src(listing),
+      src({ status: "ok", score: 0, allowlisted: true, id: "maltiverse", weight: 0.7 }),
+      src({ status: "ok", score: 0, id: "vt", weight: 1 }),
+    ]);
+    expect(r.breakdown.floorApplied).toBe(true);
+  });
+
+  it("withholds the floor once two independent sources vouch", () => {
+    // The zero-byte file: Maltiverse and Hybrid Analysis both vouch, VirusTotal
+    // reports 0/60, and one URLhaus listing used to outrank all of it.
+    const r = aggregateRisk([
+      src(listing),
+      src({ status: "ok", score: 0, allowlisted: true, id: "maltiverse", weight: 0.7 }),
+      src({ status: "ok", score: 0, allowlisted: true, id: "hybrid", weight: 0.85 }),
+      src({ status: "ok", score: 0, id: "vt", weight: 1 }),
+    ]);
+    expect(r.breakdown.allowlistSuppressed).toBe(true);
+    expect(r.breakdown.floorApplied).toBe(false);
+    expect(r.verdict).not.toBe("malicious");
+  });
+
+  it("counts a vouch from a weightless identification source", () => {
+    // scanner-id and Tranco are context-only and therefore weight 0, so a
+    // weighted sum would hear nothing from either.
+    const r = aggregateRisk([
+      src(listing),
+      src({ status: "ok", score: 0, allowlisted: true, id: "scanner-id", weight: 0 }),
+      src({ status: "ok", score: 0, allowlisted: true, id: "greynoise", weight: 0.8 }),
+    ]);
+    expect(r.breakdown.allowlistSuppressed).toBe(true);
   });
 });

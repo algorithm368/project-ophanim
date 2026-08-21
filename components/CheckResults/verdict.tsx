@@ -14,6 +14,7 @@ import {
     isHashResult,
     type Verdict,
 } from "@/lib/ti/types";
+import { useState } from "react";
 import {
     buildDomainNarrative,
     buildHashNarrative,
@@ -21,6 +22,10 @@ import {
     consensusBuckets,
     type ResultLike,
 } from "@/lib/ti/narrative";
+import { scoreRationale } from "@/lib/ti/rationale";
+import { threatTypeOf } from "@/lib/ti/threat-type";
+import { scoreConfidence } from "@/lib/ti/confidence";
+import { isNewlyFlagged, reputationTrend } from "@/lib/ti/trend";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -118,6 +123,13 @@ function VerdictShell({
     narrative: string;
 }>) {
     const style = VERDICT_STYLE[result.verdict];
+    // What kind of threat, as opposed to how bad. A C2, a spam bot, a Tor exit
+    // and a research scanner all read "malicious 75", and the analyst does
+    // something different with each one.
+    const threat = threatTypeOf(result.sources, {
+        verdict: result.verdict,
+        benignOverride: result.scoreBreakdown?.benignOverride,
+    });
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -127,13 +139,27 @@ function VerdictShell({
                     monochrome band over a monochrome meter. */}
                 <div className="space-y-2.5">
                     <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-                        <span
-                            className={cn(
-                                "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
-                                style.text,
+                        <span className="flex flex-wrap items-baseline gap-x-2">
+                            <span
+                                className={cn(
+                                    "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
+                                    style.text,
+                                )}
+                            >
+                                {style.headline}
+                            </span>
+                            {threat && (
+                                <span
+                                    title={`Reported by ${threat.sources.join(", ")}${
+                                        threat.also.length
+                                            ? `. Also described as ${threat.also.join(", ")}.`
+                                            : ""
+                                    }`}
+                                    className="font-mono text-base font-bold uppercase leading-none tracking-tight text-muted-foreground"
+                                >
+                                    · {threat.type}
+                                </span>
                             )}
-                        >
-                            {style.headline}
                         </span>
                         <span className="font-mono font-bold uppercase leading-none text-foreground">
                             <span className="text-2xl sm:text-3xl">
@@ -164,6 +190,8 @@ function VerdictShell({
 
                 <CopyableSummary text={narrative} />
 
+                <ScoreRationale result={result} />
+
                 <ConsensusLine result={result} />
 
                 {/* Meta: plain muted line, no bordered chips. */}
@@ -191,6 +219,69 @@ function VerdictShell({
                 </div>
             </CardContent>
         </Card>
+    );
+}
+
+/**
+ * How the score was reached, on demand.
+ *
+ * `scoreExplanation()` reads the intermediates `aggregateRisk()` recorded rather
+ * than re-deriving them, so this cannot drift from the number above it. It is
+ * behind a disclosure because the answer to "can I defend this verdict" is
+ * wanted only when the verdict is being questioned, and the card is already
+ * dense. The fact that it is worth questioning is surfaced on the always-visible
+ * consensus line instead.
+ */
+function ScoreRationale({ result }: Readonly<{ result: ResultLike }>) {
+    const [open, setOpen] = useState(false);
+    const rationale = scoreRationale(result);
+    if (!rationale) return null;
+
+    return (
+        <div className="space-y-2">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
+            >
+                {open ? "hide rationale" : "why this score"}
+            </button>
+            {open && (
+                <div className="space-y-2">
+                    {/* Numbers only. The two rows that answer the question sit
+                        next to each other: what the loudest source said, and
+                        what everything else averaged to. */}
+                    <dl className="font-mono text-[11px] text-muted-foreground">
+                        {rationale.terms.map((term, i) => (
+                            <div
+                                key={`${term.label}-${i}`}
+                                className={cn(
+                                    "flex items-baseline gap-x-3 py-0.5",
+                                    term.derived &&
+                                        "border-t border-foreground/12 text-foreground",
+                                )}
+                            >
+                                <dt className="w-24 shrink-0 uppercase tracking-wider">
+                                    {term.label}
+                                </dt>
+                                <dd className="w-14 shrink-0 text-right font-bold tabular-nums text-foreground">
+                                    {term.value}
+                                </dd>
+                                <dd className="min-w-0 flex-1 truncate text-muted-foreground">
+                                    {term.note}
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                    {rationale.note && (
+                        <p className="text-[13px] leading-relaxed text-muted-foreground">
+                            {rationale.note}
+                        </p>
+                    )}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -227,8 +318,21 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
     const c = consensusBuckets(result);
 
     const buckets = [
-        { key: "flagged", count: c.flagged, label: "flagged" },
+        // "Adverse" leads and "flagged" qualifies it. Showing only the flagging
+        // count understated the evidence: a source listed on Spamhaus ZEN
+        // scores 38, just under FLAG_THRESHOLD, and landed in "clean".
+        {
+            key: "adverse",
+            count: c.adverse,
+            label:
+                c.flagged && c.flagged < c.adverse
+                    ? `adverse (${c.flagged} flagged)`
+                    : "adverse",
+        },
         { key: "clean", count: c.clean, label: "clean" },
+        // A source with no record of the indicator never assessed it.
+        { key: "norecord", count: c.noRecord, label: "no record" },
+        // Counts only; the borderline marker below is not a tally.
         { key: "errored", count: c.errored, label: "errors" },
         { key: "rate", count: c.rateLimited, label: "rate limited" },
         { key: "skipped", count: c.noKey, label: "no key" },
@@ -238,10 +342,30 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
     ];
     const segments = buckets.filter((b) => b.count > 0);
 
+    // How much the score is worth believing, as distinct from how bad it is.
+    // It leads this row because the detector tally below it is the evidence the
+    // level is drawn from, so the two belong on one line.
+    const confidence = scoreConfidence(result);
+    const trend = reputationTrend(result.history);
+    const newlyFlagged = isNewlyFlagged(result.history, result.verdict);
+
     // A plain monochrome breakdown reads more clearly than a tiny color bar and
     // keeps color reserved for the verdict word.
     return (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-muted-foreground">
+            {/* No signal-bar icon here, unlike the geo vote table. At this size
+                a single bar is a few pixels wide, and sitting at the head of the
+                line with nothing before it, it read as a stray comma. The word
+                carries the level on its own. */}
+            {confidence && (
+                <span
+                    title={confidence.reason}
+                    className="font-medium tracking-wider uppercase"
+                >
+                    <span className="text-foreground">{confidence.level}</span>
+                    {" confidence ·"}
+                </span>
+            )}
             <span className="font-medium tracking-wider uppercase">
                 <span className="text-foreground">{c.responded}</span>/{c.total}{" "}
                 detectors
@@ -251,6 +375,37 @@ function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
                     · {s.count} {s.label}
                 </span>
             ))}
+            {/* Every floor-pinned verdict is borderline by construction: the
+                floor is 75 and the malicious cutoff is 70, so it lands five
+                points into a band it did not reach on consensus. Those are the
+                verdicts worth a second look, so the flag is stated here rather
+                than only inside the rationale. */}
+            {/* What the recorded checks say. Reported, never scored: today's
+                verdict becomes tomorrow's history, so feeding it back would let
+                a verdict confirm itself. */}
+            {trend && (
+                <span
+                    title={
+                        trend.steady
+                            ? "Every recorded check reached the same verdict."
+                            : `Verdicts on record: ${trend.seen.join(", ")}.`
+                    }
+                    className={cn(
+                        "tracking-wide",
+                        newlyFlagged && "font-medium text-foreground",
+                    )}
+                >
+                    · {newlyFlagged ? "newly flagged" : trend.summary}
+                </span>
+            )}
+            {result.scoreBreakdown?.borderline && (
+                <span
+                    title="Within five points of a verdict boundary, so the label could fall either way."
+                    className="font-medium tracking-wider uppercase text-foreground"
+                >
+                    · borderline
+                </span>
+            )}
         </div>
     );
 }

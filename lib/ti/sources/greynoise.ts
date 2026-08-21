@@ -19,6 +19,24 @@ export function greyNoiseScore(classification: string | undefined): number {
   return 30;
 }
 
+/**
+ * Whether GreyNoise is vouching for the address rather than merely having
+ * nothing against it.
+ *
+ * GreyNoise exists to answer "is this benign internet background noise", so a
+ * `benign` classification or a RIOT hit (a common business service, e.g. a
+ * Microsoft or Google address) is a positive identification, not an absence of
+ * reports. Filing it as an allowlist signal is what lets aggregateRisk() weigh
+ * it at all: without this the one source that knows 71.6.146.185 is Shodan says
+ * nothing the aggregate can hear, and only AbuseIPDB ever set the field.
+ */
+export function greyNoiseVouches(
+  classification: string | undefined,
+  riot: boolean | undefined,
+): boolean {
+  return classification === "benign" || riot === true;
+}
+
 /** GreyNoise Community API: internet scanner classification (free API key required). */
 export const greyNoiseSource: TiSource = {
   meta: {
@@ -75,6 +93,7 @@ export const greyNoiseSource: TiSource = {
       return {
         status: "ok",
         malicious: classification === "malicious",
+        allowlisted: greyNoiseVouches(classification, data.riot),
         score,
         lastSeen: data.last_seen,
         categories,

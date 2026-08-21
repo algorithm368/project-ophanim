@@ -39,6 +39,9 @@ describe("IP source registry", () => {
         "rdap-ip",
         "reverse-dns",
         "ripestat",
+        // Resolves a PTR the same way reverse-dns does, which already handles
+        // both families.
+        "scanner-id",
         "shodan-internetdb",
         "spamhaus-drop",
       ].sort(),

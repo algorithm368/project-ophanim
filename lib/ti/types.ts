@@ -57,6 +57,15 @@ export interface SourceMeta {
    * source, not a broken one.
    */
   families?: (4 | 6)[];
+  /**
+   * Hash algorithms this source can answer for. Omitted means all three, so a
+   * source that forgets the field keeps its behaviour. The sibling of
+   * `families` above, and it exists for the same reason: ThreatFox takes MD5
+   * and SHA-256 only, and asking it for a SHA-1 returned `status: "error"`,
+   * which reads to an analyst as a broken source rather than a question the
+   * source does not take.
+   */
+  algorithms?: ("md5" | "sha1" | "sha256")[];
 }
 
 /**
@@ -371,6 +380,12 @@ export interface ScoreBreakdown {
   allowlistSuppressed: boolean;
   /** A forced-benign override fired (e.g. "eicar-test-file"). */
   benignOverride?: string;
+  /** The score reached the malicious band but only one source backed it, so the
+   *  verdict was held one band down. */
+  uncorroborated?: boolean;
+  /** A research scanner identified itself, so the verdict was held at
+   *  "suspicious" (see lib/ti/scanner-policy.ts). */
+  scannerCapped?: boolean;
 }
 
 export interface CheckResult {

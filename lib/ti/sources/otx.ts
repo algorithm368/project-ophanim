@@ -18,9 +18,25 @@ export function otxIndicatorType(ip: string): "IPv4" | "IPv6" {
   return ip.includes(":") ? "IPv6" : "IPv4";
 }
 
-/** OTX pulse count → 0-100 (IP weighting: 25 base + 10 per pulse). */
+/**
+ * OTX pulse count -> a capped 0-60 contribution.
+ *
+ * A pulse is a community-authored reference, and being referenced often is a
+ * measure of prominence rather than of harm. Microsoft's 13.107.42.14 and
+ * OpenDNS's 208.67.222.222 each sit in 50 pulses, and under the old curve
+ * (25 + 10 per pulse, saturating at 100) that made both of them "suspicious"
+ * on OTX alone: 0.6 x 100 x 0.85 is 51 points before any other source is
+ * consulted, which is past the suspicious cutoff by itself.
+ *
+ * So the curve is flatter and capped below the level where one source can
+ * carry a band. Five pulses still cross FLAG_THRESHOLD, so OTX keeps flagging;
+ * it just cannot decide the verdict alone, which is the same reasoning that
+ * already denies it a hard `malicious` flag.
+ */
+export const OTX_SCORE_CAP = 60;
+
 export function otxScore(pulseCount: number): number {
-  return pulseCount > 0 ? Math.min(100, 25 + pulseCount * 10) : 0;
+  return pulseCount > 0 ? Math.min(OTX_SCORE_CAP, 15 + pulseCount * 5) : 0;
 }
 
 /** AlienVault OTX: community pulse intelligence (free API key required). */

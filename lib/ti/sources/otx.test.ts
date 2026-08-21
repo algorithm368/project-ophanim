@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { otxIndicatorType, otxScore, otxSource } from "./otx";
+import { OTX_SCORE_CAP, otxIndicatorType, otxScore, otxSource } from "./otx";
 import { FLAG_THRESHOLD } from "../aggregate";
 import { getJson } from "../http";
 
@@ -13,18 +13,23 @@ vi.mock("../otx-malware", () => ({
 }));
 
 describe("otxScore (IP)", () => {
-  it("is 0 with no pulses, then ramps from a 25 base", () => {
+  it("is 0 with no pulses, then ramps from a 15 base", () => {
     expect(otxScore(0)).toBe(0);
-    expect(otxScore(1)).toBe(35);
-    expect(otxScore(3)).toBe(55);
+    expect(otxScore(1)).toBe(20);
+    expect(otxScore(3)).toBe(30);
   });
 
-  it("caps at 100", () => {
-    expect(otxScore(100)).toBe(100);
+  it("caps well below the level one source can carry a band with", () => {
+    // Microsoft and OpenDNS each sit in 50 pulses. Saturating at 100 made both
+    // of them suspicious on OTX alone.
+    expect(otxScore(50)).toBe(OTX_SCORE_CAP);
+    expect(otxScore(100)).toBe(OTX_SCORE_CAP);
+    expect(OTX_SCORE_CAP).toBeLessThan(70);
   });
 
-  it("crosses FLAG_THRESHOLD at two pulses — the compensation for the removed hard flag", () => {
-    expect(otxScore(2)).toBeGreaterThanOrEqual(FLAG_THRESHOLD);
+  it("crosses FLAG_THRESHOLD at five pulses, so it still flags", () => {
+    expect(otxScore(4)).toBeLessThan(FLAG_THRESHOLD);
+    expect(otxScore(5)).toBeGreaterThanOrEqual(FLAG_THRESHOLD);
   });
 });
 
@@ -46,7 +51,9 @@ describe("otxSource.check — no hard-malicious flag from pulses (P1.1)", () => 
     } as Awaited<ReturnType<typeof getJson>>);
     const f = await otxSource.check("50.16.16.211", new AbortController().signal);
     expect(f.status).toBe("ok");
-    expect(f.score).toBe(100);
+    // Fifty pulses is the shape major infrastructure has, so the score is
+    // capped rather than saturated at 100.
+    expect(f.score).toBe(OTX_SCORE_CAP);
     expect(f.malicious).toBeUndefined();
   });
 });
