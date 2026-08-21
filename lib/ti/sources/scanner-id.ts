@@ -72,7 +72,10 @@ export const scannerIdSource: TiSource = {
     id: "scanner-id",
     name: "Research scanner identification",
     url: "https://www.greynoise.io/blog/checking-it-twice-profiling-benign-internet-scanners----2024-edition",
-    category: "context",
+    // Grouped with the scanner sources rather than with geolocation: it is
+    // the source that answers whether an address is a scanner, and burying it
+    // under "context" puts it beside the geo providers.
+    category: "scanner",
     requiresKey: false,
     weight: 0,
     families: [4, 6],
