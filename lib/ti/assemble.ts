@@ -12,6 +12,7 @@ import { mergeFields } from "./orchestrate";
 import { collectCertificates, collectPassiveDns, collectSubdomains } from "./deep";
 import { overlayResolution, reconcileGeo } from "./geo/reconcile";
 import { isKnownBenignHash } from "./benign";
+import { applyScannerPolicy } from "./scanner-policy";
 import { resolveFileName } from "./hash/resolve-name";
 
 /**
@@ -28,6 +29,9 @@ export function assembleIpResult(
   checkedAt: string,
 ): CheckResult {
   const { riskScore, verdict, breakdown } = aggregateRisk(results);
+  // A research scanner that identified itself is held at "suspicious". See
+  // scanner-policy.ts for what that decides and why the score is left alone.
+  const scanner = applyScannerPolicy(verdict, results);
   const geoResolution = reconcileGeo(results);
   const reverse = results.find((r) => r.geo?.reverse)?.geo?.reverse;
   const fcrdns = results.find((r) => r.geo?.fcrdns)?.geo?.fcrdns;
@@ -36,7 +40,7 @@ export function assembleIpResult(
     ip,
     checkedAt,
     riskScore,
-    verdict,
+    verdict: scanner.verdict,
     geo: geoResolution
       ? overlayResolution(geoResolution, { reverse, fcrdns })
       : undefined,
@@ -44,7 +48,9 @@ export function assembleIpResult(
     passiveDns: collectPassiveDns(results),
     sources: results,
     stats: computeStats(results),
-    scoreBreakdown: breakdown,
+    scoreBreakdown: scanner.capped
+      ? { ...breakdown, scannerCapped: true }
+      : breakdown,
   };
 }
 

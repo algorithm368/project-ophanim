@@ -383,6 +383,9 @@ export interface ScoreBreakdown {
   /** The score reached the malicious band but only one source backed it, so the
    *  verdict was held one band down. */
   uncorroborated?: boolean;
+  /** A research scanner identified itself, so the verdict was held at
+   *  "suspicious" (see lib/ti/scanner-policy.ts). */
+  scannerCapped?: boolean;
 }
 
 export interface CheckResult {

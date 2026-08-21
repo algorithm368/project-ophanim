@@ -161,6 +161,14 @@ export function scoreRationale(
 
   terms.push({ label: "final", value: result.riskScore, derived: true });
 
+  if (bd.scannerCapped) {
+    terms.push({
+      label: "capped",
+      value: "scanner",
+      note: "identified research scanner, held at suspicious",
+    });
+  }
+
   if (bd.borderline) {
     const near = nearestCutoff(result.riskScore);
     const gap = result.riskScore - near.at;
