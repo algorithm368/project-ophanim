@@ -322,3 +322,103 @@ describe("buildIpDossier", () => {
     expect(d.footer).toMatch(/checked/);
   });
 });
+
+describe("dossier surfaces the sources added for benign evidence and dating", () => {
+  function withSource(over: Partial<SourceResult> & { id: string }): SourceResult {
+    const { id, ...rest } = over;
+    return {
+      source: {
+        id,
+        name: id,
+        url: "https://example.test",
+        category: "context",
+        requiresKey: false,
+        weight: 0,
+      },
+      enabled: true,
+      durationMs: 1,
+      status: "ok",
+      ...rest,
+    };
+  }
+
+  function ipResult(sources: SourceResult[]): CheckResult {
+    return {
+      ip: "1.2.3.4",
+      checkedAt: "2026-08-21T00:00:00Z",
+      riskScore: 0,
+      verdict: "clean",
+      sources,
+      stats: { total: 0, queried: 0, flagged: 0, skipped: 0, errored: 0, rateLimited: 0 },
+    };
+  }
+
+  it("prefers the published cloud range over the ASN guess, and shows the region", () => {
+    // "AWS eu-west-1 EC2" answers the question the ASN table can only gesture at.
+    const g = buildHostClassification(
+      ipResult([
+        withSource({
+          id: "cloud-range",
+          details: {
+            provider: "Amazon Web Services",
+            region: "ap-northeast-2",
+            service: "S3",
+            cidr: "3.5.140.0/22",
+          },
+        }),
+      ]),
+    );
+    const row = g?.fields.find((f) => f.label === "Cloud infrastructure");
+    expect(row?.value).toBe("Amazon Web Services ap-northeast-2, S3");
+    expect(row?.hint).toBe("3.5.140.0/22");
+  });
+
+  it("names the scanner operator that identified itself", () => {
+    const g = buildHostClassification(
+      ipResult([
+        withSource({
+          id: "scanner-id",
+          details: { operator: "Shodan", hostname: "pirate.census.shodan.io" },
+        }),
+      ]),
+    );
+    expect(g?.fields.find((f) => f.label === "Research scanner")?.value).toBe(
+      "Shodan, by its own PTR",
+    );
+  });
+
+  it("falls back to DShield for an abuse contact RDAP did not carry", () => {
+    const g = buildNetworkProvenance(
+      ipResult([
+        withSource({ id: "dshield", details: { abuseContact: "complaints@cari.net" } }),
+      ]),
+    );
+    expect(g?.fields.find((f) => f.label === "Abuse contact")?.value).toBe(
+      "complaints@cari.net",
+    );
+  });
+
+  it("dates the listings, which the blocklist row cannot", () => {
+    // "is this still live" is the question a bare listing count leaves open.
+    const g = buildThreatActivity(
+      ipResult([
+        withSource({
+          id: "dshield",
+          lastSeen: "2026-08-20",
+          details: {
+            feeds: ["blocklistde110", "blocklistde22", "ciarmy"],
+            feedFirstSeen: "2016-04-07",
+          },
+        }),
+      ]),
+    );
+    const row = g?.fields.find((f) => f.label === "Feed history");
+    expect(row?.value).toBe("3 feeds, 2016-04-07 to 2026-08-20");
+    expect(row?.hint).toContain("ciarmy");
+  });
+
+  it("says nothing when the sources returned nothing", () => {
+    const g = buildThreatActivity(ipResult([withSource({ id: "dshield" })]));
+    expect(g?.fields.some((f) => f.label === "Feed history")).not.toBe(true);
+  });
+});

@@ -62,11 +62,32 @@ function reverseDnsLine(geo: CheckResult["geo"]): string {
   return `${geo.reverse} (FCrDNS ${verdict})`;
 }
 
+/** The published range when a list answered, else the ASN table's guess. */
+function cloudRow(
+  fromRange: string | undefined,
+  cidr: string | undefined,
+  fromAsn: string | undefined,
+): DossierField | null {
+  if (fromRange) {
+    return { label: "Cloud infrastructure", value: fromRange, hint: cidr };
+  }
+  return fromAsn ? { label: "Cloud infrastructure", value: fromAsn } : null;
+}
+
 export function buildHostClassification(result: CheckResult): DossierGroup | null {
   const geo = result.geo;
   const gn = findFinding(result, "greynoise");
   const riot = gn?.details?.riot === true ? (gn?.details?.actor as string | undefined) : undefined;
+  // The provider's own published range carries the region and service; the ASN
+  // table is the fallback when no list could be fetched.
+  const range = findFinding(result, "cloud-range")?.details;
+  const rangeLine = str(range?.provider)
+    ? [str(range?.provider), [str(range?.region), str(range?.service)].filter(Boolean).join(", ")]
+        .filter(Boolean)
+        .join(" ")
+    : undefined;
   const cloud = cloudProvider(geo?.asn, geo?.asnOrg);
+  const scanner = findFinding(result, "scanner-id")?.details;
 
   const anon = anonymization(findFinding(result, "tor-project")?.categories);
   const ptr = reverseDnsLine(geo);
@@ -74,7 +95,14 @@ export function buildHostClassification(result: CheckResult): DossierGroup | nul
   return group("classification", "Host classification", [
     { label: "Assignment type", value: assignmentType(geo) },
     riot ? { label: "Recognized service", value: riot } : null,
-    cloud ? { label: "Cloud infrastructure", value: cloud.name } : null,
+    str(scanner?.operator)
+      ? {
+          label: "Research scanner",
+          value: `${str(scanner?.operator)}, by its own PTR`,
+          hint: str(scanner?.hostname),
+        }
+      : null,
+    cloudRow(rangeLine, str(range?.cidr), cloud?.name),
     anon ? { label: "Anonymization", value: anon } : null,
     ptr ? { label: "Reverse DNS (PTR)", value: ptr, mono: true } : null,
   ]);
@@ -161,7 +189,13 @@ export function buildNetworkProvenance(result: CheckResult): DossierGroup | null
   const org = geo?.org && geo.org !== geo.isp && geo.org !== geo.asnOrg ? geo.org : "";
   const allocation = withQualifier(str(rdap?.networkName), str(rdap?.range));
   const prefix = withQualifier(str(ripe?.prefix), str(ripe?.rpkiStatus), "RPKI ");
-  const abuse = withQualifier(str(rdap?.abuseContact), str(rdap?.abuseOrg));
+  const dshield = findFinding(result, "dshield")?.details;
+  // RDAP is the authority, but it often omits the contact entirely and DShield
+  // carries one for the announcing network.
+  const abuse =
+    withQualifier(str(rdap?.abuseContact), str(rdap?.abuseOrg)) ||
+    str(dshield?.abuseContact) ||
+    "";
 
   return group("provenance", "Network provenance", [
     asn ? { label: "Autonomous system", value: asn, mono: true } : null,
@@ -250,6 +284,17 @@ export function buildThreatActivity(result: CheckResult): DossierGroup | null {
 
   const listed = blocklistEvidence(result);
 
+  // DShield is the only source that dates a listing across many feeds at once,
+  // and "is this still live" is the question the listing row cannot answer.
+  const ds = findFinding(result, "dshield")?.details;
+  const feeds = strArr(ds?.feeds);
+  const feedFirst = str(ds?.feedFirstSeen);
+  const feedLast = str(findFinding(result, "dshield")?.lastSeen);
+  const tracked =
+    feeds.length && feedFirst && feedLast
+      ? `${count(feeds.length, "feed")}, ${isoDate(feedFirst)} to ${isoDate(feedLast)}`
+      : "";
+
   const { threat: shodanThreatTags } = shodanTagSplit(result);
   const hostTags = shodanThreatTags.length ? shodanThreatTags.join(", ") : "";
 
@@ -260,6 +305,9 @@ export function buildThreatActivity(result: CheckResult): DossierGroup | null {
     malware ? { label: "Malware association", value: malware } : null,
     c2 ? { label: "Command and control", value: c2 } : null,
     listed.length ? { label: "Blocklist listings", value: listed.join(", ") } : null,
+    tracked
+      ? { label: "Feed history", value: tracked, hint: feeds.join(", "), mono: true }
+      : null,
     hostTags ? { label: "Flagged host tags", value: hostTags } : null,
     rep ? { label: "Reputation history", value: rep, mono: true } : null,
   ]);

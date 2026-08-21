@@ -104,12 +104,21 @@ function IdentityHeader({
 type DomainContextOf = NonNullable<DomainCheckResult["context"]>;
 
 /** Who the name is registered through, and for how long. */
-function RegistrationGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
+function RegistrationGroup({
+    ctx,
+    rank,
+}: Readonly<{ ctx: DomainContextOf; rank?: number }>) {
     const created = formatDate(ctx.createdAt);
     const expires = formatDate(ctx.expiresAt);
     const age = ageLabel(ctx.ageDays);
     const categories = ctx.categories ?? [];
-    if (!ctx.registrar && !created && !expires && categories.length === 0) {
+    if (
+        !ctx.registrar &&
+        !created &&
+        !expires &&
+        categories.length === 0 &&
+        rank === undefined
+    ) {
         return null;
     }
 
@@ -120,6 +129,11 @@ function RegistrationGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
     return (
         <Group label="Registration">
             {ctx.registrar && <Field label="Registrar">{ctx.registrar}</Field>}
+            {rank !== undefined && (
+                <Field label="Popularity">
+                    Tranco rank {rank.toLocaleString("en-US")}
+                </Field>
+            )}
             {created && (
                 <Field
                     label="Registered"
@@ -287,7 +301,13 @@ export function DomainProfileCard({ result }: Readonly<{ result: DomainCheckResu
                 {ctx ? (
                     <div className="space-y-4">
                         <Rule />
-                        <RegistrationGroup ctx={ctx} />
+                        <RegistrationGroup
+                            ctx={ctx}
+                            rank={
+                                result.sources.find((s) => s.source.id === "tranco")
+                                    ?.details?.rank as number | undefined
+                            }
+                        />
                         <DnsRecordsGroup ctx={ctx} />
                         <EmailSecurityGroup ctx={ctx} />
                     </div>
@@ -817,6 +837,14 @@ export function HashProfileCard({ result }: Readonly<{ result: HashCheckResult }
     const detectionsAll = [...new Set(ctx?.detectionNames ?? [])];
     const detections = tidyDetections(detectionsAll);
     const ratio = ctx?.detectionRatio;
+    // A named YARA rule with a named author is a lead an analyst can follow;
+    // a detection ratio is a number to quote. They belong side by side.
+    const yaraRules = [
+        ...new Set(
+            (result.sources.find((s) => s.source.id === "yaraify")?.details
+                ?.yaraRules as string[] | undefined) ?? [],
+        ),
+    ];
     const shownTech = new Set(
         capabilities.flatMap((c) => (c.mitre ?? []).map((id) => id.toUpperCase())),
     );
@@ -1018,6 +1046,7 @@ export function HashProfileCard({ result }: Readonly<{ result: HashCheckResult }
                     plain summary; each section expands on click. */}
                 {(capabilities.length > 0 ||
                     detections.length > 0 ||
+                    yaraRules.length > 0 ||
                     extraTech.length > 0 ||
                     dlls.length > 0 ||
                     ctx?.sandboxBehavior ||
@@ -1050,6 +1079,29 @@ export function HashProfileCard({ result }: Readonly<{ result: HashCheckResult }
                                                                 className="shrink-0 font-mono text-[11px] text-muted-foreground"
                                                             />
                                                         )}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </ExpandableList>
+                                </Section>
+                            )}
+
+                            {yaraRules.length > 0 && (
+                                <Section
+                                    title="YARA rules matched"
+                                    count={yaraRules.length}
+                                >
+                                    <ExpandableList items={yaraRules} cap={8}>
+                                        {(shown) => (
+                                            <ul className="space-y-0.5">
+                                                {shown.map((n) => (
+                                                    <li
+                                                        key={n}
+                                                        title={n}
+                                                        className="truncate font-mono text-[12px] text-foreground/80"
+                                                    >
+                                                        {n}
                                                     </li>
                                                 ))}
                                             </ul>
