@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { preconnect } from "react-dom";
 import {
     Check,
     Copy,
@@ -225,6 +226,33 @@ function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
     );
 }
 
+/** Where every capture on this row is served from. */
+const ARCHIVE_ORIGIN = "https://web.archive.org";
+
+/** Captures already asked for, so hovering a chip twice costs one request. */
+const warmedCaptures = new Set<string>();
+
+/**
+ * Ask for a capture during the pause before the click that needs it.
+ *
+ * Hovering a chip is a second or so of intent that was being thrown away, and
+ * the archive spends most of a cold request finding the record rather than
+ * sending it. So this pays off twice over: the browser may serve the frame from
+ * cache, and the archive has the record in hand either way.
+ *
+ * `rel="prefetch"` rather than React's `preload`, which speaks `rel="preload"`
+ * and needs an `as` this is not: the destination here is a document a frame
+ * will navigate to, not a subresource of this page.
+ */
+function warmCapture(url: string | null) {
+    if (!url || warmedCaptures.has(url)) return;
+    warmedCaptures.add(url);
+    const link = document.createElement("link");
+    link.rel = "prefetch";
+    link.href = url;
+    document.head.append(link);
+}
+
 /**
  * Wayback snapshots as dated chips, each of which can be looked at here.
  *
@@ -237,12 +265,22 @@ function WaybackRow({ snapshots }: Readonly<{ snapshots: WaybackSnapshot[] }>) {
     const [preview, setPreview] = useState<WaybackSnapshot | null>(null);
     const frameUrl = preview ? archiveFrameUrl(preview.url) : null;
 
+    // The first click on a chip was paying for DNS and a TLS handshake before
+    // the archive had even been asked for anything. Settle that while the row
+    // is being read instead.
+    preconnect(ARCHIVE_ORIGIN);
+
     return (
         <>
             <div className="flex flex-wrap gap-1.5">
                 {snapshots.map((s) => (
                     <span
                         key={s.url}
+                        // Both the pointer and the keyboard announce a chip
+                        // before they commit to it, and either is early enough
+                        // to be worth acting on.
+                        onPointerEnter={() => warmCapture(archiveFrameUrl(s.url))}
+                        onFocus={() => warmCapture(archiveFrameUrl(s.url))}
                         className="group inline-flex items-stretch overflow-hidden rounded-md border border-border bg-muted/40 transition-colors hover:border-foreground/40"
                     >
                         <button
