@@ -38,6 +38,21 @@ describe("reputationTrend", () => {
     expect(t?.summary).toBe("never flagged across 2 recorded checks");
   });
 
+  // The card renders this as a value under a "History" label, so it has to be
+  // a fraction rather than a sentence: the label already supplies the noun.
+  it("carries a short form that fits a stat cell", () => {
+    expect(
+      reputationTrend(series(["clean", 0], ["clean", 1], ["clean", 0]))?.short,
+    ).toBe("clean 3/3");
+    expect(
+      reputationTrend(series(["clean", 2], ["suspicious", 55], ["malicious", 75]))
+        ?.short,
+    ).toBe("flagged 2/3, changed");
+    expect(reputationTrend(series(["clean", 0], ["low", 20]))?.short).toBe(
+      "flagged 0/2",
+    );
+  });
+
   it("lists the verdicts seen, newest first and deduped", () => {
     const t = reputationTrend(series(["clean", 0], ["malicious", 75], ["malicious", 80]));
     expect(t?.seen).toEqual(["malicious", "clean"]);

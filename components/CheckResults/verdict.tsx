@@ -2,7 +2,6 @@
 
 import {
     Clock,
-    Database,
     RefreshCw,
     ShieldAlert,
     ShieldCheck,
@@ -14,7 +13,7 @@ import {
     isHashResult,
     type Verdict,
 } from "@/lib/ti/types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     buildDomainNarrative,
     buildHashNarrative,
@@ -26,6 +25,7 @@ import { scoreRationale } from "@/lib/ti/rationale";
 import { threatTypeOf } from "@/lib/ti/threat-type";
 import { scoreConfidence } from "@/lib/ti/confidence";
 import { isNewlyFlagged, reputationTrend } from "@/lib/ti/trend";
+import { relativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -194,18 +194,16 @@ function VerdictShell({
 
                 <ConsensusLine result={result} />
 
-                {/* Meta: plain muted line, no bordered chips. */}
+                {/* Meta: one chip, not three. How fresh the result is and where
+                    it came from are the same fact from two angles, and a stamp
+                    spelled out to the second ("8/21/2026, 7:54:16 AM") answers
+                    a question nobody asks that precisely. The exact stamp is on
+                    hover, so nothing is lost. */}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5 font-mono">
-                        <Clock className="size-3" />
-                        checked {new Date(result.checkedAt).toLocaleString()}
-                    </span>
-                    {result.cached && (
-                        <span className="inline-flex items-center gap-1.5 font-mono">
-                            <Database className="size-3" />
-                            cached
-                        </span>
-                    )}
+                    <CheckedAt
+                        checkedAt={result.checkedAt}
+                        cached={result.cached}
+                    />
                     <Button
                         type="button"
                         variant="ghost"
@@ -219,6 +217,46 @@ function VerdictShell({
                 </div>
             </CardContent>
         </Card>
+    );
+}
+
+/**
+ * "2m ago, cached", ticking.
+ *
+ * A cached permalink renders this card on the server and then hydrates it in
+ * the browser, so two clocks produce the label. They agree to well within the
+ * resolution of anything `relativeTime` returns, and the effect below re-runs
+ * with the browser's own clock on mount regardless; `suppressHydrationWarning`
+ * covers the once-a-minute render that straddles a boundary, and the
+ * locale-formatted title, which is the server's locale until mount.
+ */
+function CheckedAt({
+    checkedAt,
+    cached,
+}: Readonly<{ checkedAt: string; cached?: boolean }>) {
+    const [now, setNow] = useState(() => Date.now());
+
+    // A result that was two minutes old when the tab was opened is not two
+    // minutes old an hour later, and this line is the only thing that says so.
+    // The tick is also what reconciles the server's clock with the browser's,
+    // which is why there is no synchronous correction on mount: the two are a
+    // second apart at worst, well inside the resolution of any label this
+    // renders, so waiting for the first tick costs nothing.
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 30_000);
+        return () => clearInterval(id);
+    }, []);
+
+    return (
+        <span
+            suppressHydrationWarning
+            title={`Checked ${new Date(checkedAt).toLocaleString()}`}
+            className="inline-flex items-center gap-1.5 font-mono"
+        >
+            <Clock className="size-3" />
+            {relativeTime(checkedAt, now)}
+            {cached && ", cached"}
+        </span>
     );
 }
 
@@ -310,103 +348,181 @@ export function VerdictHero({
     );
 }
 
-function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
+/** One cell of the stat strip: a small label over the value it names. */
+type Stat = {
+    key: string;
+    label: string;
+    value: string;
+    title?: string;
+    /** Lifted out of the muted tone, for the things that change what happens next. */
+    emphatic?: boolean;
+    /** Takes two grid tracks. For the cells holding a phrase rather than a
+     *  count, which would otherwise wrap inside a column sized for "13". */
+    wide?: boolean;
+};
+
+/** "1 rate limited, 2 no key", skipping the zeroes. Empty when all are 0. */
+function tally(buckets: Readonly<{ count: number; label: string }>[]): string {
+    return buckets
+        .filter((b) => b.count > 0)
+        .map((b) => `${b.count} ${b.label}`)
+        .join(", ");
+}
+
+/**
+ * The cells of the consensus strip, in reading order.
+ *
+ * Split out from the rendering because deciding *which* facts this check has to
+ * report is the whole of the logic here, and the markup below is then four
+ * lines that do not need reading.
+ */
+function consensusStats(result: ResultLike): Stat[] {
     // Only scoring feeds (weight > 0) are detectors; context-only sources like
-    // geolocation (weight 0) can't flag, so excluding them keeps this line
+    // geolocation (weight 0) can't flag, so excluding them keeps this strip
     // consistent with the narrative's "of N TI sources" (issue #8). The tally
     // logic is the unit-tested consensusBuckets() — the single source of truth.
     const c = consensusBuckets(result);
-
-    const buckets = [
-        // "Adverse" leads and "flagged" qualifies it. Showing only the flagging
-        // count understated the evidence: a source listed on Spamhaus ZEN
-        // scores 38, just under FLAG_THRESHOLD, and landed in "clean".
-        {
-            key: "adverse",
-            count: c.adverse,
-            label:
-                c.flagged && c.flagged < c.adverse
-                    ? `adverse (${c.flagged} flagged)`
-                    : "adverse",
-        },
-        { key: "clean", count: c.clean, label: "clean" },
-        // A source with no record of the indicator never assessed it.
-        { key: "norecord", count: c.noRecord, label: "no record" },
-        // Counts only; the borderline marker below is not a tally.
-        { key: "errored", count: c.errored, label: "errors" },
-        { key: "rate", count: c.rateLimited, label: "rate limited" },
-        { key: "skipped", count: c.noKey, label: "no key" },
-        // Family-skipped sources are not misconfigured, so they must not be
-        // reported as missing a key.
-        { key: "unsupported", count: c.unsupported, label: "unsupported" },
-    ];
-    const segments = buckets.filter((b) => b.count > 0);
-
-    // How much the score is worth believing, as distinct from how bad it is.
-    // It leads this row because the detector tally below it is the evidence the
-    // level is drawn from, so the two belong on one line.
     const confidence = scoreConfidence(result);
     const trend = reputationTrend(result.history);
     const newlyFlagged = isNewlyFlagged(result.history, result.verdict);
 
-    // A plain monochrome breakdown reads more clearly than a tiny color bar and
-    // keeps color reserved for the verdict word.
+    const stats: Stat[] = [];
+
+    // How much the score is worth believing, as distinct from how bad it is.
+    // It leads because everything to its right is the evidence it was drawn
+    // from, so the strip reads as a claim followed by its support.
+    if (confidence) {
+        stats.push({
+            key: "confidence",
+            label: "Confidence",
+            value: confidence.level,
+            title: confidence.reason,
+        });
+    }
+
+    // Detectors, adverse and clean are always present, zero included: a stable
+    // set of columns is what makes the strip scannable, and "0 adverse" is a
+    // finding rather than an absence of one.
+    stats.push({ key: "detectors", label: "Detectors", value: String(c.total) });
+    stats.push({ key: "adverse", label: "Adverse", value: String(c.adverse) });
+
+    // Flagged is a subset of adverse, not a fourth bucket, so the value says
+    // "of" rather than standing alone. Reporting only this count understated
+    // the evidence, which is why "adverse" leads: a source listed on Spamhaus
+    // ZEN scores 38, just under FLAG_THRESHOLD, and used to read as clean.
+    if (c.flagged > 0 && c.flagged < c.adverse) {
+        stats.push({
+            key: "flagged",
+            label: "Flagged",
+            value: `${c.flagged} of ${c.adverse}`,
+        });
+    }
+
+    stats.push({ key: "clean", label: "Clean", value: String(c.clean) });
+
+    // A source with no record of the indicator never assessed it, which is not
+    // the same as having looked and found it clean.
+    if (c.noRecord > 0) {
+        stats.push({
+            key: "norecord",
+            label: "No record",
+            value: String(c.noRecord),
+        });
+    }
+
+    // The ways a source can fail to answer, collected under one label: these
+    // are gaps in the evidence rather than opinions about the indicator, and
+    // most checks have none, so the cell costs nothing when nothing is wrong.
+    const gaps = tally([
+        { count: c.errored, label: "errors" },
+        { count: c.rateLimited, label: "rate limited" },
+        { count: c.noKey, label: "no key" },
+        // Family-skipped sources are not misconfigured, so they must not be
+        // reported as missing a key.
+        { count: c.unsupported, label: "unsupported" },
+    ]);
+    if (gaps) stats.push({ key: "gaps", label: "Gaps", value: gaps, wide: true });
+
+    // What the recorded checks say. Reported, never scored: today's verdict
+    // becomes tomorrow's history, so feeding it back would let a verdict
+    // confirm itself. The full sentence is on hover.
+    if (trend) {
+        stats.push({
+            key: "history",
+            label: "History",
+            value: newlyFlagged ? "newly flagged" : trend.short,
+            title: trend.steady
+                ? `${trend.summary}. Every recorded check reached the same verdict.`
+                : `${trend.summary}. Verdicts on record: ${trend.seen.join(", ")}.`,
+            emphatic: newlyFlagged,
+            wide: true,
+        });
+    }
+
+    // Every floor-pinned verdict is borderline by construction: the floor is 75
+    // and the malicious cutoff is 70, so it lands five points into a band it
+    // did not reach on consensus. Those are the verdicts worth a second look,
+    // so the flag is stated here rather than only inside the rationale.
+    if (result.scoreBreakdown?.borderline) {
+        stats.push({
+            key: "flag",
+            // Not "Flag": the strip may already carry a "Flagged" column, and
+            // two labels a letter apart meaning unrelated things is the kind of
+            // thing that gets misread once and distrusted after.
+            label: "Caveat",
+            value: "borderline",
+            title: "Within five points of a verdict boundary, so the label could fall either way.",
+            emphatic: true,
+        });
+    }
+
+    return stats;
+}
+
+/**
+ * The evidence behind the verdict, as a strip of labelled figures.
+ *
+ * This was one dot-separated run of text, and no amount of shortening the
+ * wording fixed it: a chain of "· 5 adverse · 7 clean · 1 rate limited" reads
+ * as a sentence, so every figure has to be parsed in sequence to find the one
+ * being looked for. Small label over value gives each figure a column and a
+ * name, which is the same reason the rationale below it is a table.
+ *
+ * Two tones only: muted labels, plain values. Color stays on the verdict word.
+ */
+function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
+    const stats = consensusStats(result);
+
     return (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-muted-foreground">
-            {/* No signal-bar icon here, unlike the geo vote table. At this size
-                a single bar is a few pixels wide, and sitting at the head of the
-                line with nothing before it, it read as a stray comma. The word
-                carries the level on its own. */}
-            {confidence && (
-                <span
-                    title={confidence.reason}
-                    className="font-medium tracking-wider uppercase"
+        // A grid rather than a wrapping flex row: flex sizes each cell to its
+        // own content, so the moment the strip wraps the second row's labels
+        // sit at their own arbitrary offsets and the columns stop being
+        // columns. auto-fill keeps one track width at every viewport, which is
+        // the whole point of laying this out as a table.
+        <dl className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-4 gap-y-3 border-t border-foreground/12 pt-3">
+            {stats.map((s) => (
+                <div
+                    key={s.key}
+                    title={s.title}
+                    className={cn("min-w-0", s.wide && "col-span-2")}
                 >
-                    <span className="text-foreground">{confidence.level}</span>
-                    {" confidence ·"}
-                </span>
-            )}
-            <span className="font-medium tracking-wider uppercase">
-                <span className="text-foreground">{c.responded}</span>/{c.total}{" "}
-                detectors
-            </span>
-            {segments.map((s) => (
-                <span key={s.key}>
-                    · {s.count} {s.label}
-                </span>
+                    <dt className="font-mono text-[10px] uppercase leading-none tracking-[0.14em] text-muted-foreground">
+                        {s.label}
+                    </dt>
+                    <dd
+                        className={cn(
+                            // Snug, not none: a long value ("2 errors, 1 no
+                            // key") wraps inside its own track, and leading-none
+                            // laps the two lines onto each other.
+                            "mt-1.5 font-mono text-[13px] leading-snug break-words text-foreground",
+                            s.emphatic && "font-bold",
+                        )}
+                    >
+                        {s.value}
+                    </dd>
+                </div>
             ))}
-            {/* Every floor-pinned verdict is borderline by construction: the
-                floor is 75 and the malicious cutoff is 70, so it lands five
-                points into a band it did not reach on consensus. Those are the
-                verdicts worth a second look, so the flag is stated here rather
-                than only inside the rationale. */}
-            {/* What the recorded checks say. Reported, never scored: today's
-                verdict becomes tomorrow's history, so feeding it back would let
-                a verdict confirm itself. */}
-            {trend && (
-                <span
-                    title={
-                        trend.steady
-                            ? "Every recorded check reached the same verdict."
-                            : `Verdicts on record: ${trend.seen.join(", ")}.`
-                    }
-                    className={cn(
-                        "tracking-wide",
-                        newlyFlagged && "font-medium text-foreground",
-                    )}
-                >
-                    · {newlyFlagged ? "newly flagged" : trend.summary}
-                </span>
-            )}
-            {result.scoreBreakdown?.borderline && (
-                <span
-                    title="Within five points of a verdict boundary, so the label could fall either way."
-                    className="font-medium tracking-wider uppercase text-foreground"
-                >
-                    · borderline
-                </span>
-            )}
-        </div>
+        </dl>
     );
 }
 
