@@ -7,6 +7,7 @@ import {
   getCachedHashResult,
   getCachedResult,
 } from "@/lib/ti/cache";
+import { getHistory } from "@/lib/ti/history";
 import type {
   AnyCheckResult,
 } from "@/lib/ti/types";
@@ -23,16 +24,30 @@ const VERDICT_LABEL: Record<string, string> = {
 };
 
 /** Read the cached result for an indicator (or null). Memoized per request so
- *  generateMetadata and the page share a single cache read. */
+ *  generateMetadata and the page share a single cache read.
+ *
+ *  Mirrors what the API's cache branch returns, not just the stored value: the
+ *  `cached` flag and the history are added there, and a permalink that dropped
+ *  them rendered a five-hour-old result labelled "re-check" with no reputation
+ *  timeline, which is the one page where the timeline is most wanted. The
+ *  history read is the same one the route makes, on a cache hit only. */
 const fetchCached = cache(
   async (
     decoded: string,
   ): Promise<AnyCheckResult | null> => {
     const kind = detectIOC(decoded);
     if (!kind) return null;
-    if (kind === "domain") return getCachedDomainResult(decoded);
-    if (kind === "hash") return getCachedHashResult(decoded);
-    return getCachedResult(decoded);
+
+    let stored: AnyCheckResult | null;
+    if (kind === "domain") stored = await getCachedDomainResult(decoded);
+    else if (kind === "hash") stored = await getCachedHashResult(decoded);
+    else stored = await getCachedResult(decoded);
+    if (!stored) return null;
+
+    // `kind` and the route factory's `label` are the same three strings, which
+    // is what keeps this reading the keys recordHistory() writes.
+    const history = await getHistory(kind, decoded);
+    return { ...stored, cached: true, history };
   },
 );
 
