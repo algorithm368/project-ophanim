@@ -13,6 +13,16 @@ export interface ReputationTrend {
   seen: Verdict[];
   /** One line, commas not dashes. */
   summary: string;
+  /**
+   * The same fact as a value under a "History" label, for the verdict card's
+   * stat strip.
+   *
+   * The strip is columns of counts, and a full sentence dropped into one of
+   * them reads as prose and breaks the alignment that makes the row scannable.
+   * The label supplies the noun, so this carries only the fraction; `summary`
+   * is still what the tooltip says.
+   */
+  short: string;
 }
 
 const ADVERSE: Verdict[] = ["suspicious", "malicious"];
@@ -47,15 +57,19 @@ export function reputationTrend(
 
   const checks = snapshots.length;
   let summary: string;
+  let short: string;
   if (steady) {
     summary = `${newest.verdict} on all ${checks} recorded checks`;
+    short = `${newest.verdict} ${checks}/${checks}`;
   } else if (adverse === 0) {
     summary = `never flagged across ${checks} recorded checks`;
+    short = `flagged 0/${checks}`;
   } else {
     summary = `flagged on ${adverse} of ${checks} recorded checks, verdict has changed`;
+    short = `flagged ${adverse}/${checks}, changed`;
   }
 
-  return { checks, adverse, steady, seen, summary };
+  return { checks, adverse, steady, seen, summary, short };
 }
 
 /**
