@@ -105,6 +105,33 @@ score will later fill. This is the whole point: the progress readout is not a
 separate card that gets discarded, it is the score's placeholder. When the
 lookup completes the number lands in the space that was being held for it.
 
+### What the mockup settled
+
+A working mockup of the hero, played against a simulated source timeline, fixed
+three things the prose had left open.
+
+**The risk meter and the progress bar are the same element.** `VerdictHero`
+already draws a `h-1.5 rounded-full` meter whose fill is the score. Streaming
+fills it by progress instead, and completion fills it by score. There is no
+second bar and no swap, which is a stronger version of the intent than the two
+elements the design first assumed.
+
+**The threat-type slot is reserved from the first frame.** The verdict word
+itself is not the thing that jumps; the words vary in length anyway
+(`CLEAN` against `SUSPICIOUS`) so no fixed width would help. What actually
+reflows the row is `· TOR EXIT` appearing beside the verdict at the end. A
+held slot of fixed minimum width, carrying a skeleton while streaming, removes
+the reflow at its real cause.
+
+**A single-line dot strip lives under the meter, permanently.** Which sources
+have answered is the most wanted thing on screen while waiting, and
+`SourceBreakdown` sits at the bottom of the page where it cannot serve that.
+Moving it up during streaming and back down at the end would violate the rule
+against shifting content. One row of small dots, one per source, directly under
+the meter resolves the conflict: it is present in both phases, so nothing moves,
+and it does not duplicate `SourceBreakdown`, which carries per-source scores and
+summaries rather than liveness. Each dot names its source on hover.
+
 Two new units:
 
 **`lib/ti/partial.ts`** builds a partial result from the settled sources, using
