@@ -923,12 +923,15 @@ export default function CheckResults({
     // A URL result is checked first: it is the most specific shape, and the
     // other guards would not recognize it. The guards still run when a result
     // is present, so a mismatched `kind` cannot render the wrong view.
-    const shape =
-        result === null ? kind
-        : isUrlResult(result) ? "url"
-        : isHashResult(result) ? "hash"
-        : isDomainResult(result) ? "domain"
-        : "ip";
+    //
+    // An if/else ladder rather than chained ternaries: `no-nested-ternary` is
+    // an error in this project, not a warning.
+    let shape: IOCType | "url";
+    if (result === null) shape = kind;
+    else if (isUrlResult(result)) shape = "url";
+    else if (isHashResult(result)) shape = "hash";
+    else if (isDomainResult(result)) shape = "domain";
+    else shape = "ip";
 
     const common = { partial, indicator, onRefresh, research };
     let body: React.ReactNode;
@@ -948,11 +951,6 @@ export default function CheckResults({
     );
 }
 ```
-
-`no-nested-ternary` is an error in this project and the `shape` chain above will
-trip it. Write it as an `if`/`else if` ladder assigning to a `let shape`
-instead; the ternary is shown here only because it reads more compactly on the
-page.
 
 Add the imports:
 
@@ -1229,30 +1227,38 @@ nothing.
 
 - [ ] **Step 1: Thread `streaming` to each empty-state branch**
 
-For `profile.tsx`, the branch becomes:
+For `profile.tsx`, the existing JSX is a two-way ternary on `ctx`. It needs a
+third case, and `no-nested-ternary` is an **error** in this project, so the
+choice moves into a variable above the `return` rather than becoming a chained
+`? :`:
 
 ```tsx
-                ) : streaming ? (
-                    <div className="space-y-2">
-                        <div className="sweep h-3 w-2/3 rounded" />
-                        <div className="sweep h-3 w-1/2 rounded" />
-                    </div>
-                ) : (
-                    <p className="text-sm text-muted-foreground">
-                        No registration or DNS context was returned for this domain.
-                    </p>
-                )}
-```
-
-`no-nested-ternary` is an error in this project, so extract the choice into a
-variable above the JSX rather than chaining `? :`:
-
-```tsx
+    // Three cases, not two. "Nothing was returned" is an answer, and while the
+    // panel is still being asked, the honest state is that nobody has answered
+    // yet: an analyst acts on "no DNS context", so it must not appear early.
     let body: React.ReactNode;
-    if (ctx) body = <>{/* the existing populated branch */}</>;
-    else if (streaming) body = <ContextSkeleton />;
-    else body = <p className="text-sm text-muted-foreground">No registration or DNS context was returned for this domain.</p>;
+    if (ctx) {
+        body = (
+            <div className="...">{/* the existing populated branch, verbatim */}</div>
+        );
+    } else if (streaming) {
+        body = (
+            <div className="space-y-2">
+                <div className="sweep h-3 w-2/3 rounded" />
+                <div className="sweep h-3 w-1/2 rounded" />
+            </div>
+        );
+    } else {
+        body = (
+            <p className="text-sm text-muted-foreground">
+                No registration or DNS context was returned for this domain.
+            </p>
+        );
+    }
 ```
+
+Then the JSX becomes `{body}` where the ternary used to be. Move the existing
+populated branch across verbatim; do not retype it.
 
 For `research.tsx`, `noteFor` at line 448 currently maps a lane's status to a
 phrase. Give it the phase, so an unfinished lane says nothing rather than
