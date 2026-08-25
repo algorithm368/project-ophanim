@@ -72,7 +72,7 @@ export function PendingHero({
           <div className="sweep h-3 w-2/3 rounded" />
         </div>
 
-        <dl className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-x-4 gap-y-3 border-t border-foreground/12 pt-3">
+        <dl className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-4 gap-y-3 border-t border-foreground/12 pt-3">
           <Cell label="Confidence">
             <span className="sweep inline-block h-3 w-14 rounded align-middle" />
           </Cell>
