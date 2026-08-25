@@ -17,7 +17,12 @@ export interface PartialCounts {
   answered: number;
   /** Answered sources with something adverse to say. */
   adverse: number;
-  /** Answered sources with nothing adverse to say. */
+  /** Answered sources that have no record of this indicator at all. Kept apart
+   *  from `clean`, because "we have never seen this file" and "we looked and it
+   *  is fine" are different answers and an analyst treats them differently.
+   *  VirusTotal's 404 path is exactly this: `{ status: "ok" }` with no score. */
+  noRecord: number;
+  /** Answered sources that looked and found nothing wrong. */
   clean: number;
   /** Settled weighted sources that could not answer at all. */
   gaps: number;
@@ -47,6 +52,13 @@ function isAdverse(s: SourceResult): boolean {
   return s.malicious === true || (s.score ?? 0) > 0;
 }
 
+/** No score at all means the source has no record of this indicator, which is
+ *  not the same as having looked and found it clean. Same predicate as
+ *  consensusBuckets(), for the same reason. */
+function isNoRecord(s: SourceResult): boolean {
+  return s.score === undefined && s.malicious !== true;
+}
+
 export function buildPartial(
   total: number,
   settled: SourceResult[],
@@ -56,6 +68,7 @@ export function buildPartial(
   const scoring = settled.filter((s) => (s.source.weight ?? 1) > 0);
   const answered = scoring.filter((s) => s.status === "ok");
   const adverse = answered.filter(isAdverse).length;
+  const noRecord = answered.filter(isNoRecord).length;
 
   const geo = mergeFields(
     settled
@@ -69,7 +82,11 @@ export function buildPartial(
       settled: settled.length,
       answered: answered.length,
       adverse,
-      clean: answered.length - adverse,
+      noRecord,
+      // Same arithmetic as consensusBuckets(), floor included: a source with no
+      // record is neither adverse nor clean, and lumping it into clean would
+      // make the streaming strip disagree with the completed one.
+      clean: Math.max(0, answered.length - adverse - noRecord),
       gaps: scoring.length - answered.length,
       stillOut: Math.max(0, total - settled.length),
     },

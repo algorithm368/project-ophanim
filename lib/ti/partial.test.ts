@@ -50,6 +50,22 @@ describe("buildPartial", () => {
     expect(p.counts.adverse).toBe(1);
   });
 
+  // VirusTotal's 404 path returns `{ status: "ok" }` with no score at weight 1,
+  // and its own comment says that is not a clean result. Counting it as clean
+  // here would make the streaming strip say "3 clean" and the completed strip
+  // say "2 clean, 1 no record" for the same lookup.
+  it("separates a source with no record from one that found nothing wrong", () => {
+    const p = buildPartial(4, [
+      src("vt", {}), // status ok, no score at all
+      src("otx", { score: 0 }),
+      src("abuse", { score: 70 }),
+    ]);
+    expect(p.counts.noRecord).toBe(1);
+    expect(p.counts.clean).toBe(1);
+    expect(p.counts.adverse).toBe(1);
+    expect(p.counts.answered).toBe(3);
+  });
+
   it("collects every way of not answering into gaps", () => {
     const p = buildPartial(6, [
       src("a", { status: "error" }),
