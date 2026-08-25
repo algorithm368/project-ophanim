@@ -11,6 +11,7 @@ import {
     type AnyCheckResult,
     isDomainResult,
     isHashResult,
+    type SourceResult,
     type Verdict,
 } from "@/lib/ti/types";
 import { useEffect, useState } from "react";
@@ -186,6 +187,7 @@ function VerdictShell({
                             }}
                         />
                     </div>
+                    <SourceDots sources={result.sources} total={result.sources.length} />
                 </div>
 
                 <CopyableSummary text={narrative} />
@@ -346,6 +348,50 @@ export function VerdictHero({
             narrative={narrative}
         />
     );
+}
+
+/**
+ * One dot per source, on one line, under the meter.
+ *
+ * Present in both phases on purpose. While streaming it is the liveness
+ * readout; once complete it is a glanceable health overview, and because it
+ * never appears or disappears, nothing on the page moves when the result
+ * lands. Hover names the source.
+ */
+export function SourceDots({
+    sources,
+    total,
+}: Readonly<{ sources: SourceResult[]; total: number }>) {
+    // Placeholders for sources still out, so the strip is its final width from
+    // the first frame rather than growing a dot at a time.
+    const pending = Math.max(0, total - sources.length);
+
+    return (
+        <div className="flex flex-wrap gap-1" aria-hidden>
+            {sources.map((s) => (
+                <span
+                    key={s.source.id}
+                    title={s.source.name}
+                    className={cn("size-1.5 rounded-full", dotTone(s))}
+                />
+            ))}
+            {Array.from({ length: pending }, (_, i) => (
+                <span
+                    key={`pending-${i}`}
+                    className="size-1.5 animate-pulse rounded-full bg-foreground/15"
+                />
+            ))}
+        </div>
+    );
+}
+
+/** The same three readings the progress list uses: adverse, gap, clean. */
+function dotTone(s: SourceResult): string {
+    if (s.status === "ok" && (s.malicious === true || (s.score ?? 0) > 0)) {
+        return "bg-red-600 dark:bg-red-400";
+    }
+    if (s.status !== "ok") return "bg-amber-500";
+    return "bg-emerald-600 dark:bg-emerald-400";
 }
 
 /** One cell of the stat strip: a small label over the value it names. */
