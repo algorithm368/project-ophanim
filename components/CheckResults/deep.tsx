@@ -77,7 +77,33 @@ function CertificateTable({ certs }: Readonly<{ certs: CertificateRecord[] }>) {
 }
 
 /** Certificate transparency + derived subdomains (domain results, crt.sh). */
-export function CertificatesCard({ result }: Readonly<{ result: DomainCheckResult }>) {
+export function CertificatesCard({
+    result,
+    streaming = false,
+}: Readonly<{
+    result: DomainCheckResult | null;
+    /** Set while the panel is still answering. Renders a plain skeleton, since
+     *  there is no certificate or subdomain list to show until the result
+     *  lands. */
+    streaming?: boolean;
+}>) {
+    if (streaming) {
+        return (
+            <Card className="sketch-shadow rounded-lg border border-foreground/12">
+                <CardContent className="space-y-4">
+                    <SectionHeading icon={FileText}>
+                        Certificate transparency
+                    </SectionHeading>
+                    <div className="space-y-1.5">
+                        {["w-full", "w-5/6", "w-2/3"].map((w) => (
+                            <span key={w} className={`sweep block h-3 rounded ${w}`} />
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+    if (!result) return null;
     const certs = result.certificates ?? [];
     const subs = result.subdomains ?? [];
     if (certs.length === 0 && subs.length === 0) return null;

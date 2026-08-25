@@ -268,7 +268,30 @@ function DistributionUrlRow({ url }: Readonly<{ url: string }>) {
     );
 }
 
-export function DistributionUrlsCard({ result }: Readonly<{ result: HashCheckResult }>) {
+export function DistributionUrlsCard({
+    result,
+    streaming = false,
+}: Readonly<{
+    result: HashCheckResult | null;
+    /** Set while the panel is still answering. Renders a plain skeleton, since
+     *  there is no distribution-URL list to show until the result lands. */
+    streaming?: boolean;
+}>) {
+    if (streaming) {
+        return (
+            <Card className="sketch-shadow rounded-lg border border-foreground/12">
+                <CardContent className="space-y-3">
+                    <SectionHeading icon={Link2}>Distribution URLs</SectionHeading>
+                    <div className="space-y-1.5">
+                        {["w-full", "w-5/6", "w-2/3"].map((w) => (
+                            <span key={w} className={`sweep block h-3 rounded ${w}`} />
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+    if (!result) return null;
     const urls = result.context?.distributionUrls ?? [];
     if (urls.length === 0) return null;
     const shown = urls.slice(0, 8);

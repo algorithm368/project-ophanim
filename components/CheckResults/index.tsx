@@ -123,45 +123,56 @@ function Results({
 
 function DomainResults({
     result,
+    partial,
+    indicator,
     onRefresh,
     research,
 }: Readonly<{
-    // Streaming isn't converted for domain until Task 8; a null result here
-    // renders nothing rather than crashing, matching what happened before this
-    // change (the dispatcher never reached this component while a check ran).
     result: DomainCheckResult | null;
+    partial: PartialLookup | null;
+    indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
 }>) {
-    if (!result) return null;
+    const streaming = result === null;
     return (
         <div className="mt-5 space-y-5">
-            <SourceHealthNotice result={result} />
-            <VerdictHero result={result} onRefresh={onRefresh} />
+            {result && <SourceHealthNotice result={result} />}
+            {result ? (
+                <VerdictHero result={result} onRefresh={onRefresh} />
+            ) : (
+                partial && <PendingHero indicator={indicator} partial={partial} />
+            )}
+            {/* Both phases: the rail draws the left column's edge, and a rail
+                that appears only with results slides the whole content column
+                sideways when the result lands. */}
             <SectionNav items={DOMAIN_SECTIONS} />
             <Section id="origin">
-                <DomainProfileCard result={result} />
+                <DomainProfileCard result={result} streaming={streaming} />
             </Section>
             <Section id="certs">
-                <CertificatesCard result={result} />
+                <CertificatesCard result={result} streaming={streaming} />
             </Section>
             <Section id="dns">
-                <PassiveDnsCard result={result} />
+                <PassiveDnsCard result={result} streaming={streaming} />
             </Section>
             <Section id="related">
-                <ConnectionsCard result={result} />
+                <ConnectionsCard result={result} streaming={streaming} />
             </Section>
             <Section id="research">
-                <ResearchCard result={result} research={research} />
+                <ResearchCard result={result} research={research} streaming={streaming} />
             </Section>
             <Section id="scan">
-                <ActiveScanCard indicator={result.domain} kind="domain" />
+                {/* Takes an indicator, not a result: it reports whether a scan
+                    already exists, which does not depend on this lookup. */}
+                <ActiveScanCard indicator={indicator} kind="domain" />
             </Section>
             <Section id="sources">
                 <SourceBreakdown
-                    sources={result.sources}
-                    indicator={result.domain}
+                    sources={result?.sources ?? partial?.sources ?? []}
+                    indicator={indicator}
                     kind="domain"
+                    streaming={streaming}
                 />
             </Section>
         </div>
@@ -183,15 +194,16 @@ const URL_SECTIONS: NavItem[] = [
  */
 function UrlResults({
     result,
+    indicator,
     onRefresh,
     research,
 }: Readonly<{
-    // Streaming isn't converted for URL until Task 8; see DomainResults.
     result: UrlCheckResult | null;
+    indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
 }>) {
-    if (!result) return null;
+    const streaming = result === null;
     const LAYER_TITLE = {
         url: "the URL",
         domain: "the host",
@@ -199,33 +211,45 @@ function UrlResults({
     } as const;
     return (
         <div className="mt-5 space-y-5">
+            {/* LayerStack renders its own skeleton while streaming: it is the
+                hero for a URL result, and there is no verdict to hold a
+                separate pending hero's place for until a layer lands. */}
             <Section id="layers">
-                <LayerStack result={result} onRefresh={onRefresh} />
+                <LayerStack result={result} onRefresh={onRefresh} streaming={streaming} />
             </Section>
+            {/* Both phases: the rail draws the left column's edge, and a rail
+                that appears only with results slides the whole content column
+                sideways when the result lands. */}
             <SectionNav items={URL_SECTIONS} />
             <Section id="research">
-                <ResearchCard result={result} research={research} />
+                <ResearchCard result={result} research={research} streaming={streaming} />
             </Section>
             <Section id="scan">
-                <ActiveScanCard indicator={result.url} kind="url" />
+                {/* Takes an indicator, not a result: it reports whether a scan
+                    already exists, which does not depend on this lookup. */}
+                <ActiveScanCard indicator={indicator} kind="url" />
             </Section>
             <Section id="sources">
-                <div className="space-y-8">
-                    {result.layers
-                        .filter((layer) => layer.sources.length > 0)
-                        .map((layer) => (
-                            <div key={layer.kind}>
-                                <p className="mb-3 font-mono text-[11px] tracking-[0.14em] text-foreground/55 uppercase">
-                                    Sources for {LAYER_TITLE[layer.kind]}
-                                </p>
-                                <SourceBreakdown
-                                    sources={layer.sources}
-                                    indicator={layer.indicator}
-                                    kind={layer.kind}
-                                />
-                            </div>
-                        ))}
-                </div>
+                {/* `result.layers` doesn't exist while streaming; render
+                    nothing here until the result lands rather than crashing. */}
+                {result && (
+                    <div className="space-y-8">
+                        {result.layers
+                            .filter((layer) => layer.sources.length > 0)
+                            .map((layer) => (
+                                <div key={layer.kind}>
+                                    <p className="mb-3 font-mono text-[11px] tracking-[0.14em] text-foreground/55 uppercase">
+                                        Sources for {LAYER_TITLE[layer.kind]}
+                                    </p>
+                                    <SourceBreakdown
+                                        sources={layer.sources}
+                                        indicator={layer.indicator}
+                                        kind={layer.kind}
+                                    />
+                                </div>
+                            ))}
+                    </div>
+                )}
             </Section>
         </div>
     );
@@ -233,37 +257,48 @@ function UrlResults({
 
 function HashResults({
     result,
+    partial,
+    indicator,
     onRefresh,
     research,
 }: Readonly<{
-    // Streaming isn't converted for hash until Task 8; see DomainResults.
     result: HashCheckResult | null;
+    partial: PartialLookup | null;
+    indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
 }>) {
-    if (!result) return null;
+    const streaming = result === null;
     return (
         <div className="mt-5 space-y-5">
-            <SourceHealthNotice result={result} />
-            <VerdictHero result={result} onRefresh={onRefresh} />
+            {result && <SourceHealthNotice result={result} />}
+            {result ? (
+                <VerdictHero result={result} onRefresh={onRefresh} />
+            ) : (
+                partial && <PendingHero indicator={indicator} partial={partial} />
+            )}
+            {/* Both phases: the rail draws the left column's edge, and a rail
+                that appears only with results slides the whole content column
+                sideways when the result lands. */}
             <SectionNav items={HASH_SECTIONS} />
             <Section id="origin">
-                <HashProfileCard result={result} />
+                <HashProfileCard result={result} streaming={streaming} />
             </Section>
             <Section id="related">
-                <ConnectionsCard result={result} />
+                <ConnectionsCard result={result} streaming={streaming} />
             </Section>
             <Section id="dist">
-                <DistributionUrlsCard result={result} />
+                <DistributionUrlsCard result={result} streaming={streaming} />
             </Section>
             <Section id="research">
-                <ResearchCard result={result} research={research} />
+                <ResearchCard result={result} research={research} streaming={streaming} />
             </Section>
             <Section id="sources">
                 <SourceBreakdown
-                    sources={result.sources}
-                    indicator={result.hash}
+                    sources={result?.sources ?? partial?.sources ?? []}
+                    indicator={indicator}
                     kind="hash"
+                    streaming={streaming}
                 />
             </Section>
         </div>

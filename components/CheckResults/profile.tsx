@@ -274,7 +274,34 @@ function ageLabel(ageDays: number | undefined): string | undefined {
     return `${Math.floor(ageDays / 365)} yr ${ageDays % 365} d`;
 }
 
-export function DomainProfileCard({ result }: Readonly<{ result: DomainCheckResult }>) {
+export function DomainProfileCard({
+    result,
+    streaming = false,
+}: Readonly<{
+    result: DomainCheckResult | null;
+    /** Set while the panel is still answering. Renders a plain skeleton, since
+     *  there is no registration/DNS context to show until the result lands. */
+    streaming?: boolean;
+}>) {
+    if (streaming || !result) {
+        return (
+            <Card className="sketch-shadow rounded-lg border border-foreground/12">
+                <CardContent className="space-y-4">
+                    <SectionHeading icon={Globe}>Registration &amp; DNS</SectionHeading>
+                    <div className="flex items-center gap-3">
+                        <span className="sweep h-9 w-9 shrink-0 rounded-md" />
+                        <span className="sweep h-5 w-40 rounded" />
+                    </div>
+                    <div className="space-y-2">
+                        <span className="sweep block h-3 w-full rounded" />
+                        <span className="sweep block h-3 w-5/6 rounded" />
+                        <span className="sweep block h-3 w-2/3 rounded" />
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+
     const ctx = result.context;
     const resolves =
         (ctx?.resolvedIps?.length ?? 0) > 0 || (ctx?.ipv6?.length ?? 0) > 0;
@@ -793,7 +820,36 @@ const HASH_KIND_TONE: Record<HashKind, string> = {
     unknown: "text-foreground/80",
 };
 
-export function HashProfileCard({ result }: Readonly<{ result: HashCheckResult }>) {
+export function HashProfileCard({
+    result,
+    streaming = false,
+}: Readonly<{
+    result: HashCheckResult | null;
+    /** Set while the panel is still answering. Renders a plain skeleton, since
+     *  no verdict, family, or fingerprint can be shown until the result lands. */
+    streaming?: boolean;
+}>) {
+    if (streaming || !result) {
+        return (
+            <Card className="sketch-shadow rounded-lg border border-foreground/12">
+                <CardContent className="space-y-4">
+                    <SectionHeading icon={FileDigit}>File identity</SectionHeading>
+                    <div className="flex items-start gap-3">
+                        <span className="sweep mt-0.5 size-2.5 shrink-0 rounded-full" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                            <span className="sweep inline-block h-5 w-32 rounded" />
+                            <span className="sweep block h-3 w-2/3 rounded" />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <span className="sweep block h-3 w-full rounded" />
+                        <span className="sweep block h-3 w-5/6 rounded" />
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+
     const ctx = result.context;
     const hasData = result.sources.some(
         (s) => s.status === "ok" && s.score !== undefined,

@@ -1020,7 +1020,13 @@ export default function Checker({
                 )
           }
           indicator={pending || query}
-          kind={activeKind ?? "ip"}
+          // `mode` is the type of the in-flight/displayed check itself.
+          // `activeKind` is a different thing: it is what the *research*
+          // lane should ask about, which is deliberately "domain" for a URL
+          // (no research provider understands a url kind). Passing that here
+          // made a streaming URL check render as a domain check until the
+          // result landed and the type guards took over.
+          kind={mode}
           onRefresh={refresh}
           onPivot={pivot}
           research={research}
