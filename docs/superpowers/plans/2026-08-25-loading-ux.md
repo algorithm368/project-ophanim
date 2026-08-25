@@ -400,10 +400,10 @@ which is broader than "flagged".
 - Test: `lib/ti/partial.test.ts`
 
 **Interfaces:**
-- Consumes: `mergeFields` from `lib/ti/orchestrate.ts`, `SourceResult` and `GeoInfo` from `lib/ti/types.ts`.
+- Consumes: `mergeFields` from `lib/ti/orchestrate.ts`, `SourceResult` and `GeoContext` from `lib/ti/types.ts`.
 - Produces:
   - `interface PartialCounts { total: number; settled: number; answered: number; adverse: number; clean: number; gaps: number; stillOut: number }`
-  - `interface PartialLookup { counts: PartialCounts; sources: SourceResult[]; geo?: GeoInfo }`
+  - `interface PartialLookup { counts: PartialCounts; sources: SourceResult[]; geo?: GeoContext }`
   - `function buildPartial(total: number, settled: SourceResult[]): PartialLookup`
 
 - [ ] **Step 1: Write the failing tests**
@@ -512,7 +512,7 @@ Create `lib/ti/partial.ts`:
 
 ```ts
 import { mergeFields } from "./orchestrate";
-import type { GeoInfo, SourceResult } from "./types";
+import type { GeoContext, SourceResult } from "./types";
 
 /**
  * What a half-finished lookup is allowed to say about itself.
@@ -550,7 +550,7 @@ export interface PartialLookup {
   /** The settled sources themselves, for the per-source rows. */
   sources: SourceResult[];
   /** First-non-empty merge of whatever geolocation has arrived. */
-  geo?: GeoInfo;
+  geo?: GeoContext;
 }
 
 /** Adverse means "reported something against this indicator", which is broader
@@ -573,7 +573,7 @@ export function buildPartial(
   const geo = mergeFields(
     settled
       .map((s) => s.geo)
-      .filter((g): g is GeoInfo => g !== undefined && g !== null),
+      .filter((g): g is GeoContext => g !== undefined && g !== null),
   );
 
   return {
@@ -597,7 +597,7 @@ export function buildPartial(
 Run: `bun run test lib/ti/partial.test.ts`
 Expected: PASS, 7 tests.
 
-If the `geo` merge test fails on types, check `GeoInfo` in `lib/ti/types.ts` and
+If the `geo` merge test fails on types, check `GeoContext` in `lib/ti/types.ts` and
 adjust the test fixture's field names to real ones; do not loosen the
 implementation to accommodate a wrong fixture.
 
