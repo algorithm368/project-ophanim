@@ -760,6 +760,11 @@ export function PendingHero({
               / {c.answered} answered
             </span>
           </Cell>
+          {/* Shown on the same condition the completed strip uses, so the set
+              of columns does not change shape when the result lands. "No
+              record" is a third answer, not a shade of clean: a source that has
+              never seen the indicator has not vouched for it. */}
+          {c.noRecord > 0 && <Cell label="No record">{c.noRecord}</Cell>}
           {c.gaps > 0 && <Cell label="Gaps">{c.gaps}</Cell>}
           <Cell label="Still out" emphatic>
             {c.stillOut}
