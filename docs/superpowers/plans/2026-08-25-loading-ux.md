@@ -11,7 +11,19 @@
 ## Global Constraints
 
 - **Verdicts:** Nothing derived from `aggregateRisk()` may render before the lookup completes. That means `riskScore`, `verdict`, `scoreBreakdown`, confidence, rationale, threat type, and the borderline flag.
-- **Counts:** A count shown mid-stream never appears without its denominator. `4 / 9 answered` and `9 still out`, never a bare `4`.
+- **Counts:** A count that says something *about the indicator* never appears
+  mid-stream without its denominator. `4 / 9 answered`, never a bare `4`. This
+  binds `Adverse` and `Clean`: those are the cells an analyst reads as a
+  judgement, and "3 adverse" out of 5 answered reads far worse than the same 3
+  out of a finished 27.
+  It deliberately does **not** bind `No record`, `Gaps` or `Still out`. Those
+  describe the panel's own coverage rather than the indicator, so they do not
+  mislead when incomplete, and the finished strip renders them bare too, so
+  qualifying them only while streaming would change the strip's shape at the
+  moment the result lands, which the constraint below forbids.
+- **Layout:** nothing on the page may move when the result lands. The streaming
+  and completed strips use the same grid track sizing, the same cells on the
+  same conditions, and the same dot strip.
 - **Copy style:** user-facing text uses commas, never em-dashes, en-dashes, or `" - "` separators.
 - **Tests:** only files under `lib/` are in the coverage scope (`vitest.config.ts` `include: ["lib/**/*.ts"]`, and `sonar.coverage.exclusions` drops `app/**`, `components/**`, `scripts/**`). Every new `lib/` file needs tests in the same commit. Component work is verified in a browser instead.
 - **Test command:** `bun run test`, never `bun test` (the latter runs Bun's own runner, which does not understand the Vitest API).
@@ -740,7 +752,7 @@ export function PendingHero({
           <div className="sweep h-3 w-2/3 rounded" />
         </div>
 
-        <dl className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-x-4 gap-y-3 border-t border-foreground/12 pt-3">
+        <dl className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-4 gap-y-3 border-t border-foreground/12 pt-3">
           <Cell label="Confidence">
             <span className="sweep inline-block h-3 w-14 rounded align-middle" />
           </Cell>
