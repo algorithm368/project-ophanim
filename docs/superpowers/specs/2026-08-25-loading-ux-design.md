@@ -32,6 +32,26 @@ gone stale.
 rather than a separate one, and it is what makes the lump-arrival feel worse
 than a plain wait would.
 
+### Measured, not assumed
+
+A fresh lookup of `91.219.236.199` against the running app, captured at 1.8s:
+
+- **27 sources**, not the ~18 the first mockup guessed.
+- 13 settled at 1.8s, with the ETA reading **~11s left**. The wait being
+  designed for is on the order of fifteen to twenty-five seconds, not the seven
+  the mockup simulated. Every argument here gets stronger with the real number.
+- Below the progress card the page is **empty to the fold**. The screenshot is
+  mostly white space, which is what "the result arrives in one lump" actually
+  looks like.
+
+One layout shift was missed entirely by reasoning and only appeared in the
+screenshots: **`SectionNav` is not rendered while loading.** The result view
+draws a vertical icon rail down the left side, and the streaming view does not,
+so the entire content column moves sideways the moment the result lands. Layer 1
+and Layer 2 both have to account for it, because a shell that reserves vertical
+space but lets the column jump horizontally has fixed the smaller half of the
+problem.
+
 ## What this is not
 
 No optimistic score. No change to `aggregateRisk()`, `verdictFor()`, the API
