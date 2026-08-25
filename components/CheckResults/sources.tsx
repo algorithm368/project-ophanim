@@ -152,10 +152,15 @@ export function SourceBreakdown({
     sources,
     indicator,
     kind,
+    streaming = false,
 }: Readonly<{
     sources: SourceResult[];
     indicator: string;
     kind: Mode;
+    /** Set while the panel is still answering (IP path only, so far). `sources`
+     *  is already the partial list in that case, so the rows themselves need no
+     *  change; this only marks the count as still growing. */
+    streaming?: boolean;
 }>) {
     const byRelevance = (a: SourceResult, b: SourceResult) =>
         relevanceRank(a) - relevanceRank(b) || (b.score ?? 0) - (a.score ?? 0);
@@ -166,7 +171,13 @@ export function SourceBreakdown({
                 <h2 className="font-mono text-[12px] font-semibold tracking-[0.16em] text-foreground/75 uppercase">
                     Source breakdown
                 </h2>
-                <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
+                <span className="flex items-center gap-1.5 font-mono text-[12px] tabular-nums text-muted-foreground">
+                    {streaming && (
+                        <span
+                            aria-hidden
+                            className="size-1.5 animate-pulse rounded-full bg-foreground/40"
+                        />
+                    )}
                     {sources.length} sources
                 </span>
             </div>

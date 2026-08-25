@@ -9,10 +9,13 @@ import {
     type HashCheckResult,
 } from "@/lib/ti/types";
 import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
+import type { IOCType } from "@/lib/ioc";
+import type { PartialLookup } from "@/lib/ti/partial";
 import { PivotContext } from "./primitives";
 import { LayerStack } from "./layers";
 import { ActiveScanCard } from "./active-scan";
 import { VerdictHero } from "./verdict";
+import { PendingHero } from "./pending";
 import { SourceBreakdown } from "./sources";
 import { SourceHealthNotice } from "./activity";
 import { CertificatesCard, PassiveDnsCard } from "./deep";
@@ -66,38 +69,52 @@ function Section({ id, children }: Readonly<{ id: string; children: React.ReactN
 
 function Results({
     result,
+    partial,
+    indicator,
     onRefresh,
     research,
 }: Readonly<{
-    result: CheckResult;
+    result: CheckResult | null;
+    partial: PartialLookup | null;
+    indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
 }>) {
+    const streaming = result === null;
     return (
         <div className="mt-5 space-y-5">
-            <SourceHealthNotice result={result} />
-            <VerdictHero result={result} onRefresh={onRefresh} />
+            {result && <SourceHealthNotice result={result} />}
+            {result ? (
+                <VerdictHero result={result} onRefresh={onRefresh} />
+            ) : (
+                partial && <PendingHero indicator={indicator} partial={partial} />
+            )}
+            {/* Rendered in both phases: it draws the left rail, and a rail that
+                appears only with results slides the whole column sideways. */}
             <SectionNav items={IP_SECTIONS} />
             <Section id="dossier">
-                <IpDossierCard result={result} />
+                <IpDossierCard result={result} streaming={streaming} />
             </Section>
             <Section id="dns">
-                <PassiveDnsCard result={result} />
+                <PassiveDnsCard result={result} streaming={streaming} />
             </Section>
             <Section id="related">
-                <ConnectionsCard result={result} />
+                <ConnectionsCard result={result} streaming={streaming} />
             </Section>
             <Section id="research">
-                <ResearchCard result={result} research={research} />
+                <ResearchCard result={result} research={research} streaming={streaming} />
             </Section>
             <Section id="scan">
-                <ActiveScanCard indicator={result.ip} kind="ip" />
+                {/* Takes an indicator, not a result: it reports whether a scan
+                    already exists, which does not depend on this lookup. */}
+                <ActiveScanCard indicator={indicator} kind="ip" />
             </Section>
             <Section id="sources">
                 <SourceBreakdown
-                    sources={result.sources}
-                    indicator={result.ip}
+                    sources={result?.sources ?? partial?.sources ?? []}
+                    indicator={indicator}
                     kind="ip"
+                    streaming={streaming}
                 />
             </Section>
         </div>
@@ -109,10 +126,14 @@ function DomainResults({
     onRefresh,
     research,
 }: Readonly<{
-    result: DomainCheckResult;
+    // Streaming isn't converted for domain until Task 8; a null result here
+    // renders nothing rather than crashing, matching what happened before this
+    // change (the dispatcher never reached this component while a check ran).
+    result: DomainCheckResult | null;
     onRefresh: () => void;
     research: ResearchStreamState;
 }>) {
+    if (!result) return null;
     return (
         <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
@@ -165,10 +186,12 @@ function UrlResults({
     onRefresh,
     research,
 }: Readonly<{
-    result: UrlCheckResult;
+    // Streaming isn't converted for URL until Task 8; see DomainResults.
+    result: UrlCheckResult | null;
     onRefresh: () => void;
     research: ResearchStreamState;
 }>) {
+    if (!result) return null;
     const LAYER_TITLE = {
         url: "the URL",
         domain: "the host",
@@ -213,10 +236,12 @@ function HashResults({
     onRefresh,
     research,
 }: Readonly<{
-    result: HashCheckResult;
+    // Streaming isn't converted for hash until Task 8; see DomainResults.
+    result: HashCheckResult | null;
     onRefresh: () => void;
     research: ResearchStreamState;
 }>) {
+    if (!result) return null;
     return (
         <div className="mt-5 space-y-5">
             <SourceHealthNotice result={result} />
@@ -247,11 +272,20 @@ function HashResults({
 
 export default function CheckResults({
     result,
+    partial,
+    indicator,
+    kind,
     onRefresh,
     onPivot,
     research,
 }: Readonly<{
-    result: AnyCheckResult | UrlCheckResult;
+    result: AnyCheckResult | UrlCheckResult | null;
+    /** Set while the panel is still answering; null once `result` arrives. */
+    partial: PartialLookup | null;
+    indicator: string;
+    /** Which per-type view to render. Needed because the type guards below
+     *  have nothing to read while `result` is still null. */
+    kind: IOCType | "url";
     onRefresh: () => void;
     /** Launch a fresh check for a related indicator clicked within the result. */
     onPivot?: (value: string) => void;
@@ -259,22 +293,28 @@ export default function CheckResults({
     research: ResearchStreamState;
 }>) {
     // A URL result is checked first: it is the most specific shape, and the
-    // other guards would not recognize it.
+    // other guards would not recognize it. The guards still run when a result
+    // is present, so a mismatched `kind` cannot render the wrong view.
+    //
+    // An if/else ladder rather than chained ternaries: `no-nested-ternary` is
+    // an error in this project, not a warning.
+    let shape: IOCType | "url";
+    if (result === null) shape = kind;
+    else if (isUrlResult(result)) shape = "url";
+    else if (isHashResult(result)) shape = "hash";
+    else if (isDomainResult(result)) shape = "domain";
+    else shape = "ip";
+
+    const common = { partial, indicator, onRefresh, research };
     let body: React.ReactNode;
-    if (isUrlResult(result)) {
-        body = (
-            <UrlResults result={result} onRefresh={onRefresh} research={research} />
-        );
-    } else if (isHashResult(result)) {
-        body = (
-            <HashResults result={result} onRefresh={onRefresh} research={research} />
-        );
-    } else if (isDomainResult(result)) {
-        body = (
-            <DomainResults result={result} onRefresh={onRefresh} research={research} />
-        );
+    if (shape === "url") {
+        body = <UrlResults result={result as UrlCheckResult | null} {...common} />;
+    } else if (shape === "hash") {
+        body = <HashResults result={result as HashCheckResult | null} {...common} />;
+    } else if (shape === "domain") {
+        body = <DomainResults result={result as DomainCheckResult | null} {...common} />;
     } else {
-        body = <Results result={result} onRefresh={onRefresh} research={research} />;
+        body = <Results result={result as CheckResult | null} {...common} />;
     }
     return (
         <PivotContext.Provider value={onPivot ?? null}>

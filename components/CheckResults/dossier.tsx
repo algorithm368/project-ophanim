@@ -56,7 +56,33 @@ function DossierItem({
  * renderer over `buildIpDossier` — no scoring or classification lives here.
  * Owns none of the verdict/score/tally, that stays on `VerdictHero` above it.
  */
-export function IpDossierCard({ result }: Readonly<{ result: CheckResult }>) {
+export function IpDossierCard({
+    result,
+    streaming,
+}: Readonly<{ result: CheckResult | null; streaming: boolean }>) {
+    if (streaming || !result) {
+        return (
+            <Card className="sketch-shadow rounded-lg border border-foreground/12">
+                <CardContent className="space-y-5">
+                    <SectionHeading icon={Fingerprint}>IP dossier</SectionHeading>
+                    <div className="flex items-center gap-2">
+                        <span className="sweep h-6 w-9 shrink-0 rounded-sm" />
+                        <span className="sweep h-4 w-28 rounded" />
+                    </div>
+                    <div className="space-y-3">
+                        <Rule />
+                        <span className="sweep inline-block h-3 w-32 rounded" />
+                        <div className="space-y-2 py-1">
+                            <span className="sweep block h-3 w-full rounded" />
+                            <span className="sweep block h-3 w-5/6 rounded" />
+                            <span className="sweep block h-3 w-2/3 rounded" />
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+
     const dossier = buildIpDossier(result);
     const geo = result.geo;
     const flag = flagUrl(geo?.countryCode);

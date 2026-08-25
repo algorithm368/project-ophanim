@@ -124,11 +124,32 @@ const PDNS_PREVIEW = 8;
  *  "—" columns. */
 export function PassiveDnsCard({
     result,
+    streaming = false,
 }: Readonly<{
-    result: CheckResult | DomainCheckResult;
+    result: CheckResult | DomainCheckResult | null;
+    /** Set while the panel is still answering (IP path only, so far). Domain's
+     *  call site doesn't pass this yet and keeps its prior all-or-nothing
+     *  render, hence the default. */
+    streaming?: boolean;
 }>) {
-    const records = result.passiveDns ?? [];
     const [expanded, setExpanded] = useState(false);
+    if (streaming) {
+        return (
+            <Card className="sketch-shadow rounded-lg border border-foreground/12">
+                <CardContent className="space-y-4">
+                    <SectionHeading icon={Network}>Passive DNS</SectionHeading>
+                    <span className="sweep block h-3 w-3/4 rounded" />
+                    <div className="space-y-1.5">
+                        {["w-full", "w-5/6", "w-2/3"].map((w) => (
+                            <span key={w} className={`sweep block h-3 rounded ${w}`} />
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+    if (!result) return null;
+    const records = result.passiveDns ?? [];
     if (records.length === 0) return null;
 
     // Records are IP addresses when a domain's resolution history is shown, and

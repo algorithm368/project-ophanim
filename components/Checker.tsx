@@ -31,6 +31,7 @@ import { parseHash } from "@/lib/hash";
 import { detectIOC, refangIOC, extractIps, iocFromPath, type IOCType } from "@/lib/ioc";
 import type { GeoRow } from "@/lib/ti/geo";
 import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
+import { buildPartial } from "@/lib/ti/partial";
 import { parseUrl } from "@/lib/url";
 import { useResearchStream } from "@/components/CheckResults/use-research";
 import { cn } from "@/lib/utils";
@@ -998,19 +999,28 @@ export default function Checker({
 
       {loading && isBulk && <BulkProgress count={bulkPending} />}
 
-      {loading && !isBulk && (
-        <SearchProgress progress={progress} indicator={pending} mode={mode} />
-      )}
-
       {!loading && !error && !result && !bulkRows && (
         <EmptyState detected={detected} />
       )}
 
       {!loading && bulkRows && <BulkGeoResults rows={bulkRows} />}
 
-      {!loading && result && (
+      {/* One tree from the first frame to the last. The progress readout is
+          not a card that gets discarded, it is the score's placeholder, so
+          there is nothing to unmount when the lookup finishes. */}
+      {!isBulk && (result || (loading && progress)) && (
         <CheckResults
           result={result}
+          partial={
+            result
+              ? null
+              : buildPartial(
+                  progress?.total ?? 0,
+                  Object.values(progress?.settled ?? {}),
+                )
+          }
+          indicator={pending || query}
+          kind={activeKind ?? "ip"}
           onRefresh={refresh}
           onPivot={pivot}
           research={research}

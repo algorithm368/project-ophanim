@@ -28,9 +28,29 @@ import { Pivot, SectionHeading, useCopied } from "./primitives";
 
 export function ConnectionsCard({
     result,
+    streaming = false,
 }: Readonly<{
-    result: AnyCheckResult;
+    result: AnyCheckResult | null;
+    /** Set while the panel is still answering (IP path only, so far). Domain
+     *  and hash call sites don't pass this yet and keep their prior
+     *  all-or-nothing render, hence the default. */
+    streaming?: boolean;
 }>) {
+    if (streaming) {
+        return (
+            <Card className="sketch-shadow rounded-lg border border-foreground/12">
+                <CardContent className="space-y-4">
+                    <SectionHeading icon={Link2}>Related indicators</SectionHeading>
+                    <div className="space-y-1.5">
+                        {["w-full", "w-5/6", "w-2/3"].map((w) => (
+                            <span key={w} className={`sweep block h-3 rounded ${w}`} />
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+    if (!result) return null;
     const { related } = relationsFor(result);
     // Drop a file's own other digests; those live in the profile card. (Harmless
     // for IP/domain results, which never produce digest relations.)
