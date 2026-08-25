@@ -90,7 +90,13 @@ function sourceLookupUrl(
  * are three different states, and only the last is something the reader can act
  * on, so it names the variable to set.
  */
-function noSummaryReason(skipped: boolean, keyEnv?: string): string {
+function noSummaryReason(
+    skipped: boolean,
+    streaming: boolean,
+    keyEnv?: string,
+): string {
+    // Not asked yet is not the same as asked and silent.
+    if (streaming && !skipped) return "";
     if (!skipped) return "No data";
     return keyEnv ? `Set ${keyEnv} to enable` : "Disabled";
 }
@@ -205,6 +211,7 @@ export function SourceBreakdown({
                                     result={s}
                                     indicator={indicator}
                                     kind={kind}
+                                    streaming={streaming}
                                 />
                             ))}
                         </div>
@@ -219,10 +226,12 @@ function SourceRow({
     result,
     indicator,
     kind,
+    streaming,
 }: Readonly<{
     result: SourceResult;
     indicator: string;
     kind: Mode;
+    streaming: boolean;
 }>) {
     const { source, status } = result;
     const skipped = status === "skipped";
@@ -237,7 +246,7 @@ function SourceRow({
 
     const summary = errored
         ? (result.error ?? "Lookup failed")
-        : (result.summary ?? noSummaryReason(skipped, source.keyEnv));
+        : (result.summary ?? noSummaryReason(skipped, streaming, source.keyEnv));
 
     return (
         <div
@@ -260,7 +269,9 @@ function SourceRow({
                     </span>
                     <span className="sr-only">{TONE_LABEL[tone]}.</span>
                     <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
-                        {summary}
+                        {summary || (
+                            <span className="sweep inline-block h-3 w-20 rounded" />
+                        )}
                     </span>
                     <ExternalLink className="size-3.5 shrink-0 text-muted-foreground/50 opacity-0 transition group-hover/row:opacity-100" />
                 </a>
