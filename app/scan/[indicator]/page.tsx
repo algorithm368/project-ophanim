@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { ResultSkeleton } from "@/components/result-skeleton";
 import { detectIOC } from "@/lib/ioc";
+import type { IOCType } from "@/lib/ioc";
 import { getCachedScanBatch } from "@/lib/ti/cache";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import { ScanReport } from "@/components/ScanReport";
@@ -55,17 +58,24 @@ export default async function ScanPage({ params }: Readonly<PageProps>) {
     );
   }
 
-  const initialBatch = await getCachedScanBatch(decoded);
-
   return (
     // Same container as Checker on /check, so the scan page and the result page
     // are the same width and the banner rule lines up across both.
     <main className="mx-auto w-full max-w-5xl px-4 py-6">
-      <ScanReport
-        indicator={decoded}
-        kind={kind}
-        initialBatch={initialBatch}
-      />
+      <Suspense fallback={<ResultSkeleton indicator={decoded} />}>
+        <CachedScanReport decoded={decoded} kind={kind} />
+      </Suspense>
     </main>
+  );
+}
+
+/** The half that waits on Redis, so the page itself need not. */
+async function CachedScanReport({
+  decoded,
+  kind,
+}: Readonly<{ decoded: string; kind: IOCType }>) {
+  const initialBatch = await getCachedScanBatch(decoded);
+  return (
+    <ScanReport indicator={decoded} kind={kind} initialBatch={initialBatch} />
   );
 }
