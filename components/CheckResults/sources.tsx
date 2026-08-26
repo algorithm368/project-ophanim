@@ -89,14 +89,14 @@ function sourceLookupUrl(
  * A source that ran and found nothing, one turned off, and one waiting on a key
  * are three different states, and only the last is something the reader can act
  * on, so it names the variable to set.
+ *
+ * There is deliberately no "still waiting" reading. The breakdown only ever
+ * has rows for sources that have settled, mid-stream included, so a row here
+ * has always answered; a guard on the stream being open left an answered
+ * source pulsing a skeleton until every other source was in, which said it was
+ * still out when it was not.
  */
-function noSummaryReason(
-    skipped: boolean,
-    streaming: boolean,
-    keyEnv?: string,
-): string {
-    // Not asked yet is not the same as asked and silent.
-    if (streaming && !skipped) return "";
+function noSummaryReason(skipped: boolean, keyEnv?: string): string {
     if (!skipped) return "No data";
     return keyEnv ? `Set ${keyEnv} to enable` : "Disabled";
 }
@@ -163,9 +163,10 @@ export function SourceBreakdown({
     sources: SourceResult[];
     indicator: string;
     kind: Mode;
-    /** Set while the panel is still answering (IP path only, so far). `sources`
-     *  is already the partial list in that case, so the rows themselves need no
-     *  change; this only marks the count as still growing. */
+    /** Set while the panel is still answering. `sources` is already the partial
+     *  list in that case, and every row in it has answered, so the rows
+     *  themselves need no change; this only marks the count as still
+     *  growing. */
     streaming?: boolean;
 }>) {
     const byRelevance = (a: SourceResult, b: SourceResult) =>
@@ -211,7 +212,6 @@ export function SourceBreakdown({
                                     result={s}
                                     indicator={indicator}
                                     kind={kind}
-                                    streaming={streaming}
                                 />
                             ))}
                         </div>
@@ -226,12 +226,10 @@ function SourceRow({
     result,
     indicator,
     kind,
-    streaming,
 }: Readonly<{
     result: SourceResult;
     indicator: string;
     kind: Mode;
-    streaming: boolean;
 }>) {
     const { source, status } = result;
     const skipped = status === "skipped";
@@ -246,7 +244,7 @@ function SourceRow({
 
     const summary = errored
         ? (result.error ?? "Lookup failed")
-        : (result.summary ?? noSummaryReason(skipped, streaming, source.keyEnv));
+        : (result.summary || noSummaryReason(skipped, source.keyEnv));
 
     return (
         <div
@@ -269,9 +267,7 @@ function SourceRow({
                     </span>
                     <span className="sr-only">{TONE_LABEL[tone]}.</span>
                     <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
-                        {summary || (
-                            <span className="sweep inline-block h-3 w-20 rounded" />
-                        )}
+                        {summary}
                     </span>
                     <ExternalLink className="size-3.5 shrink-0 text-muted-foreground/50 opacity-0 transition group-hover/row:opacity-100" />
                 </a>
