@@ -62,7 +62,7 @@ export default async function ScanPage({ params }: Readonly<PageProps>) {
     // Same container as Checker on /check, so the scan page and the result page
     // are the same width and the banner rule lines up across both.
     <main className="mx-auto w-full max-w-5xl px-4 py-6">
-      <Suspense fallback={<ResultSkeleton indicator={decoded} />}>
+      <Suspense fallback={<ResultSkeleton indicator={decoded} variant="scan" />}>
         <CachedScanReport decoded={decoded} kind={kind} />
       </Suspense>
     </main>
