@@ -308,40 +308,6 @@ export function DomainProfileCard({
     const type = classifyDomain(ctx, resolves);
     const tone = domainTone(type.label);
 
-    // Three cases, not two. "Nothing was returned" is an answer, and while the
-    // panel is still being asked, the honest state is that nobody has answered
-    // yet: an analyst acts on "no DNS context", so it must not appear early.
-    let body: ReactNode;
-    if (ctx) {
-        body = (
-            <div className="space-y-4">
-                <Rule />
-                <RegistrationGroup
-                    ctx={ctx}
-                    rank={
-                        result.sources.find((s) => s.source.id === "tranco")
-                            ?.details?.rank as number | undefined
-                    }
-                />
-                <DnsRecordsGroup ctx={ctx} />
-                <EmailSecurityGroup ctx={ctx} />
-            </div>
-        );
-    } else if (streaming) {
-        body = (
-            <div className="space-y-2">
-                <div className="sweep h-3 w-2/3 rounded" />
-                <div className="sweep h-3 w-1/2 rounded" />
-            </div>
-        );
-    } else {
-        body = (
-            <p className="text-sm text-muted-foreground">
-                No registration or DNS context was returned for this domain.
-            </p>
-        );
-    }
-
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
@@ -359,7 +325,24 @@ export function DomainProfileCard({
                 {/* Classification identity header (no icon, per design). */}
                 <IdentityHeader label={type.label} desc={type.desc} tone={tone} />
 
-                {body}
+                {ctx ? (
+                    <div className="space-y-4">
+                        <Rule />
+                        <RegistrationGroup
+                            ctx={ctx}
+                            rank={
+                                result.sources.find((s) => s.source.id === "tranco")
+                                    ?.details?.rank as number | undefined
+                            }
+                        />
+                        <DnsRecordsGroup ctx={ctx} />
+                        <EmailSecurityGroup ctx={ctx} />
+                    </div>
+                ) : (
+                    <p className="text-sm text-muted-foreground">
+                        No registration or DNS context was returned for this domain.
+                    </p>
+                )}
             </CardContent>
         </Card>
     );

@@ -444,15 +444,11 @@ function ProviderBody({ data }: Readonly<{ data: ResearchData }>) {
 }
 
 /** The header note: what the lane says about itself in one phrase. Empty and
- *  failed runs still report, quietly, so the user knows the lane ran.
- *
- *  While the lookup is still streaming a lane that has not reported yet says
- *  nothing at all: "Nothing found" is an answer, and the lane has not been
- *  asked. */
-function noteFor(result: ResearchResult, streaming: boolean): string {
+ *  failed runs still report, quietly, so the user knows the lane ran. */
+function noteFor(result: ResearchResult): string {
     const { status, summary, error } = result;
     if (status === "ok") return summary ?? "";
-    if (status === "empty") return streaming ? "" : (summary ?? "Nothing found");
+    if (status === "empty") return summary ?? "Nothing found";
     if (status === "timeout") return "Timed out";
     return error ?? "Unavailable";
 }
@@ -467,22 +463,12 @@ const BLANK_BODY: Partial<Record<ResearchStatus, string>> = {
 };
 
 /** One provider's result block: header (name, summary, outbound link) + body. */
-function ProviderBlock({
-    result,
-    streaming,
-}: Readonly<{ result: ResearchResult; streaming: boolean }>) {
+function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
     const { provider, status, data, link } = result;
     const body = data ? <ProviderBody data={data} /> : null;
-    const note = noteFor(result, streaming);
 
     return (
-        <ProviderShell
-            name={provider.name}
-            note={
-                note || <span className="sweep inline-block h-3 w-20 rounded" />
-            }
-            link={link}
-        >
+        <ProviderShell name={provider.name} note={noteFor(result)} link={link}>
             {body ?? (
                 <p className="flex h-16 items-center text-[13px] text-muted-foreground">
                     {BLANK_BODY[status] ?? "Nothing to show."}
@@ -522,12 +508,7 @@ function ProviderSkeleton({ name }: Readonly<{ name?: string }>) {
 function LiveResearch({
     research,
     kind,
-    streaming,
-}: Readonly<{
-    research: ResearchStreamState;
-    kind: IOCType;
-    streaming: boolean;
-}>) {
+}: Readonly<{ research: ResearchStreamState; kind: IOCType }>) {
     const { metas, results, loading, started, error } = research;
     // Which providers will run is a static property of the registry, so the
     // wait before the stream's start event is named rather than a grey box, and
@@ -549,7 +530,7 @@ function LiveResearch({
             {visible.map((m) => {
                 const r = results[m.id];
                 return r ? (
-                    <ProviderBlock key={m.id} result={r} streaming={streaming} />
+                    <ProviderBlock key={m.id} result={r} />
                 ) : (
                     <ProviderSkeleton key={m.id} name={m.name} />
                 );
@@ -670,7 +651,7 @@ export function ResearchCard({
                     Research
                 </SectionHeading>
 
-                <LiveResearch research={research} kind={kind} streaming={streaming} />
+                <LiveResearch research={research} kind={kind} />
 
                 {sections.map((section) => (
                     <div key={section.id} className="space-y-2">
