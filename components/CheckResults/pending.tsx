@@ -1,9 +1,39 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
+import { etaBudgetMs, etaLabel } from "@/lib/ti/eta";
 import type { PartialLookup } from "@/lib/ti/partial";
 import { Card, CardContent } from "@/components/ui/card";
 import { SourceDots } from "./verdict";
+
+/**
+ * How much longer this is likely to take, ticking down.
+ *
+ * An analyst waiting twenty seconds is owed an estimate, which the readout
+ * this replaced gave and the first draft of the pending hero dropped. The
+ * budget is the longest timeout among the sources still out, so it shrinks as
+ * slow sources land and can never grow; the elapsed side only rises. The
+ * countdown therefore never ticks up, and when the estimate runs out it says
+ * so instead of counting into negatives.
+ */
+function useEta(partial: PartialLookup): string {
+  const [startedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+
+  const settled = new Set(partial.sources.map((s) => s.source.id));
+  const budgetMs = etaBudgetMs(partial.metas, settled);
+  // Nothing left to count down to once the last source is in.
+  const finished = budgetMs === 0;
+
+  useEffect(() => {
+    if (finished) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [finished]);
+
+  return etaLabel(budgetMs - (now - startedAt));
+}
 
 /**
  * The hero while the panel is still answering.
@@ -23,6 +53,9 @@ export function PendingHero({
 }: Readonly<{ indicator: string; partial: PartialLookup }>) {
   const c = partial.counts;
   const pct = c.total > 0 ? Math.round((c.settled / c.total) * 100) : 0;
+  // Deliberately not in the live region below: it changes twice a second, and
+  // a screen reader reading a countdown aloud would drown out the counts.
+  const eta = useEta(partial);
 
   return (
     <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -117,7 +150,7 @@ export function PendingHero({
         <div className="font-mono text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <Clock className="size-3" />
-            verdict pending, {c.settled} of {c.total || "…"} in
+            verdict pending, {c.settled} of {c.total || "…"} in, {eta}
           </span>
         </div>
 
