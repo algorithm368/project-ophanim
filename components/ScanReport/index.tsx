@@ -10,6 +10,7 @@ import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import { mergeScans } from "@/lib/ti/url/active/merge";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/CheckResults/primitives";
@@ -207,6 +208,10 @@ export function ScanReport({
   const visibilities = [
     ...new Set(batch?.scans.map((s) => s.visibility).filter(Boolean) ?? []),
   ];
+  const scanTotal = batch?.scans.length ?? 0;
+  const scanDone =
+    batch?.scans.filter((s) => s.status !== "running").length ?? 0;
+  const scanPct = scanTotal > 0 ? Math.round((scanDone / scanTotal) * 100) : 0;
 
   return (
     <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -289,11 +294,45 @@ export function ScanReport({
         )}
 
         {pending && (
-          <p className="flex items-center gap-2 text-xs text-foreground/60">
-            <Loader2 className="size-3 animate-spin" />
-            A scan takes about thirty seconds. Sections fill in as each engine
-            finishes, and leaving this page does not cancel it.
-          </p>
+          <div className="space-y-2">
+            <div
+              role="progressbar"
+              aria-label="Scan targets completed"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={scanPct}
+              className="h-0.5 w-full overflow-hidden rounded-full bg-border"
+            >
+              <div
+                className="h-full bg-foreground/70 transition-[width] duration-200 ease-linear"
+                style={{ width: `${Math.max(scanPct, 2)}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between font-mono text-xs tabular-nums text-muted-foreground">
+              <span>
+                {scanDone} / {scanTotal} targets
+              </span>
+              <span>about thirty seconds</span>
+            </div>
+            <div className="flex flex-wrap gap-1" aria-hidden>
+              {(batch?.scans ?? []).map((s) => (
+                <span
+                  key={`${s.target}-${s.engine}`}
+                  title={s.target}
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    s.status === "done" && "bg-emerald-600 dark:bg-emerald-400",
+                    s.status === "error" && "bg-amber-500",
+                    s.status === "running" && "animate-pulse bg-foreground/30",
+                  )}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-foreground/60">
+              Sections fill in as each engine finishes, and leaving this page
+              does not cancel it.
+            </p>
+          </div>
         )}
 
         {merged.map((m) => (
