@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2, Radar } from "lucide-react";
 import type { IOCType } from "@/lib/ioc";
+import { pollIntervalFor } from "@/lib/scan-poll";
 import { consensusBuckets, type ResultLike } from "@/lib/ti/narrative";
 import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import { mergeScans } from "@/lib/ti/url/active/merge";
@@ -14,10 +15,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/CheckResults/primitives";
 import { ActiveModeButton, ArmedPanel } from "./active-mode";
 import { TargetReport } from "./target";
-
-/** Re-poll while anything is queued. A scan takes roughly half a minute, so
- *  this is a handful of requests rather than a spin. */
-const POLL_MS = 6000;
 
 /** Which passive route answers for this kind of indicator. */
 const PASSIVE_ROUTE: Record<string, { path: string; param: string }> = {
@@ -158,10 +155,28 @@ export function ScanReport({
     setBatch((await res.json()) as ActiveScanBatch);
   }, [indicator]);
 
+  // Re-poll while anything is queued, tightening early and widening as the
+  // scan ages. See lib/scan-poll.ts for why the interval is a function of age.
   useEffect(() => {
     if (!pending) return;
-    const timer = setInterval(() => void poll(), POLL_MS);
-    return () => clearInterval(timer);
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
+    function tick() {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        void poll().finally(() => {
+          if (!cancelled) tick();
+        });
+      }, pollIntervalFor(Date.now() - startedAt));
+    }
+    tick();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [pending, poll]);
 
   async function submit(force: boolean) {
