@@ -1,5 +1,5 @@
 import { mergeFields } from "./orchestrate";
-import type { GeoContext, SourceResult } from "./types";
+import type { GeoContext, SourceMeta, SourceResult } from "./types";
 
 /**
  * What a half-finished lookup is allowed to say about itself.
@@ -11,6 +11,13 @@ import type { GeoContext, SourceResult } from "./types";
 export interface PartialCounts {
   /** Size of the panel, from the stream's `start` event. */
   total: number;
+  /** How many of the panel are detectors, i.e. sources whose weight lets them
+   *  move the score. The rest are context-only (geolocation and the like) and
+   *  can never answer for or against the indicator, so they are the wrong
+   *  denominator for `answered`. This is the same population the completed
+   *  strip's Detectors cell counts, which is why the streaming figure lands on
+   *  the finished one instead of collapsing to it. */
+  detectors: number;
   /** Sources that have come back, whatever they said. */
   settled: number;
   /** Settled weighted sources that actually returned an assessment. */
@@ -41,6 +48,10 @@ export interface PartialLookup {
   counts: PartialCounts;
   /** The settled sources themselves, for the per-source rows. */
   sources: SourceResult[];
+  /** The whole panel in registry order, from the stream's `start` event. Kept
+   *  so a streaming readout can lay a source out where it will finally sit,
+   *  rather than in the order the answers happened to arrive. */
+  metas: SourceMeta[];
   /** First-non-empty merge of whatever geolocation has arrived. */
   geo?: GeoContext;
 }
@@ -62,6 +73,9 @@ function isNoRecord(s: SourceResult): boolean {
 export function buildPartial(
   total: number,
   settled: SourceResult[],
+  /** The panel, from the `start` event. Empty only before that event has
+   *  arrived, when there is no panel to describe yet. */
+  metas: SourceMeta[] = [],
 ): PartialLookup {
   // Context-only sources (weight 0) cannot flag anything, so they are not
   // detectors. Counting them here would disagree with the completed strip.
@@ -79,6 +93,9 @@ export function buildPartial(
   return {
     counts: {
       total,
+      // Counted off the panel, not off who has answered, so the denominator is
+      // fixed from the first frame instead of climbing with the numerator.
+      detectors: metas.filter((m) => (m.weight ?? 1) > 0).length,
       settled: settled.length,
       answered: answered.length,
       adverse,
@@ -91,6 +108,7 @@ export function buildPartial(
       stillOut: Math.max(0, total - settled.length),
     },
     sources: settled,
+    metas,
     ...(geo ? { geo } : {}),
   };
 }

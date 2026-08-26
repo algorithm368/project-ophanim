@@ -76,9 +76,16 @@ export function PendingHero({
           <Cell label="Confidence">
             <span className="sweep inline-block h-3 w-14 rounded align-middle" />
           </Cell>
+          {/* Detectors, not sources. `total` is the whole panel, most of
+              which is context-only (geolocation and the like) and can never
+              answer for or against the indicator; against that denominator
+              this cell could not pass about half, and then collapsed onto the
+              detector count when the result landed. */}
           <Cell label="Detectors">
             {c.answered}{" "}
-            <span className="text-muted-foreground">of {c.total || "…"}</span>
+            <span className="text-muted-foreground">
+              of {c.detectors || "…"}
+            </span>
           </Cell>
           <Cell label="Adverse" wide>
             {c.adverse}{" "}

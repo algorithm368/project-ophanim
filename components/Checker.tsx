@@ -1017,6 +1017,7 @@ export default function Checker({
               : buildPartial(
                   progress?.total ?? 0,
                   Object.values(progress?.settled ?? {}),
+                  progress?.metas ?? [],
                 )
           }
           indicator={pending || query}

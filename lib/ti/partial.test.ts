@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPartial } from "@/lib/ti/partial";
-import type { SourceResult } from "@/lib/ti/types";
+import type { SourceMeta, SourceResult } from "@/lib/ti/types";
 
 /** A settled source, shaped like the ones runSource() returns. */
 function src(
@@ -13,6 +13,11 @@ function src(
     status: "ok",
     ...rest,
   } as SourceResult;
+}
+
+/** A panel entry, shaped like the metas the stream's `start` event carries. */
+function meta(id: string, weight = 1): SourceMeta {
+  return { id, name: id, weight } as SourceMeta;
 }
 
 describe("buildPartial", () => {
@@ -81,6 +86,61 @@ describe("buildPartial", () => {
   it("never reports a negative outstanding count", () => {
     const p = buildPartial(1, [src("a"), src("b"), src("c")]);
     expect(p.counts.stillOut).toBe(0);
+  });
+
+  // The bug this guards: `total` is the whole panel, most of which are
+  // context-only sources that can never answer. Using it as the denominator
+  // for `answered` gave "8 of 27" on a strip that could not pass about 14, and
+  // then collapsed to the detector count the moment the result landed.
+  it("counts detectors off the panel, not off the whole source list", () => {
+    const p = buildPartial(
+      5,
+      [src("abuse", { score: 90 })],
+      [meta("abuse"), meta("otx"), meta("geo", 0), meta("ipapi", 0), meta("rdap", 0)],
+    );
+    expect(p.counts.total).toBe(5);
+    expect(p.counts.detectors).toBe(2);
+  });
+
+  // The denominator is fixed from the first frame: it is a property of the
+  // panel, so it cannot climb alongside the numerator as answers arrive.
+  it("holds the detector total steady as sources settle", () => {
+    const metas = [meta("a"), meta("b"), meta("geo", 0)];
+    const first = buildPartial(3, [], metas);
+    const later = buildPartial(3, [src("a", { score: 0 }), src("geo", { weight: 0 })], metas);
+    expect(first.counts.detectors).toBe(2);
+    expect(later.counts.detectors).toBe(2);
+    expect(later.counts.answered).toBe(1);
+  });
+
+  // The numerator and the denominator must count the same population, so a
+  // fully answered panel reads "N of N" rather than stopping short.
+  it("lets answered reach the detector total when every detector is in", () => {
+    const metas = [meta("a"), meta("b"), meta("geo", 0)];
+    const p = buildPartial(
+      3,
+      [src("a", { score: 0 }), src("b", { score: 70 }), src("geo", { weight: 0 })],
+      metas,
+    );
+    expect(p.counts.answered).toBe(p.counts.detectors);
+    expect(p.counts.stillOut).toBe(0);
+  });
+
+  it("reports no detectors before the panel is known", () => {
+    expect(buildPartial(0, []).counts.detectors).toBe(0);
+  });
+
+  it("carries the panel in registry order, for a readout to lay out against", () => {
+    const metas = [meta("a"), meta("b"), meta("c")];
+    // Answers arrive out of order; the panel does not reorder with them.
+    const p = buildPartial(3, [src("c"), src("a")], metas);
+    expect(p.metas.map((m) => m.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("never reports a negative outstanding count against the panel size", () => {
+    const p = buildPartial(2, [src("a"), src("b"), src("c")], [meta("a"), meta("b")]);
+    expect(p.counts.stillOut).toBe(0);
+    expect(p.counts.detectors).toBe(2);
   });
 
   it("merges context first-non-empty across settled sources", () => {
