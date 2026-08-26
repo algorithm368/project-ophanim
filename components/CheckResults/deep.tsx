@@ -82,27 +82,13 @@ export function CertificatesCard({
     streaming = false,
 }: Readonly<{
     result: DomainCheckResult | null;
-    /** Set while the panel is still answering. Renders a plain skeleton, since
-     *  there is no certificate or subdomain list to show until the result
-     *  lands. */
+    /** Set while the panel is still answering. Renders nothing at all, not a
+     *  skeleton: this card hides itself when the domain has no certificates,
+     *  and a placeholder that later vanishes drags the whole page up. See the
+     *  note on PassiveDnsCard. */
     streaming?: boolean;
 }>) {
-    if (streaming) {
-        return (
-            <Card className="sketch-shadow rounded-lg border border-foreground/12">
-                <CardContent className="space-y-4">
-                    <SectionHeading icon={FileText}>
-                        Certificate transparency
-                    </SectionHeading>
-                    <div className="space-y-1.5">
-                        {["w-full", "w-5/6", "w-2/3"].map((w) => (
-                            <span key={w} className={`sweep block h-3 rounded ${w}`} />
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
-        );
-    }
+    if (streaming) return null;
     if (!result) return null;
     const certs = result.certificates ?? [];
     const subs = result.subdomains ?? [];
@@ -153,27 +139,20 @@ export function PassiveDnsCard({
     streaming = false,
 }: Readonly<{
     result: CheckResult | DomainCheckResult | null;
-    /** Set while the panel is still answering (IP path only, so far). Domain's
-     *  call site doesn't pass this yet and keeps its prior all-or-nothing
-     *  render, hence the default. */
+    /** Set while the panel is still answering.
+     *
+     *  Renders nothing while streaming, deliberately. A card that hides itself
+     *  when it has no content cannot hold a place with a skeleton: with no
+     *  passive-DNS key configured, every IP lookup drew this skeleton for
+     *  twenty seconds and then removed it, collapsing the card's height,
+     *  dragging everything below it upward and pruning its icon from the rail,
+     *  which is exactly the reflow the streaming work exists to remove. It
+     *  appears when it has records and never disappears. Growth below the fold
+     *  as a card arrives is the acceptable half of that trade. */
     streaming?: boolean;
 }>) {
     const [expanded, setExpanded] = useState(false);
-    if (streaming) {
-        return (
-            <Card className="sketch-shadow rounded-lg border border-foreground/12">
-                <CardContent className="space-y-4">
-                    <SectionHeading icon={Network}>Passive DNS</SectionHeading>
-                    <span className="sweep block h-3 w-3/4 rounded" />
-                    <div className="space-y-1.5">
-                        {["w-full", "w-5/6", "w-2/3"].map((w) => (
-                            <span key={w} className={`sweep block h-3 rounded ${w}`} />
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
-        );
-    }
+    if (streaming) return null;
     if (!result) return null;
     const records = result.passiveDns ?? [];
     if (records.length === 0) return null;

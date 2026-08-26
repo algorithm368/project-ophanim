@@ -31,25 +31,13 @@ export function ConnectionsCard({
     streaming = false,
 }: Readonly<{
     result: AnyCheckResult | null;
-    /** Set while the panel is still answering (IP path only, so far). Domain
-     *  and hash call sites don't pass this yet and keep their prior
-     *  all-or-nothing render, hence the default. */
+    /** Set while the panel is still answering. Renders nothing at all, not a
+     *  skeleton: this card hides itself when nothing pivots off the indicator,
+     *  and a placeholder that later vanishes drags the whole page up. See the
+     *  note on PassiveDnsCard. */
     streaming?: boolean;
 }>) {
-    if (streaming) {
-        return (
-            <Card className="sketch-shadow rounded-lg border border-foreground/12">
-                <CardContent className="space-y-4">
-                    <SectionHeading icon={Link2}>Related indicators</SectionHeading>
-                    <div className="space-y-1.5">
-                        {["w-full", "w-5/6", "w-2/3"].map((w) => (
-                            <span key={w} className={`sweep block h-3 rounded ${w}`} />
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
-        );
-    }
+    if (streaming) return null;
     if (!result) return null;
     const { related } = relationsFor(result);
     // Drop a file's own other digests; those live in the profile card. (Harmless
@@ -273,24 +261,13 @@ export function DistributionUrlsCard({
     streaming = false,
 }: Readonly<{
     result: HashCheckResult | null;
-    /** Set while the panel is still answering. Renders a plain skeleton, since
-     *  there is no distribution-URL list to show until the result lands. */
+    /** Set while the panel is still answering. Renders nothing at all, not a
+     *  skeleton: this card hides itself for a file with no known distribution
+     *  URLs, which is most of them, and a placeholder that later vanishes
+     *  drags the whole page up. See the note on PassiveDnsCard. */
     streaming?: boolean;
 }>) {
-    if (streaming) {
-        return (
-            <Card className="sketch-shadow rounded-lg border border-foreground/12">
-                <CardContent className="space-y-3">
-                    <SectionHeading icon={Link2}>Distribution URLs</SectionHeading>
-                    <div className="space-y-1.5">
-                        {["w-full", "w-5/6", "w-2/3"].map((w) => (
-                            <span key={w} className={`sweep block h-3 rounded ${w}`} />
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
-        );
-    }
+    if (streaming) return null;
     if (!result) return null;
     const urls = result.context?.distributionUrls ?? [];
     if (urls.length === 0) return null;
