@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { cache } from "react";
+import { cache, Suspense } from "react";
 import Checker from "@/components/Checker";
+import { ResultSkeleton } from "@/components/result-skeleton";
 import { detectIOC } from "@/lib/ioc";
 import {
   getCachedDomainResult,
@@ -73,19 +74,31 @@ export async function generateMetadata({
   };
 }
 
+/** The half that waits on Redis. Split out so the page itself can return
+ *  without awaiting it, which is what lets the shell paint first. */
+async function CachedChecker({ decoded }: Readonly<{ decoded: string }>) {
+  const initialResult = await fetchCached(decoded);
+  return (
+    <Checker
+      key={decoded}
+      initialQuery={decoded}
+      initialResult={initialResult}
+    />
+  );
+}
+
 export default async function CheckPage({ params }: Readonly<PageProps>) {
   const { ioc } = await params;
   const decoded = decodeURIComponent(ioc);
-  // A cached permalink renders its result immediately (no client round-trip);
-  // an uncached one falls through to the live streaming lookup in Checker.
-  const initialResult = await fetchCached(decoded);
+  // Only `params` is awaited here. The cache read happens inside the boundary
+  // below, so the shell reaches the browser without waiting on Redis. A cached
+  // permalink still renders its result server-side; an uncached one falls
+  // through to the live streaming lookup in Checker.
   return (
     <main className="relative min-h-full">
-      <Checker
-        key={decoded}
-        initialQuery={decoded}
-        initialResult={initialResult}
-      />
+      <Suspense fallback={<ResultSkeleton indicator={decoded} />}>
+        <CachedChecker decoded={decoded} />
+      </Suspense>
     </main>
   );
 }

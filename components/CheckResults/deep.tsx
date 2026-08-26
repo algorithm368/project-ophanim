@@ -77,7 +77,19 @@ function CertificateTable({ certs }: Readonly<{ certs: CertificateRecord[] }>) {
 }
 
 /** Certificate transparency + derived subdomains (domain results, crt.sh). */
-export function CertificatesCard({ result }: Readonly<{ result: DomainCheckResult }>) {
+export function CertificatesCard({
+    result,
+    streaming = false,
+}: Readonly<{
+    result: DomainCheckResult | null;
+    /** Set while the panel is still answering. Renders nothing at all, not a
+     *  skeleton: this card hides itself when the domain has no certificates,
+     *  and a placeholder that later vanishes drags the whole page up. See the
+     *  note on PassiveDnsCard. */
+    streaming?: boolean;
+}>) {
+    if (streaming) return null;
+    if (!result) return null;
     const certs = result.certificates ?? [];
     const subs = result.subdomains ?? [];
     if (certs.length === 0 && subs.length === 0) return null;
@@ -124,11 +136,25 @@ const PDNS_PREVIEW = 8;
  *  "—" columns. */
 export function PassiveDnsCard({
     result,
+    streaming = false,
 }: Readonly<{
-    result: CheckResult | DomainCheckResult;
+    result: CheckResult | DomainCheckResult | null;
+    /** Set while the panel is still answering.
+     *
+     *  Renders nothing while streaming, deliberately. A card that hides itself
+     *  when it has no content cannot hold a place with a skeleton: with no
+     *  passive-DNS key configured, every IP lookup drew this skeleton for
+     *  twenty seconds and then removed it, collapsing the card's height,
+     *  dragging everything below it upward and pruning its icon from the rail,
+     *  which is exactly the reflow the streaming work exists to remove. It
+     *  appears when it has records and never disappears. Growth below the fold
+     *  as a card arrives is the acceptable half of that trade. */
+    streaming?: boolean;
 }>) {
-    const records = result.passiveDns ?? [];
     const [expanded, setExpanded] = useState(false);
+    if (streaming) return null;
+    if (!result) return null;
+    const records = result.passiveDns ?? [];
     if (records.length === 0) return null;
 
     // Records are IP addresses when a domain's resolution history is shown, and

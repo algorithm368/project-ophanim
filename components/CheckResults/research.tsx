@@ -577,11 +577,39 @@ function researchTarget(result: AnyCheckResult | UrlCheckResult): {
 export function ResearchCard({
     result,
     research,
+    streaming = false,
 }: Readonly<{
-    result: AnyCheckResult | UrlCheckResult;
+    result: AnyCheckResult | UrlCheckResult | null;
     research: ResearchStreamState;
+    /** Set while the panel is still answering (IP path only, so far). Domain,
+     *  hash and URL call sites don't pass this yet and keep their prior
+     *  all-or-nothing render, hence the default. There is no indicator/kind to
+     *  research until `result` lands, so streaming renders a plain skeleton
+     *  rather than the live-research lane. */
+    streaming?: boolean;
 }>) {
     const [copied, copy] = useCopied();
+
+    if (streaming || !result) {
+        return (
+            <Card className="sketch-shadow rounded-lg border border-foreground/12">
+                <CardContent className="space-y-5">
+                    <SectionHeading icon={Telescope}>Research</SectionHeading>
+                    <div className="space-y-2">
+                        <span className="sweep block h-3 w-24 rounded" />
+                        <div className="flex flex-wrap gap-1.5">
+                            {["w-20", "w-24", "w-16", "w-28"].map((w) => (
+                                <span
+                                    key={w}
+                                    className={`sweep block h-7 rounded-md ${w}`}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
 
     const { indicator, kind } = researchTarget(result);
 

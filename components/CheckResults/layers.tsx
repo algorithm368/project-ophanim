@@ -129,14 +129,30 @@ function LayerRow({
 }
 
 /** The three layers of a URL check, each with its own verdict, source count and
- *  cache age. */
+ *  cache age. Renders its own skeleton while streaming, since none of the three
+ *  layers exist yet to draw rows for. */
 export function LayerStack({
   result,
   onRefresh,
+  streaming = false,
 }: Readonly<{
-  result: UrlCheckResult;
+  result: UrlCheckResult | null;
   onRefresh?: (kind: LayerKind) => void;
+  /** Set while the panel is still answering. */
+  streaming?: boolean;
 }>) {
+  if (streaming || !result) {
+    return (
+      <div className="space-y-4">
+        <SectionHeading icon={Link2}>Layers</SectionHeading>
+        <div className="space-y-1.5">
+          {["w-full", "w-5/6", "w-2/3"].map((w) => (
+            <span key={w} className={`sweep block h-3 rounded ${w}`} />
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="space-y-4">
       <SectionHeading icon={Link2}>Layers</SectionHeading>

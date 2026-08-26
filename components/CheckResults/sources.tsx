@@ -89,6 +89,12 @@ function sourceLookupUrl(
  * A source that ran and found nothing, one turned off, and one waiting on a key
  * are three different states, and only the last is something the reader can act
  * on, so it names the variable to set.
+ *
+ * There is deliberately no "still waiting" reading. The breakdown only ever
+ * has rows for sources that have settled, mid-stream included, so a row here
+ * has always answered; a guard on the stream being open left an answered
+ * source pulsing a skeleton until every other source was in, which said it was
+ * still out when it was not.
  */
 function noSummaryReason(skipped: boolean, keyEnv?: string): string {
     if (!skipped) return "No data";
@@ -152,10 +158,16 @@ export function SourceBreakdown({
     sources,
     indicator,
     kind,
+    streaming = false,
 }: Readonly<{
     sources: SourceResult[];
     indicator: string;
     kind: Mode;
+    /** Set while the panel is still answering. `sources` is already the partial
+     *  list in that case, and every row in it has answered, so the rows
+     *  themselves need no change; this only marks the count as still
+     *  growing. */
+    streaming?: boolean;
 }>) {
     const byRelevance = (a: SourceResult, b: SourceResult) =>
         relevanceRank(a) - relevanceRank(b) || (b.score ?? 0) - (a.score ?? 0);
@@ -166,7 +178,13 @@ export function SourceBreakdown({
                 <h2 className="font-mono text-[12px] font-semibold tracking-[0.16em] text-foreground/75 uppercase">
                     Source breakdown
                 </h2>
-                <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
+                <span className="flex items-center gap-1.5 font-mono text-[12px] tabular-nums text-muted-foreground">
+                    {streaming && (
+                        <span
+                            aria-hidden
+                            className="size-1.5 animate-pulse rounded-full bg-foreground/40"
+                        />
+                    )}
                     {sources.length} sources
                 </span>
             </div>
@@ -226,7 +244,7 @@ function SourceRow({
 
     const summary = errored
         ? (result.error ?? "Lookup failed")
-        : (result.summary ?? noSummaryReason(skipped, source.keyEnv));
+        : (result.summary || noSummaryReason(skipped, source.keyEnv));
 
     return (
         <div

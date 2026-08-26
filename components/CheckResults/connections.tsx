@@ -28,9 +28,17 @@ import { Pivot, SectionHeading, useCopied } from "./primitives";
 
 export function ConnectionsCard({
     result,
+    streaming = false,
 }: Readonly<{
-    result: AnyCheckResult;
+    result: AnyCheckResult | null;
+    /** Set while the panel is still answering. Renders nothing at all, not a
+     *  skeleton: this card hides itself when nothing pivots off the indicator,
+     *  and a placeholder that later vanishes drags the whole page up. See the
+     *  note on PassiveDnsCard. */
+    streaming?: boolean;
 }>) {
+    if (streaming) return null;
+    if (!result) return null;
     const { related } = relationsFor(result);
     // Drop a file's own other digests; those live in the profile card. (Harmless
     // for IP/domain results, which never produce digest relations.)
@@ -248,7 +256,19 @@ function DistributionUrlRow({ url }: Readonly<{ url: string }>) {
     );
 }
 
-export function DistributionUrlsCard({ result }: Readonly<{ result: HashCheckResult }>) {
+export function DistributionUrlsCard({
+    result,
+    streaming = false,
+}: Readonly<{
+    result: HashCheckResult | null;
+    /** Set while the panel is still answering. Renders nothing at all, not a
+     *  skeleton: this card hides itself for a file with no known distribution
+     *  URLs, which is most of them, and a placeholder that later vanishes
+     *  drags the whole page up. See the note on PassiveDnsCard. */
+    streaming?: boolean;
+}>) {
+    if (streaming) return null;
+    if (!result) return null;
     const urls = result.context?.distributionUrls ?? [];
     if (urls.length === 0) return null;
     const shown = urls.slice(0, 8);
