@@ -63,7 +63,11 @@ export function PendingHero({
             />
           </div>
 
-          <SourceDots sources={partial.sources} total={c.total} />
+          <SourceDots
+            sources={partial.sources}
+            total={c.total}
+            panel={partial.metas}
+          />
         </div>
 
         {/* Where the narrative will land. */}

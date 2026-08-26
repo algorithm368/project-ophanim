@@ -11,6 +11,7 @@ import {
     type AnyCheckResult,
     isDomainResult,
     isHashResult,
+    type SourceMeta,
     type SourceResult,
     type Verdict,
 } from "@/lib/ti/types";
@@ -350,35 +351,78 @@ export function VerdictHero({
     );
 }
 
+/** One position in the dot strip: a source that has answered, or one that has
+ *  not yet. */
+type DotSlot = { name?: string; result?: SourceResult };
+
+/**
+ * The strip's layout, one slot per source.
+ *
+ * Given the panel it lays every source out in registry order and fills the
+ * slots as answers arrive, so a dot is in its final position from the first
+ * frame. Ordering by settle time instead put the colours in arrival order,
+ * which then visibly reshuffled into registry order when the completed hero
+ * took over. Without a panel (the completed hero, which has the real sources
+ * already in registry order) it keeps the order it was handed and pads.
+ *
+ * A URL check runs three layers, and three source ids appear in two of them.
+ * Both slots read the same settled result, which is why this looks a source up
+ * rather than consuming it: the strip keeps its full width, and neither slot
+ * is left pending forever.
+ */
+function dotSlots(
+    sources: SourceResult[],
+    total: number,
+    panel?: SourceMeta[],
+): DotSlot[] {
+    if (panel && panel.length > 0) {
+        const byId = new Map(sources.map((s) => [s.source.id, s] as const));
+        return panel.map((m) => ({ name: m.name, result: byId.get(m.id) }));
+    }
+    const slots: DotSlot[] = sources.map((s) => ({
+        name: s.source.name,
+        result: s,
+    }));
+    // Placeholders for sources still out, so the strip is its final width from
+    // the first frame rather than growing a dot at a time.
+    while (slots.length < total) slots.push({});
+    return slots;
+}
+
 /**
  * One dot per source, on one line, under the meter.
  *
  * Present in both phases on purpose. While streaming it is the liveness
  * readout; once complete it is a glanceable health overview, and because it
- * never appears or disappears, nothing on the page moves when the result
- * lands. Hover names the source.
+ * never appears, disappears or reorders, nothing on the page moves when the
+ * result lands. Hover names the source.
  */
 export function SourceDots({
     sources,
     total,
-}: Readonly<{ sources: SourceResult[]; total: number }>) {
-    // Placeholders for sources still out, so the strip is its final width from
-    // the first frame rather than growing a dot at a time.
-    const pending = Math.max(0, total - sources.length);
-
+    panel,
+}: Readonly<{
+    sources: SourceResult[];
+    total: number;
+    /** The registry-ordered panel, while one is known. Given it, an
+     *  outstanding source holds its own place rather than trailing the
+     *  answered ones. */
+    panel?: SourceMeta[];
+}>) {
     return (
         <div className="flex flex-wrap gap-1" aria-hidden>
-            {sources.map((s) => (
+            {dotSlots(sources, total, panel).map((slot, i) => (
                 <span
-                    key={s.source.id}
-                    title={s.source.name}
-                    className={cn("size-1.5 rounded-full", dotTone(s))}
-                />
-            ))}
-            {Array.from({ length: pending }, (_, i) => (
-                <span
-                    key={`pending-${i}`}
-                    className="size-1.5 animate-pulse rounded-full bg-foreground/15"
+                    // Position is the identity here: two layers of a URL check
+                    // can share a source id, so an id key would collide.
+                    key={i}
+                    title={slot.name}
+                    className={cn(
+                        "size-1.5 rounded-full",
+                        slot.result
+                            ? dotTone(slot.result)
+                            : "animate-pulse bg-foreground/15",
+                    )}
                 />
             ))}
         </div>
