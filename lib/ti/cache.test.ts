@@ -348,3 +348,45 @@ describe("key namespaces", () => {
     expect(new Set(prefixes).size).toBe(prefixes.length);
   });
 });
+
+// #37: a GreyNoise identification is kept far longer than a result, so a
+// rate-limited day can still fall back to what a live check already
+// established. It gets its own TTL, distinct from TI_CACHE_TTL_SECONDS,
+// since that env var is about how fresh a *result* must be, not this.
+describe("GreyNoise identification cache", () => {
+  it("keys under its own prefix, distinct from the result namespaces", async () => {
+    const cache = await loadCache(REST);
+    redisGet.mockResolvedValue(null);
+
+    await cache.getCachedGreyNoiseIdentification("71.6.146.185");
+    expect(redisGet).toHaveBeenCalledWith("ti:greynoise-id:v1:71.6.146.185");
+  });
+
+  it("stores for 30 days, unaffected by TI_CACHE_TTL_SECONDS", async () => {
+    const cache = await loadCache({ ...REST, TI_CACHE_TTL_SECONDS: "60" });
+
+    await cache.setCachedGreyNoiseIdentification("71.6.146.185", {
+      classification: "benign",
+      actor: "Shodan.io",
+    });
+
+    expect(redisSet).toHaveBeenCalledWith(
+      "ti:greynoise-id:v1:71.6.146.185",
+      { classification: "benign", actor: "Shodan.io" },
+      { ex: 30 * 24 * 60 * 60 },
+    );
+  });
+
+  it("misses quietly when caching is off", async () => {
+    const cache = await loadCache();
+    await expect(
+      cache.getCachedGreyNoiseIdentification("71.6.146.185"),
+    ).resolves.toBeNull();
+    await expect(
+      cache.setCachedGreyNoiseIdentification("71.6.146.185", {
+        classification: "benign",
+      }),
+    ).resolves.toBeUndefined();
+    expect(redisCtor).not.toHaveBeenCalled();
+  });
+});

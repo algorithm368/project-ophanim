@@ -23,6 +23,13 @@ const URL_KEY_PREFIX = "ti:url:v1:";
 // arrives after the fact and must not rewrite a verdict already cached or
 // already written to the history timeline.
 const SCAN_KEY_PREFIX = "ti:urlscan:v1:";
+// GreyNoise's identification (is this a known scanner, is it Shodan/Censys/
+// etc.) is stable in a way a risk score is not, so it outlives the result
+// cache: the free API's daily quota otherwise means a rate-limited day flips
+// an address that was "scanner" that morning to "brute force" that afternoon,
+// off the same abuse reports filed by the people it scanned (#37).
+const GREYNOISE_ID_KEY_PREFIX = "ti:greynoise-id:v1:";
+const GREYNOISE_ID_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 1 week
 
 function ttlSeconds(): number {
@@ -123,12 +130,18 @@ async function getCached<T>(prefix: string, key: string): Promise<T | null> {
   }
 }
 
-/** Store a value under prefix+key with the default TTL. Failures are swallowed. */
-async function setCached<T>(prefix: string, key: string, value: T): Promise<void> {
+/** Store a value under prefix+key with the given TTL (the default, unless
+ *  overridden). Failures are swallowed. */
+async function setCached<T>(
+  prefix: string,
+  key: string,
+  value: T,
+  ttl: number = ttlSeconds(),
+): Promise<void> {
   const redis = getClient();
   if (!redis) return;
   try {
-    await redis.set(prefix + key, value, { ex: ttlSeconds() });
+    await redis.set(prefix + key, value, { ex: ttl });
   } catch (err) {
     console.error("[ti] cache write failed:", err);
   }
@@ -142,6 +155,38 @@ export function getCachedResult(ip: string): Promise<CheckResult | null> {
 /** Stores a result under its IP with the default TTL. Failures are swallowed. */
 export function setCachedResult(ip: string, result: CheckResult): Promise<void> {
   return setCached(KEY_PREFIX, ip, result);
+}
+
+/** What GreyNoise answers "what is this address", independent of its score. */
+export interface GreyNoiseIdentification {
+  classification: string;
+  noise?: boolean;
+  riot?: boolean;
+  actor?: string;
+  link?: string;
+  lastSeen?: string;
+}
+
+/** Returns the last identification GreyNoise gave for an IP, or null on miss /
+ *  when caching is off. Kept far longer than a result, so a rate-limited day
+ *  doesn't lose an identification a live check already established. */
+export function getCachedGreyNoiseIdentification(
+  ip: string,
+): Promise<GreyNoiseIdentification | null> {
+  return getCached<GreyNoiseIdentification>(GREYNOISE_ID_KEY_PREFIX, ip);
+}
+
+/** Stores a GreyNoise identification for 30 days. Failures are swallowed. */
+export function setCachedGreyNoiseIdentification(
+  ip: string,
+  identification: GreyNoiseIdentification,
+): Promise<void> {
+  return setCached(
+    GREYNOISE_ID_KEY_PREFIX,
+    ip,
+    identification,
+    GREYNOISE_ID_TTL_SECONDS,
+  );
 }
 
 /** Returns the cached result for a domain, or null on miss / when caching is off. */
