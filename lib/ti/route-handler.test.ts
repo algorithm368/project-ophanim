@@ -1,14 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-// In-memory history store shared by the mock, so recordHistory -> getHistory
-// ordering is observable without Redis.
-const { store } = vi.hoisted(() => ({ store: [] as Array<Record<string, unknown>> }));
+// In-memory history store shared by the mock, so recordHistory's write is
+// observable without Redis. recordHistory returns what it wrote, which is
+// what lets the route append locally instead of calling getHistory again;
+// getHistory is a spy so tests can assert how many round trips it took.
+const { store, getHistorySpy } = vi.hoisted(() => ({
+  store: [] as Array<Record<string, unknown>>,
+  getHistorySpy: vi.fn(),
+}));
 vi.mock("@/lib/ti/history", () => ({
   recordHistory: async (_k: string, _v: string, snap: Record<string, unknown>) => {
     store.push(snap);
+    return snap;
   },
-  getHistory: async () => [...store],
+  getHistory: getHistorySpy,
+  MAX_SNAPSHOTS: 30,
 }));
 
 import { makeIndicatorRoute } from "@/lib/ti/route-handler";
@@ -44,6 +51,11 @@ function makeRoute(over: Partial<Parameters<typeof makeIndicatorRoute<string, Re
 function get(value = "1.1.1.1") {
   return new NextRequest(`http://localhost/api/check?ip=${value}`);
 }
+
+beforeEach(() => {
+  store.length = 0;
+  getHistorySpy.mockReset().mockImplementation(async () => [...store]);
+});
 
 describe("makeIndicatorRoute GET caching", () => {
   it("sets Cache-Control on a cached hit", async () => {
@@ -87,9 +99,28 @@ describe("makeIndicatorRoute GET caching", () => {
   });
 
   it("fresh path returns the just-recorded history snapshot", async () => {
-    store.length = 0;
     const { GET } = makeRoute();
     const res = await GET(get("9.9.9.9"));
+    const body = (await res.json()) as { history: Array<{ riskScore: number }> };
+    expect(body.history.at(-1)?.riskScore).toBe(10);
+  });
+
+  // #53: a normal miss reads history once, before the fan-out, and appends
+  // the freshly recorded point locally rather than reading it back.
+  it("reads history once on a normal miss, not once per phase", async () => {
+    const { GET } = makeRoute();
+    await GET(get("9.9.9.9"));
+    expect(getHistorySpy).toHaveBeenCalledTimes(1);
+  });
+
+  // A forced refresh skips the pre-fan-out read entirely, so there is nothing
+  // to append onto locally; the post-write read is the only one available.
+  it("still reads history after a forced refresh, with nothing to append onto", async () => {
+    const { GET } = makeRoute();
+    const res = await GET(
+      new NextRequest("http://localhost/api/check?ip=9.9.9.9&refresh=1"),
+    );
+    expect(getHistorySpy).toHaveBeenCalledTimes(1);
     const body = (await res.json()) as { history: Array<{ riskScore: number }> };
     expect(body.history.at(-1)?.riskScore).toBe(10);
   });

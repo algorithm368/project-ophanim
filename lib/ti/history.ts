@@ -2,7 +2,10 @@ import { getRedis } from "./cache";
 import type { HistorySnapshot } from "./types";
 
 const PREFIX = "ti:hist:";
-const MAX_SNAPSHOTS = 30;
+// Exported so a caller already holding the pre-write history (route-handler's
+// speculative read) can extend it locally to the same bound recordHistory's
+// LTRIM enforces, instead of re-reading the list.
+export const MAX_SNAPSHOTS = 30;
 // Skip a new point when the latest is identical and recent, so repeatedly
 // re-fetching the same indicator doesn't flood the timeline.
 const DEDUPE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -51,14 +54,21 @@ export async function getHistory(
   }
 }
 
-/** Append a snapshot for a freshly computed result (skips near-duplicates). */
+/** Append a snapshot for a freshly computed result (skips near-duplicates).
+ *  Returns the snapshot once it is written, or null if there was no Redis,
+ *  the write failed, or the point was skipped as a duplicate. The LINDEX read
+ *  deciding the duplicate stays a fresh round trip rather than reusing an
+ *  older list a caller might be holding, since a stale "latest" is exactly
+ *  the thing the dedupe check exists to get right; the write itself doesn't
+ *  have that concern (see MAX_SNAPSHOTS above), which is why LPUSH and LTRIM
+ *  pipeline together. */
 export async function recordHistory(
   kind: string,
   value: string,
   snapshot: HistorySnapshot,
-): Promise<void> {
+): Promise<HistorySnapshot | null> {
   const redis = getRedis();
-  if (!redis) return;
+  if (!redis) return null;
   try {
     const k = key(kind, value);
     const latest = toSnapshot(await redis.lindex(k, 0));
@@ -67,11 +77,12 @@ export async function recordHistory(
       latest.verdict === snapshot.verdict &&
       Date.now() - Date.parse(latest.checkedAt) < DEDUPE_WINDOW_MS
     ) {
-      return;
+      return null;
     }
-    await redis.lpush(k, snapshot);
-    await redis.ltrim(k, 0, MAX_SNAPSHOTS - 1);
+    await redis.pipeline().lpush(k, snapshot).ltrim(k, 0, MAX_SNAPSHOTS - 1).exec();
+    return snapshot;
   } catch (err) {
     console.error("[ti] history write failed:", err);
+    return null;
   }
 }
