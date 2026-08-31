@@ -142,8 +142,12 @@ export function PendingHero({
               never seen the indicator has not vouched for it. */}
           {c.noRecord > 0 && <Cell label="No record">{c.noRecord}</Cell>}
           {c.gaps > 0 && <Cell label="Gaps">{c.gaps}</Cell>}
+          {/* Unknown, not zero, before the `start` event names the panel.
+              A cache hit never sends that event, so this cell would otherwise
+              read "still out: 0" for the whole of the one lookup that renders
+              without a panel. */}
           <Cell label="Still out" emphatic>
-            {c.stillOut}
+            {c.total > 0 ? c.stillOut : "…"}
           </Cell>
         </dl>
 
@@ -155,8 +159,9 @@ export function PendingHero({
         </div>
 
         <p className="sr-only" role="status" aria-live="polite">
-          {c.settled} of {c.total} sources checked for {indicator}. Verdict
-          pending.
+          {c.total > 0
+            ? `${c.settled} of ${c.total} sources checked for ${indicator}. Verdict pending.`
+            : `Checking ${indicator}. Verdict pending.`}
         </p>
       </CardContent>
     </Card>

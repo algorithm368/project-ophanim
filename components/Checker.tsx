@@ -952,8 +952,17 @@ export default function Checker({
 
       {/* One tree from the first frame to the last. The progress readout is
           not a card that gets discarded, it is the score's placeholder, so
-          there is nothing to unmount when the lookup finishes. */}
-      {!isBulk && (result || (loading && progress)) && (
+          there is nothing to unmount when the lookup finishes.
+
+          Gated on `loading`, not on `loading && progress`. A cache hit never
+          sends a `start` event, only `done`, so waiting for `progress` left
+          the fastest lookups, the ones served from Redis, as the only ones
+          with nothing on screen at all: the hero collapsed to the compact
+          search box and the page below it went blank until the result
+          landed. `buildPartial` with no panel yet reports its denominators as
+          unknown rather than as zero, which is what makes an empty partial
+          safe to render. */}
+      {!isBulk && (result || loading) && (
         <CheckResults
           result={result}
           partial={
