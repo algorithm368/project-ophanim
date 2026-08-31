@@ -109,6 +109,10 @@ function RelationTable({ related }: Readonly<{ related: RelatedIndicator[] }>) {
     const shownCapped = expanded ? capped : capped.slice(0, ROW_CAP);
     const hidden = capped.length - shownCapped.length;
     const shown = [...pinned, ...shownCapped];
+    // Built here rather than in the button: the "observed" qualifier is itself
+    // conditional, so inline it reads as a ternary inside a template inside a
+    // ternary, which is the shape S3358 is about.
+    const moreLabel = `+${hidden} more${tiered ? " observed" : ""}`;
 
     return (
         <div className="space-y-3">
@@ -159,9 +163,7 @@ function RelationTable({ related }: Readonly<{ related: RelatedIndicator[] }>) {
                         onClick={() => setExpanded((v) => !v)}
                         className="ml-auto font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >
-                        {expanded
-                            ? "show fewer"
-                            : `+${hidden} more${tiered ? " observed" : ""}`}
+                        {expanded ? "show fewer" : moreLabel}
                     </button>
                 )}
             </div>

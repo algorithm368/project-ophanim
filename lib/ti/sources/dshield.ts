@@ -49,7 +49,7 @@ export function feedWindow(feeds: Record<string, ThreatFeed> | undefined): {
     if (first && (!firstSeen || first < firstSeen)) firstSeen = first;
     if (last && (!lastSeen || last > lastSeen)) lastSeen = last;
   }
-  return { names: names.sort((a, b) => a.localeCompare(b)), firstSeen, lastSeen };
+  return { names: names.toSorted((a, b) => a.localeCompare(b)), firstSeen, lastSeen };
 }
 
 /** Every field worth surfacing, skipping the ones DShield returns as null. */

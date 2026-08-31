@@ -148,12 +148,14 @@ export function scoreRationale(
   }
 
   if (bd.floorApplied && bd.floorValue) {
-    terms.push({ label: "blend", value: blend, derived: true });
-    terms.push({
-      label: "floor",
-      value: bd.floorValue,
-      note: nameOf(result.sources, bd.flooredBy),
-    });
+    terms.push(
+      { label: "blend", value: blend, derived: true },
+      {
+        label: "floor",
+        value: bd.floorValue,
+        note: nameOf(result.sources, bd.flooredBy),
+      },
+    );
   }
   if (bd.allowlistSuppressed) {
     terms.push({ label: "floor", value: "withheld", note: "allowlisted" });

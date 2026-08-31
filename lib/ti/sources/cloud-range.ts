@@ -41,10 +41,11 @@ export const cloudRangeSource: TiSource = {
       }
 
       const detail = [hit.region, hit.service].filter(Boolean).join(", ");
+      const where = detail ? ` (${detail})` : "";
       return {
         status: "ok",
         categories: ["cloud-hosted"],
-        summary: `${hit.provider}${detail ? ` (${detail})` : ""}, announced in ${hit.cidr}`,
+        summary: `${hit.provider}${where}, announced in ${hit.cidr}`,
         details: {
           provider: hit.provider,
           region: hit.region,
