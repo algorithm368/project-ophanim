@@ -52,6 +52,25 @@ function get(value = "1.1.1.1") {
   return new NextRequest(`http://localhost/api/check?ip=${value}`);
 }
 
+function streamPost(body: Record<string, unknown>) {
+  return new NextRequest("http://localhost/api/check", {
+    method: "POST",
+    headers: { accept: "application/x-ndjson" },
+    body: JSON.stringify(body),
+  });
+}
+
+type NdjsonEvent = { type: string; result?: { cached: boolean } };
+
+/** Reads an NDJSON response body to completion and parses each line. */
+async function readEvents(res: Response): Promise<NdjsonEvent[]> {
+  const text = await res.text();
+  return text
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as NdjsonEvent);
+}
+
 beforeEach(() => {
   store.length = 0;
   getHistorySpy.mockReset().mockImplementation(async () => [...store]);
@@ -123,5 +142,62 @@ describe("makeIndicatorRoute GET caching", () => {
     expect(getHistorySpy).toHaveBeenCalledTimes(1);
     const body = (await res.json()) as { history: Array<{ riskScore: number }> };
     expect(body.history.at(-1)?.riskScore).toBe(10);
+  });
+});
+
+// #65: nothing verified the NDJSON event contract Checker.tsx's view state is
+// inferred from. A cache hit sending only `done`, with no `start`, is legal
+// under this contract and is exactly what #64 fixed the client for; pinning
+// the sequence here is what would have caught the gap before it shipped.
+describe("makeIndicatorRoute streaming POST", () => {
+  it("sends only done, with cached true, on a cache hit", async () => {
+    const { POST } = makeRoute({ getCached: async () => RESULT });
+    const res = await POST(streamPost({ ip: "1.1.1.1" }));
+    const events = await readEvents(res);
+    expect(events.map((e) => e.type)).toEqual(["done"]);
+    expect(events[0].result?.cached).toBe(true);
+  });
+
+  it("sends start, one source per settle, then done on a fresh compute", async () => {
+    const { POST } = makeRoute({
+      sources: [
+        {
+          meta: { id: "a", name: "A" },
+          isEnabled: () => true,
+          check: async () => ({ status: "ok" }),
+        },
+      ] as never,
+      run: async (_v, onSettled) => {
+        onSettled?.({
+          status: "ok",
+          source: { id: "a" },
+          enabled: true,
+          durationMs: 1,
+        } as never);
+        return RESULT;
+      },
+    });
+    const res = await POST(streamPost({ ip: "1.1.1.1" }));
+    const events = await readEvents(res);
+    expect(events.map((e) => e.type)).toEqual(["start", "source", "done"]);
+  });
+
+  it("sends start even against a warm cache when refresh is requested", async () => {
+    const { POST } = makeRoute({ getCached: async () => RESULT });
+    const res = await POST(streamPost({ ip: "1.1.1.1", refresh: true }));
+    const events = await readEvents(res);
+    expect(events.map((e) => e.type)).toEqual(["start", "done"]);
+    expect(events.at(-1)?.result?.cached).toBe(false);
+  });
+
+  it("sends start then error when a source throws", async () => {
+    const { POST } = makeRoute({
+      run: async () => {
+        throw new Error("boom");
+      },
+    });
+    const res = await POST(streamPost({ ip: "1.1.1.1" }));
+    const events = await readEvents(res);
+    expect(events.map((e) => e.type)).toEqual(["start", "error"]);
   });
 });
