@@ -14,6 +14,10 @@ import { requireSession } from "@/lib/require-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Deliberately much smaller than the indicator routes (see
+// app/api/check/route.ts): submit/poll each make one bounded request
+// (REQUEST_TIMEOUT_MS below) and never wait on the scan itself finishing.
+export const maxDuration = 30;
 
 /** Submission is fast (it only queues), polling is one round trip. Neither
  *  waits for the scan itself, which takes roughly 30 seconds on the provider. */

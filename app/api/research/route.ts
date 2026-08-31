@@ -5,6 +5,9 @@ import { requireSession } from "@/lib/require-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Longest provider timeout is crt.sh at 20s (lib/ti/research/sources/crtsh.ts);
+// same reasoning and caveat as app/api/check/route.ts.
+export const maxDuration = 40;
 
 const KINDS = new Set<IOCType>(["ip", "domain", "hash"]);
 

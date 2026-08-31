@@ -73,7 +73,15 @@ deliberately uniform, so the same change usually applies to IP, domain, and hash
   (`start` / `source` / `done` / `error` events). It also reads/writes the cache
   and records history. Each route file (`app/api/check/route.ts`,
   `check-domain`, `check-hash`) only supplies validation + the type-specific
-  cache/run functions.
+  cache/run functions. The NDJSON event shape above is an unversioned wire
+  contract between this handler and `Checker.tsx`'s reader; a page held open
+  across a deploy sends its POST to whatever shipped most recently while
+  running the reader from page load (#71). Vercel's Skew Protection would
+  close that window, but it's Pro/Enterprise only (confirmed against Vercel's
+  docs, 2026-08-31) and this project is on Hobby, so it isn't available here.
+  The mitigation is versioning the stream contract explicitly instead;
+  `lib/ti/route-handler.test.ts` (#65, step 1 of 3) pins the current shape but
+  doesn't yet version it.
 - **IOC detection** `lib/ioc.ts`: `refangIOC` undoes analyst defanging
   (`evil[.]com`, `hxxps://`, etc.); `detectIOC` picks ip/domain/hash so the
   unified `app/check/[ioc]/` route works without a manual mode toggle.

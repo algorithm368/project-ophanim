@@ -8,6 +8,13 @@ import type { CheckResult } from "@/lib/ti/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The 27-source fan-out runs in parallel (runAll), so wall clock is bounded by
+// the slowest single source, not their sum: 15s (OTX, the longest timeoutMs in
+// lib/ti/registry.ts) plus the cache/history round trips either side of it.
+// This is a worst case derived from the timeouts the app itself already
+// commits to, not a measured p99 (no Vercel metrics access from here); revisit
+// if function logs show the fan-out actually running longer than this.
+export const maxDuration = 30;
 
 /** Validate the IP up front, returning the clean IP or an error Response.
  *  Accepts either family; the returned value is canonical (RFC 5952 for v6)

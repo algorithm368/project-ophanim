@@ -12,6 +12,9 @@ import type { HashCheckResult } from "@/lib/ti/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// See app/api/check/route.ts: same reasoning, same 15s longest source timeout
+// (several sources in lib/ti/hash/registry.ts share it).
+export const maxDuration = 30;
 
 type ParsedHashInput = { hash: string; algorithm: HashAlgorithm };
 

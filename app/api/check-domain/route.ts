@@ -11,6 +11,9 @@ import type { DomainCheckResult } from "@/lib/ti/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// See app/api/check/route.ts: same reasoning, same 15s longest source timeout
+// (OTX, in lib/ti/domain/registry.ts).
+export const maxDuration = 30;
 
 /** Validate the domain up front, returning the clean name or an error Response. */
 function validateDomain(raw: string | null): Validated<string> {

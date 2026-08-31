@@ -11,6 +11,13 @@ import type { UrlCheckResult } from "@/lib/ti/url/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// checkUrl's IP layer waits on resolveHost (5s, RESOLVE_TIMEOUT_MS in
+// lib/ti/url/check.ts) before it can start; the domain and url-sources layers
+// don't. Worst case is the resolve-then-IP chain: 5s + 15s (the domain/ip
+// registries' longest source timeout) = 20s, plus three layers' worth of
+// cache/history round trips. Same caveat as app/api/check/route.ts: derived
+// from the app's own timeout config, not a measured p99.
+export const maxDuration = 40;
 
 /**
  * Every source that can appear in the stream, across all three layers. The
