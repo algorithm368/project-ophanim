@@ -80,6 +80,18 @@ describe("withDeadline", () => {
     await expect(waitOn).resolves.toBe("feed");
   });
 
+  it("still rejects as an abort when the signal carries a reason of its own", async () => {
+    const { promise } = deferred<string>();
+    const controller = new AbortController();
+    const raced = withDeadline(promise, controller.signal);
+    controller.abort("some caller's own reason");
+
+    const err = await raced.catch((e) => e);
+    expect(err).toBeInstanceOf(DOMException);
+    expect((err as DOMException).name).toBe("AbortError");
+    expect(isTimeout(err)).toBe(true);
+  });
+
   it("drops its abort listener once the work settles", async () => {
     const controller = new AbortController();
     const remove = vi.spyOn(controller.signal, "removeEventListener");
