@@ -49,21 +49,43 @@ async function resolveHost(
   return answers(await dohQuery(RESOLVERS.cloudflare, host, "AAAA", signal));
 }
 
+/**
+ * Wraps an `onSettled` callback to stamp each row with the layer that
+ * produced it before forwarding it on.
+ *
+ * The domain and IP registries share four source ids with each other and
+ * with the URL registry (virustotal, otx, threatfox, mnemonic-pdns), so a
+ * bare `source.id` is not identity for a streamed row in a URL check: the
+ * client-side progress record, the ETA's outstanding set, and the completed
+ * list's React keys all collide on it otherwise (#48). Tagging has to happen
+ * here, at the point each source settles, not only on the finished layer's
+ * array afterward — the client sees rows one at a time, well before this
+ * file gets a finished array to tag.
+ */
+function taggedSettled(
+  kind: LayerKind,
+  onSettled?: (result: SourceResult) => void,
+): ((result: SourceResult) => void) | undefined {
+  if (!onSettled) return undefined;
+  return (result: SourceResult) => onSettled({ ...result, layer: kind });
+}
+
 /** Build a layer by scoring rows this file gathered itself (the URL layer). */
 function layerFromSources(
   kind: LayerKind,
   indicator: string,
   results: SourceResult[],
 ): UrlLayer {
-  const { riskScore, verdict, breakdown } = aggregateRisk(results);
+  const sources = results.map((s) => ({ ...s, layer: kind }));
+  const { riskScore, verdict, breakdown } = aggregateRisk(sources);
   return {
     kind,
     indicator,
     status: "ok",
     riskScore,
     verdict,
-    sources: results,
-    stats: computeStats(results),
+    sources,
+    stats: computeStats(sources),
     scoreBreakdown: breakdown,
   };
 }
@@ -96,7 +118,7 @@ function layerFromResult(
     status: "ok",
     riskScore: result.riskScore,
     verdict: result.verdict,
-    sources: result.sources,
+    sources: result.sources.map((s) => ({ ...s, layer: kind })),
     stats: result.stats,
     scoreBreakdown: result.scoreBreakdown,
     ...(cachedAt ? { cachedAt } : {}),
@@ -183,7 +205,7 @@ export async function checkUrl(
     }
     const hit = await cachedDomain(parsed.host);
     if (hit) return layerFromResult("domain", parsed.host, hit, hit.checkedAt);
-    const fresh = await runDomain(parsed.host, onSettled);
+    const fresh = await runDomain(parsed.host, taggedSettled("domain", onSettled));
     // Fire and forget: a failed cache write is swallowed in cache.ts, and an
     // answer the analyst already has should not wait on storing it.
     void storeDomain(parsed.host, fresh);
@@ -208,7 +230,7 @@ export async function checkUrl(
     if (hit) {
       layer = layerFromResult("ip", first, hit, hit.checkedAt);
     } else {
-      const fresh = await runIp(first, onSettled);
+      const fresh = await runIp(first, taggedSettled("ip", onSettled));
       void storeIp(first, fresh);
       layer = layerFromResult("ip", first, fresh);
     }
@@ -226,7 +248,7 @@ export async function checkUrl(
     : resolve(parsed.host, AbortSignal.timeout(RESOLVE_TIMEOUT_MS));
 
   const [urlLayer, hostLayer, ipLayer] = await Promise.all([
-    runUrl(parsed.canonical, onSettled).then((results) =>
+    runUrl(parsed.canonical, taggedSettled("url", onSettled)).then((results) =>
       layerFromSources("url", parsed.canonical, results),
     ),
     hostLayerFor(),

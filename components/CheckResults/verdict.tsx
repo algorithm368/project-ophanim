@@ -369,7 +369,7 @@ type DotSlot = { name?: string; result?: SourceResult };
  * took over. Without a panel (the completed hero, which has the real sources
  * already in registry order) it keeps the order it was handed and pads.
  *
- * A URL check runs three layers, and three source ids appear in two of them.
+ * A URL check runs three layers, and four source ids appear in two of them.
  * Both slots read the same settled result, which is why this looks a source up
  * rather than consuming it: the strip keeps its full width, and neither slot
  * is left pending forever.

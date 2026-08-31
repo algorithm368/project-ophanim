@@ -24,6 +24,7 @@ import {
   type HashCheckResult,
   type SourceMeta,
   type SourceResult,
+  sourceRowKey,
 } from "@/lib/ti/types";
 import { parseIP, type ParsedIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
@@ -803,9 +804,14 @@ export default function Checker({
         {
           chunk: watchdog.bump,
           start: (total, metas) => setProgress({ total, metas, settled: {} }),
+          // Keyed by sourceRowKey, not the bare id: a URL check's domain and
+          // IP layers can register the same source id, and an id-keyed
+          // record loses one of the two rows to the other (#48).
           source: (sr) =>
             setProgress((p) =>
-              p ? { ...p, settled: { ...p.settled, [sr.source.id]: sr } } : p,
+              p
+                ? { ...p, settled: { ...p.settled, [sourceRowKey(sr)]: sr } }
+                : p,
             ),
         },
       );
