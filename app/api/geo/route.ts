@@ -4,6 +4,8 @@ import { requireSession } from "@/lib/require-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// One ip-api /batch request, bounded below at 8s; headroom above it.
+export const maxDuration = 15;
 
 /**
  * Bulk geolocation: POST { ips: string } (free-form list) or { ips: string[] }.

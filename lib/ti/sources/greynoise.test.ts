@@ -1,5 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { greyNoiseScore, greyNoiseVouches } from "./greynoise";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { greyNoiseScore, greyNoiseSource, greyNoiseVouches } from "./greynoise";
+import { getJson } from "../http";
+import {
+  getCachedGreyNoiseIdentification,
+  setCachedGreyNoiseIdentification,
+} from "../cache";
+
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
+vi.mock("../cache", () => ({
+  getCachedGreyNoiseIdentification: vi.fn(),
+  setCachedGreyNoiseIdentification: vi.fn(),
+}));
 
 describe("greyNoiseScore", () => {
   it("maps classifications to a 0-100 contribution", () => {
@@ -29,5 +44,79 @@ describe("greyNoiseVouches", () => {
 
   it("never vouches for a malicious classification", () => {
     expect(greyNoiseVouches("malicious", false)).toBe(false);
+  });
+});
+
+// #37: a rate-limited day used to hand threatTypeOf() nothing at all, which
+// is how a Shodan census host stopped typing as "scanner" and started typing
+// as "brute force" off the abuse reports filed by the people it scanned.
+describe("greyNoiseSource.check — quota exhaustion", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+    vi.mocked(getCachedGreyNoiseIdentification).mockReset();
+    vi.mocked(setCachedGreyNoiseIdentification).mockReset();
+  });
+
+  it("falls back to the cached identification when the quota is exhausted", async () => {
+    vi.stubEnv("GREYNOISE_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue({
+      ok: false,
+      status: 429,
+      data: { message: "Daily quota exceeded" },
+    } as Awaited<ReturnType<typeof getJson>>);
+    vi.mocked(getCachedGreyNoiseIdentification).mockResolvedValue({
+      classification: "benign",
+      noise: true,
+      riot: false,
+      actor: "Shodan.io",
+    });
+
+    const f = await greyNoiseSource.check(
+      "71.6.146.185",
+      new AbortController().signal,
+    );
+
+    expect(f.status).toBe("ok");
+    expect(f.categories).toEqual(["internet-scanner", "benign"]);
+    expect(f.allowlisted).toBe(true);
+    expect(f.summary).toContain("cached identification");
+  });
+
+  it("reports rate_limited when the quota is exhausted and nothing was cached", async () => {
+    vi.stubEnv("GREYNOISE_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue({
+      ok: false,
+      status: 429,
+      data: { message: "Daily quota exceeded" },
+    } as Awaited<ReturnType<typeof getJson>>);
+    vi.mocked(getCachedGreyNoiseIdentification).mockResolvedValue(null);
+
+    const f = await greyNoiseSource.check(
+      "203.0.113.9",
+      new AbortController().signal,
+    );
+
+    expect(f.status).toBe("rate_limited");
+  });
+
+  it("stores the identification on a live answer, for a later quota-exhausted day", async () => {
+    vi.stubEnv("GREYNOISE_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { classification: "benign", noise: true, name: "Shodan.io" },
+    } as Awaited<ReturnType<typeof getJson>>);
+
+    const f = await greyNoiseSource.check(
+      "71.6.146.185",
+      new AbortController().signal,
+    );
+
+    expect(f.status).toBe("ok");
+    expect(setCachedGreyNoiseIdentification).toHaveBeenCalledWith(
+      "71.6.146.185",
+      expect.objectContaining({ classification: "benign", actor: "Shodan.io" }),
+    );
   });
 });

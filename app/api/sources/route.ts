@@ -6,6 +6,8 @@ import { requireSession } from "@/lib/require-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// No network calls (isEnabled() only reads env vars); trivial ceiling.
+export const maxDuration = 10;
 
 const REGISTRIES = {
   ip: sources,

@@ -1,5 +1,10 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
+import {
+  getCachedGreyNoiseIdentification,
+  setCachedGreyNoiseIdentification,
+  type GreyNoiseIdentification,
+} from "../cache";
 
 interface GreyNoiseResponse {
   ip?: string;
@@ -37,6 +42,43 @@ export function greyNoiseVouches(
   return classification === "benign" || riot === true;
 }
 
+/**
+ * Build the same finding shape whether GreyNoise just answered live or the
+ * answer is a stored identification from a prior, unrelated check. The two
+ * paths must agree, since threatTypeOf() and the confidence coverage count
+ * only look at `status`, and telling them apart is not the point: the point
+ * is that a stale identification still beats none.
+ */
+function findingFromIdentification(
+  id: GreyNoiseIdentification,
+  fromCache: boolean,
+): SourceFinding {
+  const { classification, noise, riot, actor, link, lastSeen } = id;
+  const score = greyNoiseScore(classification);
+
+  const categories: string[] = [];
+  if (noise) categories.push("internet-scanner");
+  if (riot) categories.push("common-business-service");
+  categories.push(classification);
+
+  const actorSuffix = actor ? ` (${actor})` : "";
+  const scannerSuffix = noise ? " (active scanner)" : "";
+  const provenance = fromCache
+    ? " — cached identification, today's quota is exhausted"
+    : "";
+
+  return {
+    status: "ok",
+    malicious: classification === "malicious",
+    allowlisted: greyNoiseVouches(classification, riot),
+    score,
+    lastSeen,
+    categories,
+    summary: `${classification}${actorSuffix}${scannerSuffix}${provenance}`,
+    details: { classification, noise, riot, actor, link },
+  };
+}
+
 /** GreyNoise Community API: internet scanner classification (free API key required). */
 export const greyNoiseSource: TiSource = {
   meta: {
@@ -67,9 +109,12 @@ export const greyNoiseSource: TiSource = {
           summary: "Not observed scanning the internet",
         };
       }
-      // The free Community API has a tight daily quota; surface that as a
-      // distinct state rather than a red error card.
+      // The free Community API has a tight daily quota; fall back to the last
+      // identification this address had rather than surfacing an outage that
+      // silently changes threatTypeOf()'s answer (#37).
       if (status === 429 || /limit|quota/i.test(data?.message ?? "")) {
+        const cached = await getCachedGreyNoiseIdentification(ip);
+        if (cached) return findingFromIdentification(cached, true);
         return {
           status: "rate_limited",
           summary: data?.message ?? "Daily quota exceeded",
@@ -79,34 +124,20 @@ export const greyNoiseSource: TiSource = {
         return { status: "error", error: data?.message ?? `HTTP ${status}` };
       }
 
-      const classification = data.classification ?? "unknown";
-      const score = greyNoiseScore(classification);
-
-      const categories: string[] = [];
-      if (data.noise) categories.push("internet-scanner");
-      if (data.riot) categories.push("common-business-service");
-      categories.push(classification);
-
-      const actor = data.name ? ` (${data.name})` : "";
-      const scanner = data.noise ? " (active scanner)" : "";
-
-      return {
-        status: "ok",
-        malicious: classification === "malicious",
-        allowlisted: greyNoiseVouches(classification, data.riot),
-        score,
+      const identification: GreyNoiseIdentification = {
+        classification: data.classification ?? "unknown",
+        noise: data.noise,
+        riot: data.riot,
+        actor: data.name,
+        link: data.link,
         lastSeen: data.last_seen,
-        categories,
-        summary: `${classification}${actor}${scanner}`,
-        details: {
-          classification,
-          noise: data.noise,
-          riot: data.riot,
-          actor: data.name,
-          link: data.link,
-        },
-        raw: data,
       };
+      // Fire and forget: an answer the analyst already has should not wait on
+      // storing it, and a failed write just means the next quota-exhausted day
+      // falls back to whatever identification was cached before this one.
+      void setCachedGreyNoiseIdentification(ip, identification);
+
+      return { ...findingFromIdentification(identification, false), raw: data };
     } catch (err) {
       return {
         status: isTimeout(err) ? "timeout" : "error",
