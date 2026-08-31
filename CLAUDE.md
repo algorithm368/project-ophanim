@@ -35,6 +35,15 @@ Use `bun run test`, not `bun test`: the latter invokes Bun's own test runner
 deploy uses the Bun runtime for Vercel Functions (`bunVersion` in `vercel.json`),
 and `dev`/`build`/`start` run Next under Bun via `bun run --bun`.
 
+`vercel.json` pins `"fluid": true`. An indicator route spends nearly all of its
+wall clock holding open sockets to other people's APIs, not burning CPU, which
+is exactly the shape Fluid Compute is for: in-function concurrency, so one warm
+instance serves many concurrent lookups, and Active CPU pricing, so the bill
+follows the parsing rather than the waiting. Any reasoning about the fan-out's
+performance or cost assumes Fluid is on; the pin is what makes that assumption
+checked rather than hoped for, since the alternative is whatever the dashboard
+happened to default to when the project was created.
+
 ## Architecture: the indicator pipeline
 
 All three IOC types share one data model and one execution path. The shape is
