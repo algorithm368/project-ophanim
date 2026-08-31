@@ -10,11 +10,18 @@ vi.mock("@/lib/ti/cache", () => ({ getRedis: getRedisMock }));
 
 const { getHistory, recordHistory } = await import("@/lib/ti/history");
 
+// LPUSH and LTRIM go out as one pipeline, so the chain itself is the thing
+// under test: recordHistory calls redis.pipeline().lpush(...).ltrim(...).exec().
+const pipeline = {
+  lpush: vi.fn(),
+  ltrim: vi.fn(),
+  exec: vi.fn(),
+};
+
 const redis = {
   lrange: vi.fn(),
   lindex: vi.fn(),
-  lpush: vi.fn(),
-  ltrim: vi.fn(),
+  pipeline: vi.fn(() => pipeline),
 };
 
 const NOW = new Date("2026-08-26T12:00:00.000Z");
@@ -36,9 +43,12 @@ let errorSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  for (const fn of Object.values(redis)) fn.mockReset();
-  redis.lrange.mockResolvedValue([]);
-  redis.lindex.mockResolvedValue(null);
+  redis.lrange.mockReset().mockResolvedValue([]);
+  redis.lindex.mockReset().mockResolvedValue(null);
+  redis.pipeline.mockReset().mockReturnValue(pipeline);
+  pipeline.lpush.mockReset().mockReturnValue(pipeline);
+  pipeline.ltrim.mockReset().mockReturnValue(pipeline);
+  pipeline.exec.mockReset().mockResolvedValue([]);
   getRedisMock.mockReset();
   getRedisMock.mockReturnValue(redis);
   errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -119,15 +129,18 @@ describe("recordHistory", () => {
     getRedisMock.mockReturnValue(null);
     await expect(
       recordHistory("ip", "1.1.1.1", snap(90, "malicious")),
-    ).resolves.toBeUndefined();
-    expect(redis.lpush).not.toHaveBeenCalled();
+    ).resolves.toBeNull();
+    expect(redis.pipeline).not.toHaveBeenCalled();
   });
 
-  it("appends to an empty timeline and trims it to 30", async () => {
+  // Returning the written snapshot (rather than void) is what lets a caller
+  // holding the pre-write history extend it locally instead of re-reading it.
+  it("appends to an empty timeline, trims it to 30, and returns what it wrote", async () => {
     const point = snap(90, "malicious");
-    await recordHistory("ip", "1.1.1.1", point);
-    expect(redis.lpush).toHaveBeenCalledWith("ti:hist:ip:1.1.1.1", point);
-    expect(redis.ltrim).toHaveBeenCalledWith("ti:hist:ip:1.1.1.1", 0, 29);
+    await expect(recordHistory("ip", "1.1.1.1", point)).resolves.toEqual(point);
+    expect(pipeline.lpush).toHaveBeenCalledWith("ti:hist:ip:1.1.1.1", point);
+    expect(pipeline.ltrim).toHaveBeenCalledWith("ti:hist:ip:1.1.1.1", 0, 29);
+    expect(pipeline.exec).toHaveBeenCalled();
   });
 
   it("reads the newest entry to compare against", async () => {
@@ -139,17 +152,19 @@ describe("recordHistory", () => {
   // the timeline with identical points.
   it("skips a point identical to a recent one", async () => {
     redis.lindex.mockResolvedValue(snap(90, "malicious", 30 * 60 * 1000));
-    await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).not.toHaveBeenCalled();
-    expect(redis.ltrim).not.toHaveBeenCalled();
+    await expect(
+      recordHistory("ip", "1.1.1.1", snap(90, "malicious")),
+    ).resolves.toBeNull();
+    expect(redis.pipeline).not.toHaveBeenCalled();
   });
 
   it("compares against a latest entry stored as a JSON string too", async () => {
     redis.lindex.mockResolvedValue(
       JSON.stringify(snap(90, "malicious", 30 * 60 * 1000)),
     );
-    await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).not.toHaveBeenCalled();
+    await expect(
+      recordHistory("ip", "1.1.1.1", snap(90, "malicious")),
+    ).resolves.toBeNull();
   });
 
   // Dedupe requires score AND verdict AND recency to all match. Each of these
@@ -157,32 +172,33 @@ describe("recordHistory", () => {
   it("records when the score moved", async () => {
     redis.lindex.mockResolvedValue(snap(80, "malicious", 5 * 60 * 1000));
     await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).toHaveBeenCalled();
+    expect(pipeline.lpush).toHaveBeenCalled();
   });
 
   it("records when only the verdict moved", async () => {
     redis.lindex.mockResolvedValue(snap(90, "suspicious", 5 * 60 * 1000));
     await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).toHaveBeenCalled();
+    expect(pipeline.lpush).toHaveBeenCalled();
   });
 
   it("records an identical reading once the window has passed", async () => {
     redis.lindex.mockResolvedValue(snap(90, "malicious", 2 * HOUR_MS));
     await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).toHaveBeenCalled();
+    expect(pipeline.lpush).toHaveBeenCalled();
   });
 
   // The window is exclusive: exactly an hour old is no longer "recent".
   it("records at exactly the one-hour boundary", async () => {
     redis.lindex.mockResolvedValue(snap(90, "malicious", HOUR_MS));
     await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).toHaveBeenCalled();
+    expect(pipeline.lpush).toHaveBeenCalled();
   });
 
   it("skips just inside the boundary", async () => {
     redis.lindex.mockResolvedValue(snap(90, "malicious", HOUR_MS - 1));
-    await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).not.toHaveBeenCalled();
+    await expect(
+      recordHistory("ip", "1.1.1.1", snap(90, "malicious")),
+    ).resolves.toBeNull();
   });
 
   // An entry whose timestamp will not parse cannot be shown to be recent, so
@@ -190,30 +206,22 @@ describe("recordHistory", () => {
   it("records when the stored timestamp is unparseable", async () => {
     redis.lindex.mockResolvedValue({ riskScore: 90, verdict: "malicious", checkedAt: "whenever" });
     await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).toHaveBeenCalled();
+    expect(pipeline.lpush).toHaveBeenCalled();
   });
 
   it("records when the stored entry is unreadable", async () => {
     redis.lindex.mockResolvedValue("{not json");
     await recordHistory("ip", "1.1.1.1", snap(90, "malicious"));
-    expect(redis.lpush).toHaveBeenCalled();
+    expect(pipeline.lpush).toHaveBeenCalled();
   });
 
-  it("swallows a failed write", async () => {
-    redis.lpush.mockRejectedValue(new Error("quota exceeded"));
+  // A pipelined write fails as one unit: either command erroring rejects the
+  // same exec() call, so there is one failure mode to swallow, not two.
+  it("swallows a failed pipelined write", async () => {
+    pipeline.exec.mockRejectedValue(new Error("quota exceeded"));
     await expect(
       recordHistory("ip", "1.1.1.1", snap(90, "malicious")),
-    ).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalled();
-  });
-
-  // A trim that fails after a successful push leaves the list long but intact;
-  // it must not surface to the caller either.
-  it("swallows a failed trim", async () => {
-    redis.ltrim.mockRejectedValue(new Error("quota exceeded"));
-    await expect(
-      recordHistory("ip", "1.1.1.1", snap(90, "malicious")),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
     expect(errorSpy).toHaveBeenCalled();
   });
 });

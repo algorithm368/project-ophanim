@@ -20,13 +20,13 @@ import {
     DIGEST_RELATIONS,
 } from "@/lib/relations";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { hostFromUrl } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Pivot, SectionHeading, useCopied } from "./primitives";
 
-export function ConnectionsCard({
+export const ConnectionsCard = memo(function ConnectionsCard({
     result,
     streaming = false,
 }: Readonly<{
@@ -58,7 +58,7 @@ export function ConnectionsCard({
             </CardContent>
         </Card>
     );
-}
+});
 
 function PivotCount({ n }: Readonly<{ n: number }>) {
     return (

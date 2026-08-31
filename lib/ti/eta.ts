@@ -37,12 +37,29 @@ export function longestTimeout(sources: readonly TimedSource[]): number {
  * Falls back to the whole panel while nothing has settled, since "the slowest
  * of none" is not an estimate of anything. Once every source is in, the budget
  * is zero: there is nothing left to wait for.
+ *
+ * `settledIds` is a multiset (one id per settled source, duplicates kept), not
+ * a `Set`: a URL check's panel repeats a handful of ids across its domain and
+ * IP layers (#48), so a plain Set-membership test would mark both of a shared
+ * id's panel entries done the moment either layer's copy landed, undercounting
+ * what is actually still outstanding. Pairing counts instead of testing
+ * membership handles the duplicate correctly without needing the panel to
+ * know which layer each entry belongs to — moot anyway, since two entries
+ * sharing an id share the same registered timeout, so which specific one
+ * gets paired off never changes the answer.
  */
 export function etaBudgetMs(
   sources: readonly TimedSource[],
-  settledIds: ReadonlySet<string>,
+  settledIds: readonly string[],
 ): number {
-  const outstanding = sources.filter((s) => !settledIds.has(s.id));
+  const remaining = new Map<string, number>();
+  for (const id of settledIds) remaining.set(id, (remaining.get(id) ?? 0) + 1);
+  const outstanding = sources.filter((s) => {
+    const left = remaining.get(s.id) ?? 0;
+    if (left <= 0) return true;
+    remaining.set(s.id, left - 1);
+    return false;
+  });
   if (sources.length > 0 && outstanding.length === 0) return 0;
   return longestTimeout(outstanding.length > 0 ? outstanding : sources);
 }

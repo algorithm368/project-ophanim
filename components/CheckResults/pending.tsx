@@ -21,8 +21,10 @@ function useEta(partial: PartialLookup): string {
   const [startedAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
 
-  const settled = new Set(partial.sources.map((s) => s.source.id));
-  const budgetMs = etaBudgetMs(partial.metas, settled);
+  // A multiset, not deduped: see etaBudgetMs for why a URL check's repeated
+  // ids need every settled occurrence counted, not just whether one landed.
+  const settledIds = partial.sources.map((s) => s.source.id);
+  const budgetMs = etaBudgetMs(partial.metas, settledIds);
   // Nothing left to count down to once the last source is in.
   const finished = budgetMs === 0;
 

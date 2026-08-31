@@ -1,7 +1,7 @@
 "use client";
 
 import { Fingerprint } from "lucide-react";
-import type { ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import type { CheckResult } from "@/lib/ti/types";
 import { buildIpDossier } from "@/lib/ti/ip-dossier";
 import { joinPlace } from "@/lib/ti/narrative";
@@ -56,11 +56,20 @@ function DossierItem({
  * renderer over `buildIpDossier` — no scoring or classification lives here.
  * Owns none of the verdict/score/tally, that stays on `VerdictHero` above it.
  */
-export function IpDossierCard({
+export const IpDossierCard = memo(function IpDossierCard({
     result,
     streaming,
 }: Readonly<{ result: CheckResult | null; streaming: boolean }>) {
-    if (streaming || !result) {
+    // Hooks run before any early return, so the null case is folded in here
+    // rather than guarding the call site. buildIpDossier is 350-odd lines of
+    // field assembly; unmemoized it reran on every render this card took
+    // while streaming and research sat below it, which was most of them.
+    const dossier = useMemo(
+        () => (result ? buildIpDossier(result) : null),
+        [result],
+    );
+
+    if (streaming || !result || !dossier) {
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-5">
@@ -83,7 +92,6 @@ export function IpDossierCard({
         );
     }
 
-    const dossier = buildIpDossier(result);
     const geo = result.geo;
     const flag = flagUrl(geo?.countryCode);
     const place = joinPlace([geo?.city, geo?.region]);
@@ -151,4 +159,4 @@ export function IpDossierCard({
             </CardContent>
         </Card>
     );
-}
+});

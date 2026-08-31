@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { checkUrl } from "@/lib/ti/url/check";
-import type { CheckResult, DomainCheckResult } from "@/lib/ti/types";
+import type {
+  CheckResult,
+  DomainCheckResult,
+  SourceResult,
+} from "@/lib/ti/types";
+import { sourceRowKey } from "@/lib/ti/types";
 
 const STATS = {
   total: 1,
@@ -31,6 +36,22 @@ const ipResult = (over: Partial<CheckResult> = {}): CheckResult => ({
   sources: [],
   stats: STATS,
   ...over,
+});
+
+/** A minimal row for a given source id, the shape both layer mocks below
+ *  register under the *same* id to exercise #48's collision. */
+const rowFor = (id: string): SourceResult => ({
+  status: "ok",
+  source: {
+    id,
+    name: id,
+    url: "https://example.com",
+    category: "reputation",
+    requiresKey: false,
+    weight: 1,
+  },
+  enabled: true,
+  durationMs: 10,
 });
 
 const deps = (over: Record<string, unknown> = {}) => ({
@@ -193,5 +214,110 @@ describe("checkUrl", () => {
 
   it("rejects an unparseable URL rather than guessing", async () => {
     await expect(checkUrl("not a url", undefined, deps())).rejects.toThrow();
+  });
+
+  // #47: resolve used to run only after the url and host layers had both
+  // finished. Gating the host layer on a promise this test controls proves
+  // resolve no longer waits on it: against the old sequential code this test
+  // would hang, since resolve was never called before the release.
+  it("starts resolving the host without waiting on the url or host layers", async () => {
+    const order: string[] = [];
+    let releaseDomain: () => void = () => {};
+    const domainGate = new Promise<void>((res) => {
+      releaseDomain = res;
+    });
+    const d = deps({
+      checkDomainLayer: vi.fn(async () => {
+        await domainGate;
+        order.push("domain:end");
+        return domainResult();
+      }),
+      resolve: vi.fn(async () => {
+        order.push("resolve");
+        return ["1.2.3.4"];
+      }),
+    });
+    const promise = checkUrl("https://evil.com/login", undefined, d);
+    await Promise.resolve();
+    expect(order).toEqual(["resolve"]);
+    releaseDomain();
+    await promise;
+    expect(order).toEqual(["resolve", "domain:end"]);
+  });
+
+  // #48: the domain and IP registries share a handful of source ids
+  // (virustotal, otx, threatfox, mnemonic-pdns). A URL check composing both
+  // layers used to hand out two rows under one identical id.
+  describe("layer identity (#48)", () => {
+    it("tags every composed row with the layer that produced it", async () => {
+      const result = await checkUrl(
+        "https://evil.com/login",
+        undefined,
+        deps({
+          runUrlSources: vi.fn(async () => [rowFor("virustotal")]),
+          checkDomainLayer: vi.fn(async () =>
+            domainResult({ sources: [rowFor("virustotal")] }),
+          ),
+          checkIpLayer: vi.fn(async () =>
+            ipResult({ sources: [rowFor("virustotal")] }),
+          ),
+        }),
+      );
+      const layers = result.sources.map((s) => s.layer);
+      expect(layers).toEqual(["url", "domain", "ip"]);
+    });
+
+    it("keeps a shared id's rows distinct once qualified by layer", async () => {
+      const result = await checkUrl(
+        "https://evil.com/login",
+        undefined,
+        deps({
+          checkDomainLayer: vi.fn(async () =>
+            domainResult({ sources: [rowFor("virustotal")] }),
+          ),
+          checkIpLayer: vi.fn(async () =>
+            ipResult({ sources: [rowFor("virustotal")] }),
+          ),
+        }),
+      );
+      const keys = new Set(result.sources.map(sourceRowKey));
+      expect(keys.size).toBe(result.sources.length);
+    });
+
+    it("tags a streamed row before the caller's onSettled sees it, not only the finished layer", async () => {
+      const streamed: SourceResult[] = [];
+      await checkUrl(
+        "https://evil.com/login",
+        (r) => streamed.push(r),
+        deps({
+          checkDomainLayer: vi.fn(async (_host, onSettled) => {
+            onSettled?.(rowFor("virustotal"));
+            return domainResult({ sources: [rowFor("virustotal")] });
+          }),
+          checkIpLayer: vi.fn(async (_ip, onSettled) => {
+            onSettled?.(rowFor("virustotal"));
+            return ipResult({ sources: [rowFor("virustotal")] });
+          }),
+        }),
+      );
+      const streamedLayers = streamed
+        .filter((s) => s.source.id === "virustotal")
+        .map((s) => s.layer);
+      expect(streamedLayers).toEqual(["domain", "ip"]);
+    });
+
+    it("tags a cache-hit layer's rows too, not only a freshly computed one", async () => {
+      const result = await checkUrl(
+        "https://evil.com/login",
+        undefined,
+        deps({
+          getCachedDomain: vi.fn(async () =>
+            domainResult({ sources: [rowFor("virustotal")] }),
+          ),
+        }),
+      );
+      const host = result.layers.find((l) => l.kind === "domain")!;
+      expect(host.sources[0].layer).toBe("domain");
+    });
   });
 });

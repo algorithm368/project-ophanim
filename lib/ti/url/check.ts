@@ -1,4 +1,4 @@
-import { parseUrl } from "@/lib/url";
+import { parseUrl, type ParsedUrl } from "@/lib/url";
 import { aggregateRisk, computeStats } from "../aggregate";
 import {
   getCachedDomainResult,
@@ -49,21 +49,43 @@ async function resolveHost(
   return answers(await dohQuery(RESOLVERS.cloudflare, host, "AAAA", signal));
 }
 
+/**
+ * Wraps an `onSettled` callback to stamp each row with the layer that
+ * produced it before forwarding it on.
+ *
+ * The domain and IP registries share four source ids with each other and
+ * with the URL registry (virustotal, otx, threatfox, mnemonic-pdns), so a
+ * bare `source.id` is not identity for a streamed row in a URL check: the
+ * client-side progress record, the ETA's outstanding set, and the completed
+ * list's React keys all collide on it otherwise (#48). Tagging has to happen
+ * here, at the point each source settles, not only on the finished layer's
+ * array afterward — the client sees rows one at a time, well before this
+ * file gets a finished array to tag.
+ */
+function taggedSettled(
+  kind: LayerKind,
+  onSettled?: (result: SourceResult) => void,
+): ((result: SourceResult) => void) | undefined {
+  if (!onSettled) return undefined;
+  return (result: SourceResult) => onSettled({ ...result, layer: kind });
+}
+
 /** Build a layer by scoring rows this file gathered itself (the URL layer). */
 function layerFromSources(
   kind: LayerKind,
   indicator: string,
   results: SourceResult[],
 ): UrlLayer {
-  const { riskScore, verdict, breakdown } = aggregateRisk(results);
+  const sources = results.map((s) => ({ ...s, layer: kind }));
+  const { riskScore, verdict, breakdown } = aggregateRisk(sources);
   return {
     kind,
     indicator,
     status: "ok",
     riskScore,
     verdict,
-    sources: results,
-    stats: computeStats(results),
+    sources,
+    stats: computeStats(sources),
     scoreBreakdown: breakdown,
   };
 }
@@ -96,7 +118,7 @@ function layerFromResult(
     status: "ok",
     riskScore: result.riskScore,
     verdict: result.verdict,
-    sources: result.sources,
+    sources: result.sources.map((s) => ({ ...s, layer: kind })),
     stats: result.stats,
     scoreBreakdown: result.scoreBreakdown,
     ...(cachedAt ? { cachedAt } : {}),
@@ -151,8 +173,12 @@ export async function checkUrl(
   onSettled?: (result: SourceResult) => void,
   deps: CheckUrlDeps = {},
 ): Promise<UrlCheckResult> {
-  const parsed = parseUrl(url);
-  if (!parsed) throw new Error("Unparseable URL");
+  const maybeParsed = parseUrl(url);
+  if (!maybeParsed) throw new Error("Unparseable URL");
+  // A separate binding with a fixed, non-null declared type: TypeScript does
+  // not carry control-flow narrowing into the two nested closures below, even
+  // for a `const`, since it can't prove they run synchronously.
+  const parsed: ParsedUrl = maybeParsed;
 
   const resolve = deps.resolve ?? resolveHost;
   const runDomain = deps.checkDomainLayer ?? checkDomain;
@@ -166,63 +192,70 @@ export async function checkUrl(
     ((target: string, settled?: (result: SourceResult) => void) =>
       runAll(urlSources, target, settled));
 
-  const urlLayer = layerFromSources(
-    "url",
-    parsed.canonical,
-    await runUrl(parsed.canonical, onSettled),
-  );
-
   // A URL that addresses an IP directly has no host to check. That is an
   // absence of subject, not a failure to look.
-  let hostLayer: UrlLayer;
-  if (parsed.isIpHost) {
-    hostLayer = absentLayer(
-      "domain",
-      parsed.host,
-      "not-applicable",
-      "The URL addresses an IP directly, so there is no host to check",
-    );
-  } else {
-    const hit = await cachedDomain(parsed.host);
-    if (hit) {
-      hostLayer = layerFromResult("domain", parsed.host, hit, hit.checkedAt);
-    } else {
-      const fresh = await runDomain(parsed.host, onSettled);
-      // Fire and forget: a failed cache write is swallowed in cache.ts, and an
-      // answer the analyst already has should not wait on storing it.
-      void storeDomain(parsed.host, fresh);
-      hostLayer = layerFromResult("domain", parsed.host, fresh);
+  async function hostLayerFor(): Promise<UrlLayer> {
+    if (parsed.isIpHost) {
+      return absentLayer(
+        "domain",
+        parsed.host,
+        "not-applicable",
+        "The URL addresses an IP directly, so there is no host to check",
+      );
     }
+    const hit = await cachedDomain(parsed.host);
+    if (hit) return layerFromResult("domain", parsed.host, hit, hit.checkedAt);
+    const fresh = await runDomain(parsed.host, taggedSettled("domain", onSettled));
+    // Fire and forget: a failed cache write is swallowed in cache.ts, and an
+    // answer the analyst already has should not wait on storing it.
+    void storeDomain(parsed.host, fresh);
+    return layerFromResult("domain", parsed.host, fresh);
   }
 
   // One address is checked. Running the IP pipeline per address would multiply
   // an already wide fan-out, so the rest are reported as unchecked rather than
   // quietly treated as cleared.
-  const addresses = parsed.isIpHost
-    ? [parsed.host]
-    : await resolve(parsed.host, AbortSignal.timeout(RESOLVE_TIMEOUT_MS));
-  const [first, ...others] = addresses;
-
-  let ipLayer: UrlLayer;
-  if (!first) {
-    ipLayer = absentLayer(
-      "ip",
-      parsed.host,
-      "unavailable",
-      "The host did not resolve, so there is no address to check",
-    );
-  } else {
+  async function ipLayerFor(addresses: string[]): Promise<UrlLayer> {
+    const [first] = addresses;
+    if (!first) {
+      return absentLayer(
+        "ip",
+        parsed.host,
+        "unavailable",
+        "The host did not resolve, so there is no address to check",
+      );
+    }
     const hit = await cachedIp(first);
     let layer: UrlLayer;
     if (hit) {
       layer = layerFromResult("ip", first, hit, hit.checkedAt);
     } else {
-      const fresh = await runIp(first, onSettled);
+      const fresh = await runIp(first, taggedSettled("ip", onSettled));
       void storeIp(first, fresh);
       layer = layerFromResult("ip", first, fresh);
     }
-    ipLayer = annotateSharedHost(layer);
+    return annotateSharedHost(layer);
   }
+
+  // The only real dependency here is ipLayer needing an address, so resolve
+  // starts immediately and everything else runs alongside it. Worst case
+  // drops from the sum of all three layers to the slowest one (or resolve
+  // plus the IP layer, whichever is longer), and the NDJSON stream's dead
+  // gaps between layers disappear along with the serialization that caused
+  // them: url/host/ip rows now arrive interleaved instead of in three bursts.
+  const addressesPromise: Promise<string[]> = parsed.isIpHost
+    ? Promise.resolve([parsed.host])
+    : resolve(parsed.host, AbortSignal.timeout(RESOLVE_TIMEOUT_MS));
+
+  const [urlLayer, hostLayer, ipLayer] = await Promise.all([
+    runUrl(parsed.canonical, taggedSettled("url", onSettled)).then((results) =>
+      layerFromSources("url", parsed.canonical, results),
+    ),
+    hostLayerFor(),
+    addressesPromise.then((addrs) => ipLayerFor(addrs)),
+  ]);
+  // Already settled by the time Promise.all resolves; awaiting again is free.
+  const [, ...others] = await addressesPromise;
 
   const layers = [urlLayer, hostLayer, ipLayer];
   const headline = selectHeadline(layers);

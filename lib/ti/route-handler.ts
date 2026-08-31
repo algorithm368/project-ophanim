@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
-import { getHistory, recordHistory } from "./history";
-import type { SourceResult, TiSource, Verdict } from "./types";
+import { getHistory, MAX_SNAPSHOTS, recordHistory } from "./history";
+import type { HistorySnapshot, SourceResult, TiSource, Verdict } from "./types";
 
 /** Either a validated, cleaned indicator value or an error Response to return. */
 export type Validated<V> = { value: V } | { error: Response };
@@ -74,6 +74,24 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
   });
 
   /**
+   * The response's history array after a write, without a second LRANGE.
+   * `priorHistory` is the list as read before the fan-out (null when that read
+   * never happened, i.e. a forced refresh); `written` is what recordHistory
+   * just wrote, or null if it deduped the point. Appending locally reproduces
+   * what a re-read would return: the only divergence is a concurrent write
+   * from another request, which the 30-entry window and the one-hour dedupe
+   * already make uninteresting.
+   */
+  function nextHistory(
+    priorHistory: HistorySnapshot[] | null,
+    written: HistorySnapshot | null,
+    histKey: string,
+  ): Promise<HistorySnapshot[]> | HistorySnapshot[] {
+    if (priorHistory === null) return getHistory(config.label, histKey);
+    return written ? [...priorHistory, written].slice(-MAX_SNAPSHOTS) : priorHistory;
+  }
+
+  /**
    * `cacheable` is the GET path. CDNs do not cache POST responses, so sending
    * CACHE_HEADERS there would be inert, and an inert header reads as a claim
    * about caching that is broader than the one being made.
@@ -84,8 +102,13 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
     cacheable: boolean,
   ): Promise<Response> {
     const histKey = String(value);
+    // null (rather than an empty array) marks "never read", so a forced
+    // refresh below falls back to a fresh LRANGE instead of appending onto
+    // nothing.
+    let priorHistory: HistorySnapshot[] | null = null;
     if (!refresh) {
-      // Speculatively read cache + history together; discard history on a miss.
+      // Speculatively read cache + history together; kept on a miss, since
+      // the write below appends onto it instead of re-reading.
       const [cached, history] = await Promise.all([
         config.getCached(value),
         getHistory(config.label, histKey),
@@ -96,17 +119,17 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
           cacheable ? { headers: CACHE_HEADERS } : undefined,
         );
       }
+      priorHistory = history;
     }
 
     try {
       const result = await config.run(value);
-      // setCached is independent of the history write/read; overlap them.
-      const [, history] = await Promise.all([
+      // setCached is independent of the history write; overlap them.
+      const [, written] = await Promise.all([
         config.setCached(value, result),
-        recordHistory(config.label, histKey, snapshotOf(result)).then(() =>
-          getHistory(config.label, histKey),
-        ),
+        recordHistory(config.label, histKey, snapshotOf(result)),
       ]);
+      const history = await nextHistory(priorHistory, written, histKey);
       return Response.json({ ...result, cached: false, history });
     } catch (err) {
       console.error(`[ti] ${config.label} check failed:`, err);
@@ -123,6 +146,7 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
           controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
 
         try {
+          let priorHistory: HistorySnapshot[] | null = null;
           if (!refresh) {
             const [cached, history] = await Promise.all([
               config.getCached(value),
@@ -135,6 +159,7 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
               });
               return;
             }
+            priorHistory = history;
           }
 
           const total = config.sources.length;
@@ -145,13 +170,12 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
             done += 1;
             send({ type: "source", result: r, done, total });
           });
-          // setCached is independent of the history write/read; overlap them.
-          const [, history] = await Promise.all([
+          // setCached is independent of the history write; overlap them.
+          const [, written] = await Promise.all([
             config.setCached(value, result),
-            recordHistory(config.label, histKey, snapshotOf(result)).then(() =>
-              getHistory(config.label, histKey),
-            ),
+            recordHistory(config.label, histKey, snapshotOf(result)),
           ]);
+          const history = await nextHistory(priorHistory, written, histKey);
           send({ type: "done", result: { ...result, cached: false, history } });
         } catch (err) {
           console.error(`[ti] ${config.label} check failed:`, err);

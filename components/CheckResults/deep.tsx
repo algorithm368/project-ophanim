@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { FileText, Network } from "lucide-react";
 import type {
     CertificateRecord,
@@ -134,7 +134,7 @@ const PDNS_PREVIEW = 8;
  *  (common — the dates come back as the epoch) the records are just pivotable
  *  indicators, so a compact chip grid reads far easier than a tall table of
  *  "—" columns. */
-export function PassiveDnsCard({
+export const PassiveDnsCard = memo(function PassiveDnsCard({
     result,
     streaming = false,
 }: Readonly<{
@@ -205,7 +205,7 @@ export function PassiveDnsCard({
             </CardContent>
         </Card>
     );
-}
+});
 
 /** The dated form: a resolution timeline ordered most-recent-first, previewed
  *  to PDNS_PREVIEW rows with a show-all toggle. */

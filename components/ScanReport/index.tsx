@@ -29,6 +29,12 @@ type PassiveState =
   | { status: "ready"; result: ResultLike }
   | { status: "failed" };
 
+// Headroom over the slowest passive route's worst case: /api/check-url runs
+// its three layers serially (~50s, until #47), the others top out near 15s.
+// Without this the fetch has no AbortSignal and will wait as long as the
+// platform allows, holding the card on "checking the sources" indefinitely.
+const PASSIVE_TIMEOUT_MS = 60_000;
+
 /**
  * The passive TI line, fetched separately from the scan.
  *
@@ -135,6 +141,7 @@ export function ScanReport({
       try {
         const res = await fetch(
           `${route.path}?${route.param}=${encodeURIComponent(indicator)}`,
+          { signal: AbortSignal.timeout(PASSIVE_TIMEOUT_MS) },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const result = (await res.json()) as ResultLike;

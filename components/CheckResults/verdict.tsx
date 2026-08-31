@@ -15,7 +15,7 @@ import {
     type SourceResult,
     type Verdict,
 } from "@/lib/ti/types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     buildDomainNarrative,
     buildHashNarrative,
@@ -341,7 +341,11 @@ export function VerdictHero({
     result: AnyCheckResult;
     onRefresh: () => void;
 }>) {
-    const narrative = narrativeFor(result);
+    // `result` only changes when the lookup actually finishes or refreshes,
+    // but VerdictHero re-renders on every parent update in between (the ETA
+    // ticker, sibling cards streaming in); narrativeFor dispatches into a
+    // thousand-line sentence assembler each call, so it is worth keying this.
+    const narrative = useMemo(() => narrativeFor(result), [result]);
     return (
         <VerdictShell
             result={result}
@@ -365,7 +369,7 @@ type DotSlot = { name?: string; result?: SourceResult };
  * took over. Without a panel (the completed hero, which has the real sources
  * already in registry order) it keeps the order it was handed and pads.
  *
- * A URL check runs three layers, and three source ids appear in two of them.
+ * A URL check runs three layers, and four source ids appear in two of them.
  * Both slots read the same settled result, which is why this looks a source up
  * rather than consuming it: the strip keeps its full width, and neither slot
  * is left pending forever.

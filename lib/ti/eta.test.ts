@@ -23,15 +23,15 @@ describe("longestTimeout", () => {
 
 describe("etaBudgetMs", () => {
   it("is the slowest source still out, not the slowest overall", () => {
-    expect(etaBudgetMs(panel, new Set(["slow"]))).toBe(8_000);
+    expect(etaBudgetMs(panel, ["slow"])).toBe(8_000);
   });
 
   it("only ever shrinks as sources land", () => {
     const seq = [
-      etaBudgetMs(panel, new Set()),
-      etaBudgetMs(panel, new Set(["fast"])),
-      etaBudgetMs(panel, new Set(["fast", "slow"])),
-      etaBudgetMs(panel, new Set(["fast", "slow", "unstated"])),
+      etaBudgetMs(panel, []),
+      etaBudgetMs(panel, ["fast"]),
+      etaBudgetMs(panel, ["fast", "slow"]),
+      etaBudgetMs(panel, ["fast", "slow", "unstated"]),
     ];
     for (let i = 1; i < seq.length; i++) {
       expect(seq[i]).toBeLessThanOrEqual(seq[i - 1]);
@@ -39,15 +39,34 @@ describe("etaBudgetMs", () => {
   });
 
   it("uses the whole panel before anything has settled", () => {
-    expect(etaBudgetMs(panel, new Set())).toBe(12_000);
+    expect(etaBudgetMs(panel, [])).toBe(12_000);
   });
 
   it("is zero once every source is in", () => {
-    expect(etaBudgetMs(panel, new Set(["fast", "slow", "unstated"]))).toBe(0);
+    expect(etaBudgetMs(panel, ["fast", "slow", "unstated"])).toBe(0);
   });
 
   it("falls back to the flat guess when the panel is not known yet", () => {
-    expect(etaBudgetMs([], new Set())).toBe(10_000);
+    expect(etaBudgetMs([], [])).toBe(10_000);
+  });
+
+  // #48: a URL check's panel repeats a handful of ids across layers. One
+  // layer's copy landing must not retire the other layer's still-outstanding
+  // copy of the same id.
+  it("does not let one layer's settled id retire another layer's copy", () => {
+    const duplicated = [
+      { id: "virustotal", timeoutMs: 3_000 },
+      { id: "virustotal", timeoutMs: 3_000 },
+      { id: "slow", timeoutMs: 12_000 },
+    ];
+    // Only one of the two "virustotal" entries has actually settled.
+    expect(etaBudgetMs(duplicated, ["virustotal"])).toBe(12_000);
+    expect(etaBudgetMs(duplicated, ["virustotal", "virustotal"])).toBe(
+      12_000,
+    );
+    expect(
+      etaBudgetMs(duplicated, ["virustotal", "virustotal", "slow"]),
+    ).toBe(0);
   });
 });
 
