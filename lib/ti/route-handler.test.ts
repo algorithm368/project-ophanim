@@ -62,6 +62,19 @@ describe("makeIndicatorRoute GET caching", () => {
     expect(body.cached).toBe(false);
   });
 
+  it("does not set Cache-Control on a cached POST hit, which no CDN caches", async () => {
+    const { POST } = makeRoute({ getCached: async () => RESULT });
+    const res = await POST(
+      new NextRequest("http://localhost/api/check", {
+        method: "POST",
+        body: JSON.stringify({ ip: "1.1.1.1" }),
+      }),
+    );
+    const body = (await res.json()) as { cached: boolean };
+    expect(body.cached).toBe(true);
+    expect(res.headers.get("cache-control")).toBeNull();
+  });
+
   it("does not set Cache-Control on an error", async () => {
     const { GET } = makeRoute({
       run: async () => {
