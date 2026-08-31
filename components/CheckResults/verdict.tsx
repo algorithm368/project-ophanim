@@ -493,8 +493,10 @@ function consensusStats(result: ResultLike): Stat[] {
     // Detectors, adverse and clean are always present, zero included: a stable
     // set of columns is what makes the strip scannable, and "0 adverse" is a
     // finding rather than an absence of one.
-    stats.push({ key: "detectors", label: "Detectors", value: String(c.total) });
-    stats.push({ key: "adverse", label: "Adverse", value: String(c.adverse) });
+    stats.push(
+        { key: "detectors", label: "Detectors", value: String(c.total) },
+        { key: "adverse", label: "Adverse", value: String(c.adverse) },
+    );
 
     // Flagged is a subset of adverse, not a fourth bucket, so the value says
     // "of" rather than standing alone. Reporting only this count understated

@@ -47,7 +47,7 @@ function handleHomeClick(e: React.MouseEvent<HTMLAnchorElement>) {
  * (which is a server component) renders it and passes it through. It is absent
  * when signed out.
  */
-export function Banner({ signOut }: { signOut?: React.ReactNode }) {
+export function Banner({ signOut }: Readonly<{ signOut?: React.ReactNode }>) {
   return (
     <header className="relative border-b border-border bg-background">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:py-4">
