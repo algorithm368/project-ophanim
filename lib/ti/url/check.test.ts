@@ -194,4 +194,33 @@ describe("checkUrl", () => {
   it("rejects an unparseable URL rather than guessing", async () => {
     await expect(checkUrl("not a url", undefined, deps())).rejects.toThrow();
   });
+
+  // #47: resolve used to run only after the url and host layers had both
+  // finished. Gating the host layer on a promise this test controls proves
+  // resolve no longer waits on it: against the old sequential code this test
+  // would hang, since resolve was never called before the release.
+  it("starts resolving the host without waiting on the url or host layers", async () => {
+    const order: string[] = [];
+    let releaseDomain: () => void = () => {};
+    const domainGate = new Promise<void>((res) => {
+      releaseDomain = res;
+    });
+    const d = deps({
+      checkDomainLayer: vi.fn(async () => {
+        await domainGate;
+        order.push("domain:end");
+        return domainResult();
+      }),
+      resolve: vi.fn(async () => {
+        order.push("resolve");
+        return ["1.2.3.4"];
+      }),
+    });
+    const promise = checkUrl("https://evil.com/login", undefined, d);
+    await Promise.resolve();
+    expect(order).toEqual(["resolve"]);
+    releaseDomain();
+    await promise;
+    expect(order).toEqual(["resolve", "domain:end"]);
+  });
 });
