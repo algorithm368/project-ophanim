@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getText, isTimeout } from "../http";
+import { sharedLoader } from "../shared-feed";
 
 const FEED_URL =
   "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt";
@@ -39,24 +40,17 @@ interface Cache {
 }
 
 let cache: Cache | null = null;
-let inflight: Promise<Cache> | null = null;
+
+const download = sharedLoader(async (signal): Promise<Cache> => {
+  const { ok, status, text } = await getText(FEED_URL, signal);
+  if (!ok || !text) throw new Error(`feed unavailable (HTTP ${status})`);
+  cache = { byIp: parseIpsum(text), fetchedAt: Date.now() };
+  return cache;
+});
 
 async function loadFeed(signal: AbortSignal): Promise<Cache> {
   if (cache && Date.now() - cache.fetchedAt < TTL_MS) return cache;
-  if (inflight) return inflight;
-
-  inflight = (async () => {
-    const { ok, status, text } = await getText(FEED_URL, signal);
-    if (!ok || !text) throw new Error(`feed unavailable (HTTP ${status})`);
-    cache = { byIp: parseIpsum(text), fetchedAt: Date.now() };
-    return cache;
-  })();
-
-  try {
-    return await inflight;
-  } finally {
-    inflight = null;
-  }
+  return download(signal);
 }
 
 /** IPsum (stamparm): IPs aggregated across 30+ public blocklists (no key). */

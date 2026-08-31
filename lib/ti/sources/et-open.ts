@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getText, isTimeout } from "../http";
+import { sharedLoader } from "../shared-feed";
 
 const FEED_URL =
   "https://rules.emergingthreats.net/blockrules/compromised-ips.txt";
@@ -11,7 +12,6 @@ interface Cache {
 }
 
 let cache: Cache | null = null;
-let inflight: Promise<Cache> | null = null;
 
 /** Parse the ET Open compromised-IPs feed into a Set (skips blanks + # comments). */
 export function parseCompromisedFeed(text: string): Set<string> {
@@ -23,23 +23,17 @@ export function parseCompromisedFeed(text: string): Set<string> {
   return ips;
 }
 
+const download = sharedLoader(async (signal): Promise<Cache> => {
+  const { ok, status, text } = await getText(FEED_URL, signal);
+  if (!ok) throw new Error(`feed unavailable (HTTP ${status})`);
+  const ips = parseCompromisedFeed(text);
+  cache = { ips, fetchedAt: Date.now() };
+  return cache;
+});
+
 async function loadFeed(signal: AbortSignal): Promise<Cache> {
   if (cache && Date.now() - cache.fetchedAt < TTL_MS) return cache;
-  if (inflight) return inflight;
-
-  inflight = (async () => {
-    const { ok, status, text } = await getText(FEED_URL, signal);
-    if (!ok) throw new Error(`feed unavailable (HTTP ${status})`);
-    const ips = parseCompromisedFeed(text);
-    cache = { ips, fetchedAt: Date.now() };
-    return cache;
-  })();
-
-  try {
-    return await inflight;
-  } finally {
-    inflight = null;
-  }
+  return download(signal);
 }
 
 /** Emerging Threats Open: known compromised hosts blocklist (no key). */

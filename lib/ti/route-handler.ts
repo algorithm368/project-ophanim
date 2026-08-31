@@ -39,6 +39,19 @@ const CACHE_HEADERS = {
   // A cached result is deterministic for the TTL window, so let the edge serve
   // repeat lookups. Embedded history can be at most s-maxage stale (acceptable
   // for an append-only timeline). Fresh and error responses stay uncached.
+  //
+  // This survives `export const dynamic = "force-dynamic"`, which the indicator
+  // routes all declare. Measured, not assumed (#58): a route handler returning
+  // this header under force-dynamic, served by `next start` off a production
+  // build, answers with `cache-control: public, s-maxage=300,
+  // stale-while-revalidate=86400` unchanged. Next's `private, no-cache,
+  // no-store, max-age=0, must-revalidate` is written on its own responses (404,
+  // middleware prefetch, actions) and never over a route handler's.
+  //
+  // `public` on a route behind auth is deliberate and not a leak: proxy.ts runs
+  // before the CDN cache, so an anonymous request is refused before it can be
+  // served a copy, and the body is threat-intel data identical for every
+  // signed-in user.
   "Cache-Control": "public, s-maxage=300, stale-while-revalidate=86400",
 };
 
@@ -60,7 +73,16 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
     verdict: result.verdict,
   });
 
-  async function jsonResult(value: V, refresh: boolean): Promise<Response> {
+  /**
+   * `cacheable` is the GET path. CDNs do not cache POST responses, so sending
+   * CACHE_HEADERS there would be inert, and an inert header reads as a claim
+   * about caching that is broader than the one being made.
+   */
+  async function jsonResult(
+    value: V,
+    refresh: boolean,
+    cacheable: boolean,
+  ): Promise<Response> {
     const histKey = String(value);
     if (!refresh) {
       // Speculatively read cache + history together; discard history on a miss.
@@ -71,7 +93,7 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
       if (cached) {
         return Response.json(
           { ...cached, cached: true, history },
-          { headers: CACHE_HEADERS },
+          cacheable ? { headers: CACHE_HEADERS } : undefined,
         );
       }
     }
@@ -147,7 +169,7 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
     const params = request.nextUrl.searchParams;
     const v = config.validate(params.get(config.paramName));
     if ("error" in v) return v.error;
-    return jsonResult(v.value, isTruthy(params.get("refresh")));
+    return jsonResult(v.value, isTruthy(params.get("refresh")), true);
   }
 
   async function POST(request: NextRequest) {
@@ -169,7 +191,7 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
     if (accept.includes("application/x-ndjson")) {
       return streamResult(v.value, refresh);
     }
-    return jsonResult(v.value, refresh);
+    return jsonResult(v.value, refresh, false);
   }
 
   return { GET, POST };

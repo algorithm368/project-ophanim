@@ -1,5 +1,6 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getText, isTimeout } from "../http";
+import { sharedLoader } from "../shared-feed";
 import { cidrContains } from "../cidr";
 
 export interface DropBlock {
@@ -46,33 +47,30 @@ interface Cache {
   fetchedAt: number;
 }
 
-// One cache and one in-flight promise per family: the two feeds are separate
+// One cache and one shared download per family: the two feeds are separate
 // documents with independent lifetimes, and a v6 lookup must not be served the
 // v4 blocklist.
 const caches: Partial<Record<4 | 6, Cache>> = {};
-const inflight: Partial<Record<4 | 6, Promise<Cache>>> = {};
 
-async function loadFeed(family: 4 | 6, signal: AbortSignal): Promise<Cache> {
-  const cached = caches[family];
-  if (cached && Date.now() - cached.fetchedAt < TTL_MS) return cached;
-
-  const pending = inflight[family];
-  if (pending) return pending;
-
-  const request = (async () => {
+function downloader(family: 4 | 6) {
+  return sharedLoader(async (signal): Promise<Cache> => {
     const { ok, status, text } = await getText(FEEDS[family], signal);
     if (!ok) throw new Error(`feed unavailable (HTTP ${status})`);
     const fresh: Cache = { blocks: parseDropFeed(text), fetchedAt: Date.now() };
     caches[family] = fresh;
     return fresh;
-  })();
-  inflight[family] = request;
+  });
+}
 
-  try {
-    return await request;
-  } finally {
-    delete inflight[family];
-  }
+const downloads: Record<4 | 6, ReturnType<typeof downloader>> = {
+  4: downloader(4),
+  6: downloader(6),
+};
+
+async function loadFeed(family: 4 | 6, signal: AbortSignal): Promise<Cache> {
+  const cached = caches[family];
+  if (cached && Date.now() - cached.fetchedAt < TTL_MS) return cached;
+  return downloads[family](signal);
 }
 
 /**

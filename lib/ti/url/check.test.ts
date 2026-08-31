@@ -39,6 +39,8 @@ const deps = (over: Record<string, unknown> = {}) => ({
   checkIpLayer: vi.fn(async () => ipResult()),
   getCachedDomain: vi.fn(async () => null),
   getCachedIp: vi.fn(async () => null),
+  setCachedDomain: vi.fn(async () => undefined),
+  setCachedIp: vi.fn(async () => undefined),
   runUrlSources: vi.fn(async () => []),
   ...over,
 });
@@ -93,6 +95,48 @@ describe("checkUrl", () => {
     const ip = result.layers.find((l) => l.kind === "ip")!;
     expect(ip.cachedAt).toBe("2026-08-15T00:00:00.000Z");
     expect(result.headlineLayer).toBe("ip");
+  });
+
+  it("writes back a host layer it had to compute", async () => {
+    const d = deps();
+    await checkUrl("https://evil.com/login", undefined, d);
+    expect(d.setCachedDomain).toHaveBeenCalledWith(
+      "evil.com",
+      domainResult(),
+    );
+  });
+
+  it("writes back an IP layer it had to compute", async () => {
+    const d = deps();
+    await checkUrl("https://evil.com/login", undefined, d);
+    expect(d.setCachedIp).toHaveBeenCalledWith("1.2.3.4", ipResult());
+  });
+
+  it("does not rewrite a layer it read from the cache", async () => {
+    const d = deps({
+      getCachedDomain: vi.fn(async () => domainResult()),
+      getCachedIp: vi.fn(async () => ipResult()),
+    });
+    await checkUrl("https://evil.com/login", undefined, d);
+    expect(d.setCachedDomain).not.toHaveBeenCalled();
+    expect(d.setCachedIp).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing for a host layer that has no subject", async () => {
+    const d = deps();
+    await checkUrl("http://1.2.3.4/admin", undefined, d);
+    expect(d.setCachedDomain).not.toHaveBeenCalled();
+    // The IP layer still has one, and it is the URL's own host.
+    expect(d.setCachedIp).toHaveBeenCalledWith("1.2.3.4", ipResult());
+  });
+
+  it("does not make the answer wait on the cache write", async () => {
+    const d = deps({
+      setCachedDomain: vi.fn(() => new Promise<undefined>(() => {})),
+      setCachedIp: vi.fn(() => new Promise<undefined>(() => {})),
+    });
+    const result = await checkUrl("https://evil.com/login", undefined, d);
+    expect(result.layers).toHaveLength(3);
   });
 
   it("marks the host layer not-applicable for an IP-literal URL", async () => {
