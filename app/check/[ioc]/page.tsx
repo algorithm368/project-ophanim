@@ -39,15 +39,20 @@ const fetchCached = cache(
     const kind = detectIOC(decoded);
     if (!kind) return null;
 
-    let stored: AnyCheckResult | null;
-    if (kind === "domain") stored = await getCachedDomainResult(decoded);
-    else if (kind === "hash") stored = await getCachedHashResult(decoded);
-    else stored = await getCachedResult(decoded);
-    if (!stored) return null;
+    let getCached: (indicator: string) => Promise<AnyCheckResult | null> =
+      getCachedResult;
+    if (kind === "domain") getCached = getCachedDomainResult;
+    else if (kind === "hash") getCached = getCachedHashResult;
 
     // `kind` and the route factory's `label` are the same three strings, which
-    // is what keeps this reading the keys recordHistory() writes.
-    const history = await getHistory(kind, decoded);
+    // is what keeps this reading the keys recordHistory() writes. Speculative,
+    // mirroring the route's own cache branch: discard history on a miss.
+    const [stored, history] = await Promise.all([
+      getCached(decoded),
+      getHistory(kind, decoded),
+    ]);
+    if (!stored) return null;
+
     return { ...stored, cached: true, history };
   },
 );
