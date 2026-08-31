@@ -1,4 +1,5 @@
 import { getJson, getText } from "./http";
+import { sharedLoader } from "./shared-feed";
 
 /** A provider's published prefix, with whatever detail they publish alongside. */
 export interface CloudPrefix {
@@ -110,51 +111,44 @@ export function parseCloudflare(text: string): CloudPrefix[] {
 }
 
 let cache: { prefixes: CloudPrefix[]; fetchedAt: number } | null = null;
-let inflight: Promise<CloudPrefix[]> | null = null;
 
 /**
- * The published prefix set, refreshed at most twice a day.
- *
  * Each provider is fetched independently and a failure drops only that
  * provider: a partial answer is a correct answer about the providers that did
  * respond, and the ASN table in `cloud.ts` still covers the rest.
  */
+const download = sharedLoader(async (signal): Promise<CloudPrefix[]> => {
+  const [aws, gcp, cloudflare] = await Promise.allSettled([
+    getJson<AwsRanges>(AWS_URL, signal),
+    getJson<GcpRanges>(GCP_URL, signal),
+    getText(CLOUDFLARE_URL, signal),
+  ]);
+
+  const prefixes: CloudPrefix[] = [];
+  if (aws.status === "fulfilled" && aws.value.ok && aws.value.data) {
+    prefixes.push(...parseAws(aws.value.data));
+  }
+  if (gcp.status === "fulfilled" && gcp.value.ok && gcp.value.data) {
+    prefixes.push(...parseGcp(gcp.value.data));
+  }
+  if (cloudflare.status === "fulfilled" && cloudflare.value.ok) {
+    prefixes.push(...parseCloudflare(cloudflare.value.text ?? ""));
+  }
+
+  // Only cache a useful answer, so a total outage retries on the next lookup
+  // instead of pinning an empty set for twelve hours.
+  if (prefixes.length > 0) cache = { prefixes, fetchedAt: Date.now() };
+  return prefixes;
+});
+
+/** The published prefix set, refreshed at most twice a day. */
 export async function cloudPrefixes(signal: AbortSignal): Promise<CloudPrefix[]> {
   if (cache && Date.now() - cache.fetchedAt < TTL_MS) return cache.prefixes;
-  if (inflight) return inflight;
-
-  inflight = (async () => {
-    const [aws, gcp, cloudflare] = await Promise.allSettled([
-      getJson<AwsRanges>(AWS_URL, signal),
-      getJson<GcpRanges>(GCP_URL, signal),
-      getText(CLOUDFLARE_URL, signal),
-    ]);
-
-    const prefixes: CloudPrefix[] = [];
-    if (aws.status === "fulfilled" && aws.value.ok && aws.value.data) {
-      prefixes.push(...parseAws(aws.value.data));
-    }
-    if (gcp.status === "fulfilled" && gcp.value.ok && gcp.value.data) {
-      prefixes.push(...parseGcp(gcp.value.data));
-    }
-    if (cloudflare.status === "fulfilled" && cloudflare.value.ok) {
-      prefixes.push(...parseCloudflare(cloudflare.value.text ?? ""));
-    }
-
-    // Only cache a useful answer, so a total outage retries on the next lookup
-    // instead of pinning an empty set for twelve hours.
-    if (prefixes.length > 0) cache = { prefixes, fetchedAt: Date.now() };
-    return prefixes;
-  })();
-
-  try {
-    return await inflight;
-  } finally {
-    inflight = null;
-  }
+  return download(signal);
 }
 
 /** Reset the module cache. Tests only. */
 export function resetCloudPrefixCache(): void {
   cache = null;
+  download.reset();
 }
