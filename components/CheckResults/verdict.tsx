@@ -15,7 +15,7 @@ import {
     type SourceResult,
     type Verdict,
 } from "@/lib/ti/types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     buildDomainNarrative,
     buildHashNarrative,
@@ -341,7 +341,11 @@ export function VerdictHero({
     result: AnyCheckResult;
     onRefresh: () => void;
 }>) {
-    const narrative = narrativeFor(result);
+    // `result` only changes when the lookup actually finishes or refreshes,
+    // but VerdictHero re-renders on every parent update in between (the ETA
+    // ticker, sibling cards streaming in); narrativeFor dispatches into a
+    // thousand-line sentence assembler each call, so it is worth keying this.
+    const narrative = useMemo(() => narrativeFor(result), [result]);
     return (
         <VerdictShell
             result={result}

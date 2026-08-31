@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   FileDigit,
   Globe,
@@ -865,6 +865,23 @@ export default function Checker({
   // states and on the bulk path.
   const showCompact = !isBulk && !bulkRows && Boolean(loading || result);
 
+  // Recomputed only when the streamed progress or the finished result
+  // actually changes, not on every render `Checker` happens to take (the ETA
+  // ticker in pending.tsx among them). Built inline, this handed CheckResults
+  // a fresh object identity every render, which defeated memoization on
+  // every card beneath it regardless of what they individually did about it.
+  const partial = useMemo(
+    () =>
+      result
+        ? null
+        : buildPartial(
+            progress?.total ?? 0,
+            Object.values(progress?.settled ?? {}),
+            progress?.metas ?? [],
+          ),
+    [result, progress],
+  );
+
   const searchBox = (
     <SearchBox
       compact={showCompact}
@@ -965,15 +982,7 @@ export default function Checker({
       {!isBulk && (result || loading) && (
         <CheckResults
           result={result}
-          partial={
-            result
-              ? null
-              : buildPartial(
-                  progress?.total ?? 0,
-                  Object.values(progress?.settled ?? {}),
-                  progress?.metas ?? [],
-                )
-          }
+          partial={partial}
           indicator={pending || query}
           // `mode` is the type of the in-flight/displayed check itself.
           // `activeKind` is a different thing: it is what the *research*

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { ChevronRight, ExternalLink } from "lucide-react";
 import { type SourceMeta, type SourceResult } from "@/lib/ti/types";
 import { algoFromLength } from "@/lib/hash";
@@ -154,7 +154,7 @@ function StatusDot({ tone }: Readonly<{ tone: SourceTone }>) {
     );
 }
 
-export function SourceBreakdown({
+export const SourceBreakdown = memo(function SourceBreakdown({
     sources,
     indicator,
     kind,
@@ -220,7 +220,7 @@ export function SourceBreakdown({
             })}
         </div>
     );
-}
+});
 
 function SourceRow({
     result,
