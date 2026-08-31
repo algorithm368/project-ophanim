@@ -1,6 +1,11 @@
 import { parseUrl } from "@/lib/url";
 import { aggregateRisk, computeStats } from "../aggregate";
-import { getCachedDomainResult, getCachedResult } from "../cache";
+import {
+  getCachedDomainResult,
+  getCachedResult,
+  setCachedDomainResult,
+  setCachedResult,
+} from "../cache";
 import { checkIp } from "../check";
 import { checkDomain } from "../domain/check";
 import { answers, dohQuery, RESOLVERS } from "../dns/doh";
@@ -19,6 +24,8 @@ export interface CheckUrlDeps {
   checkIpLayer?: typeof checkIp;
   getCachedDomain?: typeof getCachedDomainResult;
   getCachedIp?: typeof getCachedResult;
+  setCachedDomain?: typeof setCachedDomainResult;
+  setCachedIp?: typeof setCachedResult;
   runUrlSources?: (
     url: string,
     onSettled?: (result: SourceResult) => void,
@@ -128,9 +135,16 @@ function absentLayer(
  * scores through the unchanged aggregateRisk, so this file composes rather than
  * re-implements.
  *
- * The host and IP layers read the existing per-type caches first. That is what
- * keeps a URL-heavy triage session from paying for the same host twenty times,
- * and with it the reverse-IP provider's daily budget.
+ * The host and IP layers read the existing per-type caches first, and write
+ * back what they had to compute. That is what keeps a URL-heavy triage session
+ * from paying for the same host twenty times, and with it the reverse-IP
+ * provider's daily budget. Reading without writing only half-solved it: a host
+ * checked here still cost a second full fan-out when checked on its own.
+ *
+ * The write is deliberately cache-only. A layer computed inside a URL check is
+ * a real observation, but it is not one the analyst asked for, and recording it
+ * on the indicator's own timeline would push the history of a popular host out
+ * with entries nobody can explain.
  */
 export async function checkUrl(
   url: string,
@@ -145,6 +159,8 @@ export async function checkUrl(
   const runIp = deps.checkIpLayer ?? checkIp;
   const cachedDomain = deps.getCachedDomain ?? getCachedDomainResult;
   const cachedIp = deps.getCachedIp ?? getCachedResult;
+  const storeDomain = deps.setCachedDomain ?? setCachedDomainResult;
+  const storeIp = deps.setCachedIp ?? setCachedResult;
   const runUrl =
     deps.runUrlSources ??
     ((target: string, settled?: (result: SourceResult) => void) =>
@@ -168,13 +184,15 @@ export async function checkUrl(
     );
   } else {
     const hit = await cachedDomain(parsed.host);
-    hostLayer = hit
-      ? layerFromResult("domain", parsed.host, hit, hit.checkedAt)
-      : layerFromResult(
-          "domain",
-          parsed.host,
-          await runDomain(parsed.host, onSettled),
-        );
+    if (hit) {
+      hostLayer = layerFromResult("domain", parsed.host, hit, hit.checkedAt);
+    } else {
+      const fresh = await runDomain(parsed.host, onSettled);
+      // Fire and forget: a failed cache write is swallowed in cache.ts, and an
+      // answer the analyst already has should not wait on storing it.
+      void storeDomain(parsed.host, fresh);
+      hostLayer = layerFromResult("domain", parsed.host, fresh);
+    }
   }
 
   // One address is checked. Running the IP pipeline per address would multiply
@@ -195,11 +213,15 @@ export async function checkUrl(
     );
   } else {
     const hit = await cachedIp(first);
-    ipLayer = annotateSharedHost(
-      hit
-        ? layerFromResult("ip", first, hit, hit.checkedAt)
-        : layerFromResult("ip", first, await runIp(first, onSettled)),
-    );
+    let layer: UrlLayer;
+    if (hit) {
+      layer = layerFromResult("ip", first, hit, hit.checkedAt);
+    } else {
+      const fresh = await runIp(first, onSettled);
+      void storeIp(first, fresh);
+      layer = layerFromResult("ip", first, fresh);
+    }
+    ipLayer = annotateSharedHost(layer);
   }
 
   const layers = [urlLayer, hostLayer, ipLayer];
