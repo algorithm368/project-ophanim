@@ -93,3 +93,91 @@ export function seenRange(
     last: lasts.length ? isoDay(Math.max(...lasts)) : undefined,
   };
 }
+
+import { cloudProvider } from "./cloud";
+import { classifyIpLabel } from "./indicator-class";
+import type { CheckResult, DomainCheckResult, HashCheckResult } from "./types";
+
+export type AnyResult = CheckResult | DomainCheckResult | HashCheckResult;
+export type Resolver = (r: AnyResult) => Claim | null;
+
+/** First resolver that answers wins. Written as a reduce rather than a chain of
+ *  ifs so the ladder stays one statement and S3776 stays flat however long it
+ *  gets. */
+export function firstClaim(resolvers: Resolver[], r: AnyResult): Claim | null {
+  return resolvers.reduce<Claim | null>((hit, f) => hit ?? f(r), null);
+}
+
+const isDomain = (r: AnyResult): r is DomainCheckResult => "domain" in r;
+const geoOf = (r: AnyResult) => ("ip" in r ? r.geo : undefined);
+const str = (v: unknown): string | undefined =>
+  typeof v === "string" && v ? v : undefined;
+const strArr = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+/** The provider's own published prefix list, which is the only authoritative
+ *  answer available. For a domain the match is against the resolved IPs, and
+ *  the claim is weaker: it says the origin is hidden, not that the domain is
+ *  the provider. */
+const fromCloudRange: Resolver = (r) => {
+  const d = ok(r.sources, "cloud-range")?.details;
+  const provider = str(d?.provider);
+  if (!provider) return null;
+  if (isDomain(r)) return { label: `Behind ${provider}`, sources: ["cloud-range"] };
+  const label = [provider, str(d?.region), str(d?.service)].filter(Boolean).join(", ");
+  return { label, sources: ["cloud-range"] };
+};
+
+/** AS16509 is Amazon. A fact, and safe to put a named mark on. */
+const fromAsnTable: Resolver = (r) => {
+  const geo = geoOf(r);
+  const hit = cloudProvider(geo?.asn, geo?.asnOrg);
+  return hit?.via === "asn" ? { label: hit.name, sources: ["asn table"] } : null;
+};
+
+const fromShodanCdn: Resolver = (r) => {
+  const tags = strArr(ok(r.sources, "shodan-internetdb")?.details?.tags).map((t) =>
+    t.toLowerCase(),
+  );
+  return tags.includes("cdn")
+    ? { label: "CDN edge", sources: ["shodan-internetdb"] }
+    : null;
+};
+
+const fromPeeringDb: Resolver = (r) => {
+  const d = ok(r.sources, "peeringdb")?.details;
+  const label = [str(d?.networkClass), str(d?.peeringName)].filter(Boolean).join(", ");
+  return label ? { label, sources: ["peeringdb"] } : null;
+};
+
+/** An org-name regex is an inference, so it yields the generic and never a
+ *  name. See the comment on CLOUD_BY_ORG in lib/ti/cloud.ts for what a bad
+ *  inference looks like. */
+const fromOrgRegex: Resolver = (r) => {
+  const geo = geoOf(r);
+  const hit = cloudProvider(geo?.asn, geo?.asnOrg);
+  return hit?.via === "org" ? { label: "Hosting", sources: ["asn org name"] } : null;
+};
+
+/** Only the hosting flag is an infrastructure claim. isProxy is a threat claim
+ *  and belongs to the other ladder; mobile and residential answer "what kind of
+ *  network", which is not the same question as "who runs the box". */
+const fromGeoFlags: Resolver = (r) => {
+  const geo = geoOf(r);
+  if (!geo?.isHosting || geo.isProxy) return null;
+  return { label: classifyIpLabel(geo).label, sources: ["geo flags"] };
+};
+
+const INFRA: Resolver[] = [
+  fromCloudRange,
+  fromAsnTable,
+  fromShodanCdn,
+  fromPeeringDb,
+  fromOrgRegex,
+  fromGeoFlags,
+];
+
+/** Who runs the box, from free, unmetered sources only. */
+export function infraClaim(r: AnyResult): Claim | null {
+  return firstClaim(INFRA, r);
+}
