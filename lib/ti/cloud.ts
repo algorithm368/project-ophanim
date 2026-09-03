@@ -39,12 +39,19 @@ const CLOUD_BY_ORG: [RegExp, string][] = [
   [/vultr|choopa/i, "Vultr"],
 ];
 
-/** Identify the cloud/hosting provider behind an IP from its ASN (preferred) or
- *  ASN org name. Returns undefined when it is not a recognized provider. */
+/**
+ * Identify the cloud/hosting provider behind an IP from its ASN (preferred) or
+ * ASN org name. Returns undefined when it is not a recognized provider.
+ *
+ * `via` says which path matched, and callers that put a provider's name in
+ * front of a user must check it. The ASN table is a fact; the org regex is an
+ * inference, and the comment on CLOUD_BY_ORG records what a bad inference
+ * looks like.
+ */
 export function cloudProvider(
   asn?: string,
   org?: string,
-): { name: string } | undefined {
+): { name: string; via: "asn" | "org" } | undefined {
   if (asn) {
     // geo.asn is frequently the COMBINED "AS15169 GOOGLE" form (ip-api maps its
     // `as` field straight through), so pull just the leading digits rather than
@@ -52,12 +59,12 @@ export function cloudProvider(
     const canon = canonicalAsn(asn);
     const n = canon ? Number(canon.slice(2)) : Number.NaN;
     if (Number.isFinite(n) && CLOUD_BY_ASN[n]) {
-      return { name: CLOUD_BY_ASN[n] };
+      return { name: CLOUD_BY_ASN[n], via: "asn" };
     }
   }
   if (org) {
     for (const [re, name] of CLOUD_BY_ORG) {
-      if (re.test(org)) return { name };
+      if (re.test(org)) return { name, via: "org" };
     }
   }
   return undefined;

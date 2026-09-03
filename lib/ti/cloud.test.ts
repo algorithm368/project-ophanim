@@ -52,3 +52,32 @@ describe("cloudProvider", () => {
     );
   });
 });
+
+describe("cloudProvider provenance", () => {
+  it("reports an ASN table hit as a fact", () => {
+    expect(cloudProvider("AS16509", "AMAZON-02")).toEqual({
+      name: "Amazon Web Services",
+      via: "asn",
+    });
+  });
+
+  it("reports an org name hit as an inference", () => {
+    // No ASN, so only the org regex can match.
+    expect(cloudProvider(undefined, "Hetzner Online GmbH")).toEqual({
+      name: "Hetzner",
+      via: "org",
+    });
+  });
+
+  it("prefers the ASN table when both could match", () => {
+    // AS8075 is in the table; the org string would also hit /microsoft|azure/.
+    expect(cloudProvider("AS8075 MICROSOFT-CORP-MSN-AS-BLOCK", "Microsoft")).toEqual({
+      name: "Microsoft Azure",
+      via: "asn",
+    });
+  });
+
+  it("still returns undefined for an unrecognised network", () => {
+    expect(cloudProvider("AS64500", "Example University")).toBeUndefined();
+  });
+});
