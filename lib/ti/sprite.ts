@@ -143,9 +143,10 @@ const BODIES: Record<BodyKey, string[]> = {
     .##############.
     .##############.
   `),
-  // A window: landscape, with a heavy title bar, two eyes and a line of
-  // content. Aspect is what separates it from `file`, not interior detail,
-  // because a silhouette survives downscaling and a hairline does not.
+  // A window: landscape, with a heavy title bar, two eyes, a short mouth and
+  // one long line of content under it. Aspect is what separates it from
+  // `file`, not interior detail, because a silhouette survives downscaling and
+  // a hairline does not.
   site: parseGrid(`
     ................
     ................
