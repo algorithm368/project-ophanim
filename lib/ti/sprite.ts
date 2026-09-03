@@ -55,8 +55,11 @@ export function parseGrid(ascii: string): string[] {
 }
 
 const BODIES: Record<BodyKey, string[]> = {
-  // A rack with two eyes. Rows 8 to 10, columns 5 to 10, are the mark well,
-  // filled here with a plain bar. Every provider substitutes that bar.
+  // A rack: a face in the top unit, then two identical bays below it. The
+  // repetition is the tell, since one divider bar and a pair of feet read as a
+  // kiosk. Rows 8 to 10, columns 5 to 10, are the upper bay and also the mark
+  // well; the lower bay keeps its plain bar, so a marked rack shows the mark
+  // beside an unmarked unit rather than on its own.
   hosting: parseGrid(`
     ................
     ...##########...
@@ -70,10 +73,10 @@ const BODIES: Record<BodyKey, string[]> = {
     ..##.######.##..
     ..##........##..
     ..############..
-    ...##########...
-    ....##....##....
-    ...###....###...
-    ................
+    ..##........##..
+    ..##.######.##..
+    ..##........##..
+    ..############..
   `),
   // One eye, and only one. The first draft carved two unlit notches either
   // side of a lit centre, so the negative space made two eyes and the sprite
