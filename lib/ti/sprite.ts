@@ -187,6 +187,12 @@ const BODIES: Record<BodyKey, string[]> = {
  * one bit, and would mean reproducing trademarks. One shared body plus a
  * changing mark reads as a family automatically, and a new provider costs six
  * by three pixels rather than a whole character.
+ *
+ * The four differ by topology, not by detail: a chevron, two uprights, a ring,
+ * a diagonal. Eighteen cells is too few for four accurate allusions, and the
+ * first draft proved it, with aws and cloudflare differing in one row and so
+ * being the same mark at every size the app renders. None of these is anyone's
+ * trademark, which is the other reason not to chase the real logos.
  */
 export const MARKS: Record<MarkKey, string[]> = {
   aws: parseGrid(`
@@ -196,8 +202,8 @@ export const MARKS: Record<MarkKey, string[]> = {
   `),
   azure: parseGrid(`
     ##..##
-    .####.
-    ..##..
+    ##..##
+    ##..##
   `),
   gcp: parseGrid(`
     .####.
@@ -205,9 +211,9 @@ export const MARKS: Record<MarkKey, string[]> = {
     .####.
   `),
   cloudflare: parseGrid(`
-    ..##..
-    .####.
-    ######
+    ...###
+    .###..
+    ###...
   `),
 };
 
