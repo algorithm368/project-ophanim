@@ -122,16 +122,31 @@ describe("seenRange", () => {
 import { infraClaim } from "@/lib/ti/subject-record";
 import type { CheckResult, DomainCheckResult } from "@/lib/ti/types";
 
-function ipResult(sources: SourceResult[], geo?: CheckResult["geo"]): CheckResult {
+function ipResult(
+  sources: SourceResult[],
+  geo?: CheckResult["geo"],
+  geoResolution?: CheckResult["geoResolution"],
+): CheckResult {
   return {
     ip: "185.220.101.42",
     checkedAt: "2026-09-03T00:00:00Z",
     riskScore: 0,
     verdict: "unknown",
     geo,
+    geoResolution,
     sources,
     stats: stats(sources.length),
   } as CheckResult;
+}
+
+/** A minimal GeoResolution carrying only what the free-source guard reads:
+ *  which provider ids backed the winning `asn` value. */
+function geoResolutionWithAsn(backers: string[]): NonNullable<CheckResult["geoResolution"]> {
+  return {
+    asn: { value: "AS8075", confidence: "high", score: 1, agreement: 1, sources: backers },
+    flags: { isHosting: false, isProxy: false, isMobile: false, sources: {} },
+    providerCount: backers.length,
+  };
 }
 
 describe("infraClaim", () => {
@@ -159,8 +174,46 @@ describe("infraClaim", () => {
   });
 
   it("falls back to the ASN table, which is a fact", () => {
+    // No geoResolution: nothing to check provenance against, so the rung is
+    // allowed through rather than gutted for callers that never reconcile.
     const claim = infraClaim(ipResult([], { asn: "AS8075", asnOrg: "MICROSOFT-CORP" }));
     expect(claim).toEqual({ label: "Microsoft Azure", sources: ["asn table"] });
+  });
+
+  it("keeps the ASN table claim when a free source backs the winning asn", () => {
+    // geo.asn is the winner of a weighted reconciliation, not one source's
+    // field (lib/ti/geo/reconcile.ts). ripestat is free and is one of the
+    // backers of the winning value here, so the claim stands.
+    const claim = infraClaim(
+      ipResult(
+        [
+          src({ id: "ripestat", requiresKey: false }),
+          src({ id: "ipinfo", requiresKey: true }),
+        ],
+        { asn: "AS8075", asnOrg: "MICROSOFT-CORP" },
+        geoResolutionWithAsn(["ripestat", "ipinfo"]),
+      ),
+    );
+    expect(claim).toEqual({ label: "Microsoft Azure", sources: ["asn table"] });
+  });
+
+  it("#37 again: declines the ASN table claim when only key-gated sources back it", () => {
+    // ipinfo (0.85) and ipgeolocation (0.75) both require a key and both
+    // outweigh free ip-api (0.8) individually or combined, so on a day only
+    // they answer, the "fact" this rung would render is itself a key-gated
+    // pick. Nothing else in the ladder can place this indicator either, so
+    // the whole claim is null rather than a name backed by quota.
+    const claim = infraClaim(
+      ipResult(
+        [
+          src({ id: "ipinfo", requiresKey: true }),
+          src({ id: "ipgeolocation", requiresKey: true }),
+        ],
+        { asn: "AS8075", asnOrg: "MICROSOFT-CORP" },
+        geoResolutionWithAsn(["ipinfo", "ipgeolocation"]),
+      ),
+    );
+    expect(claim).toBeNull();
   });
 
   it("never names a provider it only inferred from the org string", () => {

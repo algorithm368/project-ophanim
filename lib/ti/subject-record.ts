@@ -110,10 +110,20 @@ export function firstClaim(resolvers: Resolver[], r: AnyResult): Claim | null {
 
 const isDomain = (r: AnyResult): r is DomainCheckResult => "domain" in r;
 const geoOf = (r: AnyResult) => ("ip" in r ? r.geo : undefined);
+const geoResolutionOf = (r: AnyResult) => ("ip" in r ? r.geoResolution : undefined);
 const str = (v: unknown): string | undefined =>
   typeof v === "string" && v ? v : undefined;
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+/** True when at least one source backing a reconciled field needs no API key.
+ *  A key-gated source may refine a label's wording, but it may not decide what
+ *  the sprite draws: an icon that changes with the day's quota is #37 again. */
+function backedByFreeSource(r: AnyResult, backers: string[] | undefined): boolean {
+  return (backers ?? []).some((id) =>
+    r.sources.some((s) => s.source.id === id && !s.source.requiresKey),
+  );
+}
 
 /** The provider's own published prefix list, which is the only authoritative
  *  answer available. For a domain the match is against the resolved IPs, and
@@ -128,11 +138,24 @@ const fromCloudRange: Resolver = (r) => {
   return { label, sources: ["cloud-range"] };
 };
 
-/** AS16509 is Amazon. A fact, and safe to put a named mark on. */
+/** AS16509 is Amazon. A fact, and safe to put a named mark on, but only when
+ *  the winning `asn` value is itself backed by a source that needs no key.
+ *  `geo.asn` is not one source's field: it is the winner of a weighted
+ *  reconciliation (lib/ti/geo/reconcile.ts) where key-gated providers like
+ *  ipinfo/ipgeolocation outweigh free ip-api, so on a day they answer and
+ *  ip-api doesn't, the "fact" this rung renders could itself be a key-gated
+ *  pick, which is #37 in a different costume. When there is no
+ *  `geoResolution` at all there is nothing to check provenance against, and
+ *  absence of evidence is not evidence of taint, so that case is allowed
+ *  through rather than gutting the rung for every caller that doesn't
+ *  reconcile. */
 const fromAsnTable: Resolver = (r) => {
   const geo = geoOf(r);
   const hit = cloudProvider(geo?.asn, geo?.asnOrg);
-  return hit?.via === "asn" ? { label: hit.name, sources: ["asn table"] } : null;
+  if (hit?.via !== "asn") return null;
+  const backers = geoResolutionOf(r)?.asn?.sources;
+  if (backers && !backedByFreeSource(r, backers)) return null;
+  return { label: hit.name, sources: ["asn table"] };
 };
 
 const fromShodanCdn: Resolver = (r) => {
