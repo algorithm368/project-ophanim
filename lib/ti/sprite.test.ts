@@ -64,6 +64,15 @@ describe("every drawn grid", () => {
 });
 
 describe("the horns overlay", () => {
+  it.each(BODY_KEYS)("%s leaves the horn zone clear", (key) => {
+    const grid = composeGrid({ body: key, flagged: false });
+    for (const y of [0, 1]) {
+      for (const x of [0, 1, 2, 3, 12, 13, 14, 15]) {
+        expect(`${key} r${y}c${x}=${grid[y][x]}`).toBe(`${key} r${y}c${x}=.`);
+      }
+    }
+  });
+
   it("adds pixels and never removes them", () => {
     const plain = composeGrid({ body: "scanner", flagged: false });
     const horned = composeGrid({ body: "scanner", flagged: true });
