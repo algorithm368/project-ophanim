@@ -75,8 +75,11 @@ const BODIES: Record<BodyKey, string[]> = {
     ...###....###...
     ................
   `),
-  // One eye rather than two, plus an antenna. One eye reads instantly even
-  // shrunk, and it happens to mean the right thing: the thing that is watching.
+  // One eye, and only one. The first draft carved two unlit notches either
+  // side of a lit centre, so the negative space made two eyes and the sprite
+  // read as an insect. The aperture here is a single connected ring around one
+  // pupil, which cannot be read as a pair. The antenna stays centred so the
+  // horns land either side of it rather than on top of it.
   scanner: parseGrid(`
     ................
     .......##.......
@@ -84,10 +87,10 @@ const BODIES: Record<BodyKey, string[]> = {
     ....########....
     ..############..
     .##############.
-    .###..####..###.
-    .##..######..##.
-    .##..######..##.
-    .###..####..###.
+    .####......####.
+    .##...####...##.
+    .##...####...##.
+    .####......####.
     .##############.
     ..############..
     ....########....
