@@ -179,7 +179,7 @@ const BODIES: Record<BodyKey, string[]> = {
  * changing mark reads as a family automatically, and a new provider costs six
  * by three pixels rather than a whole character.
  */
-const MARKS: Record<MarkKey, string[]> = {
+export const MARKS: Record<MarkKey, string[]> = {
   aws: parseGrid(`
     ..##..
     .####.

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BODY_KEYS,
   MARK_KEYS,
+  MARKS,
   SPRITE_SIZE,
   composeGrid,
   parseGrid,
@@ -53,6 +54,12 @@ describe("every drawn grid", () => {
         if (!inWell) expect(marked[y][x]).toBe(plain[y][x]);
       }
     }
+  });
+
+  it.each(MARK_KEYS)("%s lands in the well exactly, dots and all", (mark) => {
+    const grid = composeGrid({ body: "hosting", mark, flagged: false });
+    const well = [8, 9, 10].map((y) => grid[y].slice(5, 11));
+    expect(well).toEqual(MARKS[mark]);
   });
 });
 
