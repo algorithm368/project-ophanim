@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseSeen, seenRange } from "@/lib/ti/subject-record";
 import type { CheckStats, SourceResult } from "@/lib/ti/types";
 
@@ -42,6 +42,26 @@ export function stats(n: number): CheckStats {
 }
 
 describe("parseSeen", () => {
+  // CI runs ubuntu-latest with no TZ set, i.e. UTC, where Date.parse's local-time
+  // fallback for a zone-less string coincides with the UTC reading: the bug this
+  // suite exists to catch cannot reproduce there. Pinning a non-UTC, non-DST zone
+  // for just this block makes the local-time fallback actually disagree with UTC,
+  // so deleting the ZONELESS branch in parseSeen fails these tests everywhere,
+  // not only on a developer's non-UTC machine. Scoped to this describe (not the
+  // file, not vitest.config.ts, not the CI workflow) so no other date-dependent
+  // test changes behaviour.
+  let previousTz: string | undefined;
+
+  beforeAll(() => {
+    previousTz = process.env.TZ;
+    process.env.TZ = "Asia/Bangkok"; // UTC+7, no DST, so no seasonal ambiguity.
+  });
+
+  afterAll(() => {
+    if (previousTz === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTz;
+  });
+
   it("reads a zone-less timestamp as UTC, not as local time", () => {
     // Onionoo's shape. Date.parse reads this as local, which is the live bug:
     // on sin1 the Tor timestamp lands seven hours out and nothing logs it.
