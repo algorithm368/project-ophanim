@@ -1,15 +1,15 @@
 "use client";
 
-import { Fingerprint } from "lucide-react";
+import { FileUser } from "lucide-react";
 import { memo, useMemo, type ReactNode } from "react";
 import type { CheckResult } from "@/lib/ti/types";
 import { buildIpDossier } from "@/lib/ti/ip-dossier";
-import { joinPlace } from "@/lib/ti/narrative";
-import { flagUrl } from "./classify";
+import { buildSubjectRecord } from "@/lib/ti/subject-record";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "./primitives";
 import { Rule } from "./profile";
+import { SubjectMasthead, SubjectMastheadSkeleton } from "./record";
 import { VotingCard } from "./voting";
 
 const SUBLABEL =
@@ -68,16 +68,17 @@ export const IpDossierCard = memo(function IpDossierCard({
         () => (result ? buildIpDossier(result) : null),
         [result],
     );
+    const record = useMemo(
+        () => (result ? buildSubjectRecord(result) : null),
+        [result],
+    );
 
-    if (streaming || !result || !dossier) {
+    if (streaming || !result || !dossier || !record) {
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-5">
-                    <SectionHeading icon={Fingerprint}>IP dossier</SectionHeading>
-                    <div className="flex items-center gap-2">
-                        <span className="sweep h-6 w-9 shrink-0 rounded-sm" />
-                        <span className="sweep h-4 w-28 rounded" />
-                    </div>
+                    <SectionHeading icon={FileUser}>Subject record</SectionHeading>
+                    <SubjectMastheadSkeleton />
                     <div className="space-y-3">
                         <Rule />
                         <span className="sweep inline-block h-3 w-32 rounded" />
@@ -92,48 +93,12 @@ export const IpDossierCard = memo(function IpDossierCard({
         );
     }
 
-    const geo = result.geo;
-    const flag = flagUrl(geo?.countryCode);
-    const place = joinPlace([geo?.city, geo?.region]);
-
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-5">
-                <SectionHeading icon={Fingerprint}>IP dossier</SectionHeading>
+                <SectionHeading icon={FileUser}>Subject record</SectionHeading>
 
-                {/* Identity line: grayscale flag, country, city. No verdict repeat
-                    (VerdictHero owns the verdict word, risk level, and tally). */}
-                {geo?.country && (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        {flag && (
-                            // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
-                            <img
-                                src={flag}
-                                alt={`Flag of ${geo.country ?? geo.countryCode}`}
-                                width={64}
-                                height={48}
-                                loading="lazy"
-                                className="mr-1 h-6 w-auto shrink-0 rounded-sm border border-foreground/20 object-cover"
-                            />
-                        )}
-                        <span className="text-base font-semibold leading-tight">
-                            {geo.country}
-                        </span>
-                        {geo.countryCode && (
-                            <span className="font-mono text-xs text-muted-foreground">
-                                {geo.countryCode}
-                            </span>
-                        )}
-                        {place && (
-                            <>
-                                <span className="text-muted-foreground/50">·</span>
-                                <span className="text-sm text-muted-foreground">
-                                    {place}
-                                </span>
-                            </>
-                        )}
-                    </div>
-                )}
+                <SubjectMasthead record={record} verdict={result.verdict} />
 
                 {dossier.groups.map((g) => (
                     <div key={g.id} className="space-y-3">
