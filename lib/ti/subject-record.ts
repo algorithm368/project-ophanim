@@ -1,5 +1,5 @@
 import { cloudProvider } from "./cloud";
-import { classifyIpLabel } from "./indicator-class";
+import { classifyDomainLabel, classifyHashLabel, classifyIpLabel } from "./indicator-class";
 import { maliciousTags } from "./sources/shodan-internetdb";
 import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
 import type { SpriteSpec } from "./sprite";
@@ -272,6 +272,45 @@ const fromProxyFlag: Resolver = (r) => {
   return { label: "Anonymizer", sources: ["geo flags"] };
 };
 
+const isHash = (r: AnyResult): r is HashCheckResult => "hash" in r;
+
+/** Spamhaus DBL puts the human meaning of each return code straight into
+ *  `categories`, so the first one is the claim. */
+const fromSpamhausDbl: Resolver = (r) => {
+  const label = ok(r.sources, "spamhaus-dbl")?.categories?.[0];
+  if (!label) return null;
+  return { label: label.charAt(0).toUpperCase() + label.slice(1), sources: ["spamhaus-dbl"] };
+};
+
+const fromCymruMhr: Resolver = (r) => {
+  const hit = ok(r.sources, "cymru-mhr");
+  return hit?.malicious
+    ? { label: "Known malware, Team Cymru MHR", sources: ["cymru-mhr"] }
+    : null;
+};
+
+/** CIRCL hashlookup answers both sides: which vendor flagged the file, and,
+ *  uniquely among the free hash sources, that a file is known good. */
+const fromHashlookup: Resolver = (r) => {
+  const hit = ok(r.sources, "hashlookup");
+  if (!hit) return null;
+  if (hit.malicious) {
+    const by = hit.categories?.[0];
+    return {
+      label: by ? `Known malicious, ${by}` : "Known malicious",
+      sources: ["hashlookup"],
+    };
+  }
+  if (hit.score === 0) {
+    const origin = str(hit.details?.origin);
+    return {
+      label: origin ? `Known legitimate file, ${origin}` : "Known legitimate file",
+      sources: ["hashlookup"],
+    };
+  }
+  return null;
+};
+
 const THREAT: Resolver[] = [
   fromFeodo,
   fromTor,
@@ -279,10 +318,48 @@ const THREAT: Resolver[] = [
   fromShodanThreatTags,
   fromCategory("spamhaus-drop", "criminal-netblock", "Criminal netblock"),
   fromCategory("et-open", "compromised", "Compromised host"),
+  fromCategory("openphish", "phishing", "Phishing page"),
+  fromSpamhausDbl,
+  fromCategory("quad9", "dns-blocked", "Blocked by Quad9"),
+  fromCategory("rdap", "registry-hold", "Registry hold"),
+  fromCymruMhr,
+  fromHashlookup,
   fromProxyFlag,
 ];
 
 /** What the box is, from free, unmetered sources only. */
 export function threatClaim(r: AnyResult): Claim | null {
   return firstClaim(THREAT, r);
+}
+
+/** Tranco is a positive identification for the overwhelmingly common case: a
+ *  domain that nothing has anything against. */
+const fromTranco: Resolver = (r) => {
+  const d = ok(r.sources, "tranco")?.details;
+  const rank = typeof d?.rank === "number" ? d.rank : undefined;
+  return d?.vouched === true && rank !== undefined
+    ? { label: `Popular domain, Tranco rank ${rank}`, sources: ["tranco"] }
+    : null;
+};
+
+/**
+ * What to say when no rung identified anything. Never empty: for these three
+ * the absence of a finding is itself the classification.
+ */
+export function lastResortClaim(r: AnyResult): Claim {
+  const tranco = fromTranco(r);
+  if (tranco) return tranco;
+  if (isDomain(r)) {
+    const resolves =
+      (r.context?.resolvedIps?.length ?? 0) > 0 || (r.context?.ipv6?.length ?? 0) > 0;
+    return {
+      label: classifyDomainLabel(r.context, resolves).label,
+      sources: ["registration age"],
+    };
+  }
+  if (isHash(r)) {
+    const hasData = r.sources.some((s) => s.status === "ok" && s.score !== undefined);
+    return { label: classifyHashLabel(r.context, hasData).label, sources: ["file metadata"] };
+  }
+  return { label: classifyIpLabel(geoOf(r)).label, sources: ["geo flags"] };
 }

@@ -384,3 +384,117 @@ describe("threatClaim, IP rungs", () => {
     expect(claim).toBeNull();
   });
 });
+
+import { lastResortClaim } from "@/lib/ti/subject-record";
+import type { HashCheckResult } from "@/lib/ti/types";
+
+function domainResult(
+  sources: SourceResult[],
+  context?: DomainCheckResult["context"],
+): DomainCheckResult {
+  return {
+    domain: "example.test",
+    checkedAt: "2026-09-03T00:00:00Z",
+    riskScore: 0,
+    verdict: "unknown",
+    context,
+    sources,
+    stats: stats(sources.length),
+  } as DomainCheckResult;
+}
+
+function hashResult(
+  sources: SourceResult[],
+  context?: HashCheckResult["context"],
+): HashCheckResult {
+  return {
+    hash: "a".repeat(64),
+    algorithm: "sha256",
+    checkedAt: "2026-09-03T00:00:00Z",
+    riskScore: 0,
+    verdict: "unknown",
+    context,
+    sources,
+    stats: stats(sources.length),
+  } as HashCheckResult;
+}
+
+describe("threatClaim, domain rungs", () => {
+  it("reads OpenPhish, which only ever says one thing", () => {
+    expect(threatClaim(domainResult([src({ id: "openphish", categories: ["phishing"] })]))).toEqual(
+      { label: "Phishing page", sources: ["openphish"] },
+    );
+  });
+
+  it("reads the Spamhaus DBL meaning rather than its return code", () => {
+    expect(
+      threatClaim(
+        domainResult([
+          src({ id: "spamhaus-dbl", categories: ["botnet C&C domain"], details: { codes: ["127.0.1.6"] } }),
+        ]),
+      ),
+    ).toEqual({ label: "Botnet C&C domain", sources: ["spamhaus-dbl"] });
+  });
+
+  it("reads a Quad9 block and a registry hold", () => {
+    expect(threatClaim(domainResult([src({ id: "quad9", categories: ["dns-blocked"] })]))).toEqual({
+      label: "Blocked by Quad9",
+      sources: ["quad9"],
+    });
+    expect(threatClaim(domainResult([src({ id: "rdap", categories: ["registry-hold"] })]))).toEqual({
+      label: "Registry hold",
+      sources: ["rdap"],
+    });
+  });
+});
+
+describe("threatClaim, hash rungs", () => {
+  it("reads Team Cymru's malware hash registry", () => {
+    expect(
+      threatClaim(hashResult([src({ id: "cymru-mhr", malicious: true, score: 80 })])),
+    ).toEqual({ label: "Known malware, Team Cymru MHR", sources: ["cymru-mhr"] });
+  });
+
+  it("names what flagged the file in the known-files database", () => {
+    expect(
+      threatClaim(
+        hashResult([src({ id: "hashlookup", malicious: true, categories: ["Kaspersky"] })]),
+      ),
+    ).toEqual({ label: "Known malicious, Kaspersky", sources: ["hashlookup"] });
+  });
+
+  it("answers the clean side, which no other free source does", () => {
+    expect(
+      threatClaim(hashResult([src({ id: "hashlookup", score: 0, details: { origin: "NSRL" } })])),
+    ).toEqual({ label: "Known legitimate file, NSRL", sources: ["hashlookup"] });
+  });
+});
+
+describe("lastResortClaim", () => {
+  it("vouches for a domain in the Tranco top million", () => {
+    expect(
+      lastResortClaim(domainResult([src({ id: "tranco", details: { rank: 412, vouched: true } })])),
+    ).toEqual({ label: "Popular domain, Tranco rank 412", sources: ["tranco"] });
+  });
+
+  it("falls through to the registration-age classifier", () => {
+    expect(lastResortClaim(domainResult([], { ageDays: 3, resolvedIps: ["1.2.3.4"] }))).toEqual({
+      label: "Newly registered",
+      sources: ["registration age"],
+    });
+  });
+
+  it("falls through to the file classifier", () => {
+    expect(lastResortClaim(hashResult([], { fileType: "PDF document" }))).toEqual({
+      label: "PDF document",
+      sources: ["file metadata"],
+    });
+  });
+
+  it("falls through to the geo classifier for an IP", () => {
+    expect(lastResortClaim(ipResult([], { isMobile: true }))).toEqual({
+      label: "Mobile network",
+      sources: ["geo flags"],
+    });
+  });
+});
