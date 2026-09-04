@@ -154,8 +154,13 @@ export interface ThreatTypeVerdict {
  * findings, and excluding it because it did not flag is how 71.6.146.185, a
  * Shodan census host, gets typed "brute force" off the back of abuse reports
  * filed by people who were scanned.
+ *
+ * Exported because the subject record needs the complement: filtering these out
+ * leaves the sources that report what an indicator *did*, which is the other
+ * axis. `threatTypeOf` itself is unchanged and `verdict.tsx` still calls it
+ * unfiltered, so the withheld-label guard above still protects the headline.
  */
-const IDENTIFIERS = new Set(["greynoise", "scanner-id", "tor-project"]);
+export const IDENTIFIERS = new Set(["greynoise", "scanner-id", "tor-project"]);
 
 function contributes(s: SourceResult): boolean {
   if (s.status !== "ok") return false;

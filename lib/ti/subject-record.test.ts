@@ -498,3 +498,120 @@ describe("lastResortClaim", () => {
     });
   });
 });
+
+import { buildSubjectRecord } from "@/lib/ti/subject-record";
+
+describe("buildSubjectRecord", () => {
+  it("surfaces both axes for the case that motivated the split", () => {
+    // 71.6.146.185, a Shodan census host. The people it scanned filed abuse
+    // reports, so today the scanner identification and the brute-force tally
+    // tie and one true fact loses. Split, both survive.
+    const ip = ipResult(
+      [
+        src({
+          id: "abuseipdb",
+          score: 100,
+          malicious: true,
+          requiresKey: true,
+          categories: ["Brute-Force", "Port Scan", "Data Center/Web Hosting/Transit"],
+        }),
+        src({ id: "otx", score: 100, requiresKey: true, categories: ["Brute-Force"] }),
+        src({ id: "greynoise", score: 0, requiresKey: true, categories: ["internet-scanner", "benign"] }),
+        src({ id: "scanner-id", score: 0, weight: 0, details: { operator: "Shodan.io" } }),
+      ],
+      { isHosting: true },
+    );
+    // abuseipdb's hard malicious listing floors real aggregation at 75
+    // (aggregateRisk), which this hand-built fixture does not run; set the
+    // verdict threatTypeOf needs to actually weigh the ballot below, the same
+    // way the flagged-sprite test further down mutates it after construction.
+    ip.verdict = "malicious";
+    const rec = buildSubjectRecord(ip);
+    expect(rec.class).toEqual({
+      label: "Research scanner, Shodan.io",
+      sources: ["scanner-id"],
+    });
+    expect(rec.reportedFor?.label).toBe("brute force");
+    expect(rec.reportedFor?.sources).toEqual(expect.arrayContaining(["abuseipdb", "otx"]));
+  });
+
+  it("keeps the threat identity in class and the provider in hostedOn", () => {
+    const rec = buildSubjectRecord(
+      ipResult(
+        [
+          src({ id: "feodo", malicious: true, details: { malware: "Dridex" } }),
+          src({
+            id: "cloud-range",
+            details: { provider: "Amazon Web Services", region: "eu-west-1" },
+          }),
+        ],
+        { asn: "AS16509", asnOrg: "AMAZON-02" },
+      ),
+    );
+    expect(rec.class.label).toBe("Dridex C2");
+    expect(rec.hostedOn?.label).toBe("Amazon Web Services, eu-west-1");
+    // Infra first for the picture: something physically an EC2 instance is more
+    // truly an AWS box than a C2, and the C2 is the line beside it.
+    expect(rec.sprite).toEqual({ body: "hosting", mark: "aws", flagged: false });
+  });
+
+  it("never renders the same fact on two rows", () => {
+    const rec = buildSubjectRecord(
+      ipResult([], { asn: "AS8075", asnOrg: "MICROSOFT-CORP" }),
+    );
+    expect(rec.class.label).toBe("Microsoft Azure");
+    expect(rec.hostedOn).toBeUndefined();
+  });
+
+  it("puts horns on a flagged verdict and nothing on a clean one", () => {
+    const flagged = ipResult([src({ id: "feodo", malicious: true })]);
+    flagged.verdict = "malicious";
+    expect(buildSubjectRecord(flagged).sprite).toEqual({ body: "c2", flagged: true });
+
+    const clean = ipResult([]);
+    clean.verdict = "clean";
+    expect(buildSubjectRecord(clean).sprite.flagged).toBe(false);
+  });
+
+  it("falls back to the type's own body when nothing identified it", () => {
+    expect(buildSubjectRecord(ipResult([])).sprite.body).toBe("hosting");
+    expect(buildSubjectRecord(domainResult([])).sprite.body).toBe("site");
+    expect(buildSubjectRecord(hashResult([])).sprite.body).toBe("file");
+  });
+
+  it("does not change the picture when every key-gated source fails", () => {
+    // The rule the sprite set is built on: an icon may not change shape because
+    // of how much the tool was used earlier that day (#37).
+    const sources = [
+      src({ id: "cloud-range", details: { provider: "Amazon Web Services" } }),
+      src({ id: "scanner-id", details: { operator: "Censys" } }),
+    ];
+    const withKeys = [
+      ...sources,
+      src({ id: "greynoise", requiresKey: true, categories: ["internet-scanner"] }),
+      src({ id: "virustotal", requiresKey: true, score: 60 }),
+    ];
+    const withoutKeys = [
+      ...sources,
+      src({ id: "greynoise", requiresKey: true, status: "rate_limited" }),
+      src({ id: "virustotal", requiresKey: true, status: "error" }),
+    ];
+    expect(buildSubjectRecord(ipResult(withoutKeys)).sprite).toEqual(
+      buildSubjectRecord(ipResult(withKeys)).sprite,
+    );
+    expect(buildSubjectRecord(ipResult(withoutKeys)).class).toEqual(
+      buildSubjectRecord(ipResult(withKeys)).class,
+    );
+  });
+
+  it("says so rather than leaving a gap", () => {
+    const rec = buildSubjectRecord(ipResult([]));
+    expect(rec.class.label).toBe("Unknown type");
+    expect(rec.reportedFor).toBeUndefined();
+    expect(rec.subject).toBe("185.220.101.42");
+  });
+
+  it("carries the algorithm as the hash qualifier", () => {
+    expect(buildSubjectRecord(hashResult([])).qualifier).toBe("SHA-256");
+  });
+});

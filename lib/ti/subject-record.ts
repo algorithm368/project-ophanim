@@ -1,8 +1,10 @@
 import { cloudProvider } from "./cloud";
+import { HASH_ALGO_LABEL } from "../hash";
 import { classifyDomainLabel, classifyHashLabel, classifyIpLabel } from "./indicator-class";
 import { maliciousTags } from "./sources/shodan-internetdb";
+import { IDENTIFIERS, threatTypeOf } from "./threat-type";
 import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
-import type { SpriteSpec } from "./sprite";
+import type { BodyKey, MarkKey, SpriteSpec } from "./sprite";
 
 /**
  * One assertion about the indicator, plus who made it.
@@ -362,4 +364,96 @@ export function lastResortClaim(r: AnyResult): Claim {
     return { label: classifyHashLabel(r.context, hasData).label, sources: ["file metadata"] };
   }
   return { label: classifyIpLabel(geoOf(r)).label, sources: ["geo flags"] };
+}
+
+/** Which drawn mark, if any, a provider name maps to. Anything undrawn falls
+ *  through to the plain hosting body, which is the correct generic. */
+const PROVIDER_MARK: Record<string, MarkKey> = {
+  "Amazon Web Services": "aws",
+  "Microsoft Azure": "azure",
+  "Google Cloud": "gcp",
+  Cloudflare: "cloudflare",
+};
+
+/** Which drawn body a threat claim maps to. Behaviour has no sprites in this
+ *  set on purpose: it would only be reached when nothing identified the
+ *  indicator, and drawing a guess is worse than drawing the type's own body and
+ *  letting the reported-for line speak. */
+const THREAT_BODY: [RegExp, BodyKey][] = [
+  [/scanner/i, "scanner"],
+  [/c2|command and control|botnet/i, "c2"],
+  [/tor |anonymizer|proxy|vpn/i, "anonymizer"],
+];
+
+function typeBody(r: AnyResult): BodyKey {
+  if (isDomain(r)) return "site";
+  if (isHash(r)) return "file";
+  return "hosting";
+}
+
+function spriteFor(
+  r: AnyResult,
+  infra: Claim | null,
+  threat: Claim | null,
+  flagged: boolean,
+): SpriteSpec {
+  if (infra) {
+    const provider = Object.keys(PROVIDER_MARK).find((p) => infra.label.includes(p));
+    return {
+      body: "hosting",
+      mark: provider ? PROVIDER_MARK[provider] : undefined,
+      flagged,
+    };
+  }
+  const body = threat
+    ? THREAT_BODY.find(([re]) => re.test(threat.label))?.[1]
+    : undefined;
+  return { body: body ?? typeBody(r), flagged };
+}
+
+function subjectOf(r: AnyResult): string {
+  if (isDomain(r)) return r.domain;
+  if (isHash(r)) return r.hash;
+  return r.ip;
+}
+
+/**
+ * The record behind the card.
+ *
+ * `class` prefers the threat identity, because "Dridex C2" tells an analyst
+ * more than "AWS". The sprite orders the two the other way round, because it
+ * answers "what is this thing" and an EC2 instance is more truly an AWS box
+ * than a C2. Nothing is lost either way: whichever one the class did not take
+ * is the `hostedOn` line beside it.
+ */
+export function buildSubjectRecord(r: AnyResult): SubjectRecord {
+  const infra = infraClaim(r);
+  const threat = threatClaim(r);
+  const klass = threat ?? infra ?? lastResortClaim(r);
+  const hostedOn = infra && infra !== klass ? infra : undefined;
+
+  // The behaviour axis. Identification sources are filtered out so a source
+  // answering "this is a scanner" cannot win the ballot about what it did.
+  const behaviour = threatTypeOf(
+    r.sources.filter((s) => !IDENTIFIERS.has(s.source.id)),
+    { verdict: r.verdict, benignOverride: r.scoreBreakdown?.benignOverride },
+  );
+
+  const flagged = r.verdict === "malicious" || r.verdict === "suspicious";
+  const responded = r.sources.filter((s) => s.status === "ok").length;
+
+  return {
+    subject: subjectOf(r),
+    qualifier: isHash(r) ? HASH_ALGO_LABEL[r.algorithm] : undefined,
+    class: klass,
+    hostedOn,
+    reportedFor: behaviour
+      ? { label: behaviour.type, sources: behaviour.sources, also: behaviour.also }
+      : undefined,
+    seen: seenRange(r.sources, isHash(r) ? r.context : undefined),
+    sprite: spriteFor(r, infra, threat, flagged),
+    footer: `Enriched from ${responded} source${responded === 1 ? "" : "s"}, checked ${new Date(
+      r.checkedAt,
+    ).toLocaleString()}`,
+  };
 }
