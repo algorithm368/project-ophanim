@@ -430,10 +430,10 @@ describe("threatClaim, domain rungs", () => {
     expect(
       threatClaim(
         domainResult([
-          src({ id: "spamhaus-dbl", categories: ["botnet C&C domain"], details: { codes: ["127.0.1.6"] } }),
+          src({ id: "spamhaus-dbl", categories: ["botnet C2 domain"], details: { codes: ["127.0.1.6"] } }),
         ]),
       ),
-    ).toEqual({ label: "Botnet C&C domain", sources: ["spamhaus-dbl"] });
+    ).toEqual({ label: "Botnet C2 domain", sources: ["spamhaus-dbl"] });
   });
 
   it("reads a Quad9 block and a registry hold", () => {
@@ -465,7 +465,7 @@ describe("threatClaim, hash rungs", () => {
 
   it("answers the clean side, which no other free source does", () => {
     expect(
-      threatClaim(hashResult([src({ id: "hashlookup", score: 0, details: { origin: "NSRL" } })])),
+      threatClaim(hashResult([src({ id: "hashlookup", score: 0, details: { source: "NSRL" } })])),
     ).toEqual({ label: "Known legitimate file, NSRL", sources: ["hashlookup"] });
   });
 });

@@ -302,7 +302,7 @@ const fromHashlookup: Resolver = (r) => {
     };
   }
   if (hit.score === 0) {
-    const origin = str(hit.details?.origin);
+    const origin = str(hit.details?.source);
     return {
       label: origin ? `Known legitimate file, ${origin}` : "Known legitimate file",
       sources: ["hashlookup"],
