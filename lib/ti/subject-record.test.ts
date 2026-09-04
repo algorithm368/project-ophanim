@@ -550,6 +550,11 @@ describe("buildSubjectRecord", () => {
     });
     expect(rec.reportedFor?.label).toBe("brute force");
     expect(rec.reportedFor?.sources).toEqual(expect.arrayContaining(["abuseipdb", "otx"]));
+    // #37's second half: isHosting is a bare infra claim with no named
+    // provider, so under spriteFor's ordering it may not outrank the
+    // positively identified scanner. Reverting to "any infra claim beats any
+    // threat" draws a server rack here instead.
+    expect(rec.sprite.body).toBe("scanner");
   });
 
   it("keeps the threat identity in class and the provider in hostedOn", () => {
@@ -570,6 +575,21 @@ describe("buildSubjectRecord", () => {
     // Infra first for the picture: something physically an EC2 instance is more
     // truly an AWS box than a C2, and the C2 is the line beside it.
     expect(rec.sprite).toEqual({ body: "hosting", mark: "aws", flagged: false });
+  });
+
+  it("draws the threat body, not a rack, when the only infra claim is a bare generic \"Hosting\"", () => {
+    // fromOrgRegex never names a provider, only "Hosting" (see the infraClaim
+    // test above). A generic inference is not an argument for outranking a
+    // positively identified threat, unlike an actual named provider.
+    const rec = buildSubjectRecord(
+      ipResult(
+        [src({ id: "feodo", malicious: true, details: { malware: "Dridex" } })],
+        { asnOrg: "Hetzner Online GmbH" },
+      ),
+    );
+    expect(rec.class.label).toBe("Dridex C2");
+    expect(rec.hostedOn?.label).toBe("Hosting");
+    expect(rec.sprite).toEqual({ body: "c2", flagged: false });
   });
 
   it("never renders the same fact on two rows", () => {

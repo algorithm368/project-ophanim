@@ -264,8 +264,16 @@ function fromCategory(id: string, category: string, label: string): Resolver {
  *  they answer, the "fact" behind Anonymizer could be a key-gated pick. That
  *  selects the anonymizer sprite body, so it moves the picture and needs the
  *  same guard. (Contrast fromGeoFlags above, which reads isHosting unguarded:
- *  its label maps to the hosting sprite body, which is also the IP fallback
- *  body, so there's nothing the guard would protect.) */
+ *  under spriteFor's ordering, a bare infra claim (no named provider) no
+ *  longer outranks a threat body, and when there is no threat, an infra claim
+ *  and typeBody(r) both draw "hosting" for a bare IP, so the two remaining
+ *  steps agree and fromGeoFlags genuinely cannot move the picture. This stops
+ *  being true the day a distinct IP fallback body exists and typeBody(r) no
+ *  longer returns "hosting" for every IP: at that point fromGeoFlags reaches a
+ *  branch where its unguarded isHosting can pick between two different
+ *  drawings, and it will need the same backedByFreeSource guard fromAsnTable
+ *  and fromProxyFlag already use. That follow-up is expected; this comment is
+ *  what should stop it shipping without the guard.) */
 const fromProxyFlag: Resolver = (r) => {
   const geo = geoOf(r);
   if (!geo?.isProxy) return null;
@@ -391,24 +399,34 @@ function typeBody(r: AnyResult): BodyKey {
   return "hosting";
 }
 
+/**
+ * Only a *named provider* outranks a threat: "an EC2 instance is more truly an
+ * AWS box than a C2" holds when there is an actual AWS, but it is not an
+ * argument for a generic rack outranking a positively identified scanner.
+ * fromOrgRegex and fromGeoFlags fire for essentially every datacentre
+ * address, and scanners, C2s and Tor exits overwhelmingly live in
+ * datacentres, so a bare infra claim (no provider name) must not pre-empt a
+ * threat body the way a named one does.
+ */
 function spriteFor(
   r: AnyResult,
   infra: Claim | null,
   threat: Claim | null,
   flagged: boolean,
 ): SpriteSpec {
-  if (infra) {
-    const provider = Object.keys(PROVIDER_MARK).find((p) => infra.label.includes(p));
-    return {
-      body: "hosting",
-      mark: provider ? PROVIDER_MARK[provider] : undefined,
-      flagged,
-    };
+  const provider = infra
+    ? Object.keys(PROVIDER_MARK).find((p) => infra.label.includes(p))
+    : undefined;
+  if (provider) {
+    return { body: "hosting", mark: PROVIDER_MARK[provider], flagged };
   }
-  const body = threat
+  const threatBody = threat
     ? THREAT_BODY.find(([re]) => re.test(threat.label))?.[1]
     : undefined;
-  return { body: body ?? typeBody(r), flagged };
+  if (threatBody) {
+    return { body: threatBody, flagged };
+  }
+  return { body: infra ? "hosting" : typeBody(r), flagged };
 }
 
 function subjectOf(r: AnyResult): string {
