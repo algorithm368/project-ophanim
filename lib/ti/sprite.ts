@@ -61,9 +61,9 @@ const BODIES: Record<BodyKey, string[]> = {
   // well; the lower bay keeps its plain bar, so a marked rack shows the mark
   // beside an unmarked unit rather than on its own.
   //
-  // Row 1 is six wide, not ten. Ten clears the horn zone and passes the test,
-  // but column 11 still abuts the right horn's inner end at column 12, so the
-  // composite is one run from 4 to 13 and only the left horn gets a gap.
+  // Row 1 is six wide, not eight. Eight clears the horn zone and passes the
+  // test, but column 11 still abuts the right horn's inner end at column 12,
+  // so the composite is one run from 4 to 13 and only the left horn gets a gap.
   hosting: parseGrid(`
     ................
     .....######.....

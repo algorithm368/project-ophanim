@@ -224,8 +224,17 @@ describe("infraClaim", () => {
   });
 
   it("reads a CDN tag from Shodan before falling through to PeeringDB", () => {
+    // Both rungs answer here, so swapping fromShodanCdn and fromPeeringDb in
+    // INFRA would flip the winner and this test would fail: without the
+    // peeringdb row, nothing exercised the "before" the title claims.
     const claim = infraClaim(
-      ipResult([src({ id: "shodan-internetdb", details: { tags: ["cdn", "https"] } })]),
+      ipResult([
+        src({ id: "shodan-internetdb", details: { tags: ["cdn", "https"] } }),
+        src({
+          id: "peeringdb",
+          details: { networkClass: "Content", peeringName: "Fastly" },
+        }),
+      ]),
     );
     expect(claim).toEqual({ label: "CDN edge", sources: ["shodan-internetdb"] });
   });
@@ -614,6 +623,14 @@ describe("buildSubjectRecord", () => {
     expect(buildSubjectRecord(ipResult([])).sprite.body).toBe("hosting");
     expect(buildSubjectRecord(domainResult([])).sprite.body).toBe("site");
     expect(buildSubjectRecord(hashResult([])).sprite.body).toBe("file");
+  });
+
+  it("draws the plain hosting body, never a named mark, for an org-regex match", () => {
+    // fromOrgRegex is an inference, never a name (see the infraClaim test of
+    // the same name); the sprite side of that rule was previously untested.
+    const rec = buildSubjectRecord(ipResult([], { asnOrg: "Hetzner Online GmbH" }));
+    expect(rec.class.label).toBe("Hosting");
+    expect(rec.sprite).toEqual({ body: "hosting", mark: undefined, flagged: false });
   });
 
   it("does not change the picture when every key-gated source fails", () => {
