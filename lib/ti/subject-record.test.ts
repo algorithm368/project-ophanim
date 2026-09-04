@@ -468,6 +468,13 @@ describe("threatClaim, hash rungs", () => {
       threatClaim(hashResult([src({ id: "hashlookup", score: 0, details: { source: "NSRL" } })])),
     ).toEqual({ label: "Known legitimate file, NSRL", sources: ["hashlookup"] });
   });
+
+  it("declines when hashlookup has the hash but neither flags nor clears it", () => {
+    // Present in the database, not malicious, and not the score:0 clean-file
+    // shape either: neither branch of fromHashlookup applies, so it falls
+    // through to null like every other rung that found nothing.
+    expect(threatClaim(hashResult([src({ id: "hashlookup" })]))).toBeNull();
+  });
 });
 
 describe("lastResortClaim", () => {
@@ -487,6 +494,16 @@ describe("lastResortClaim", () => {
   it("falls through to the file classifier", () => {
     expect(lastResortClaim(hashResult([], { fileType: "PDF document" }))).toEqual({
       label: "PDF document",
+      sources: ["file metadata"],
+    });
+  });
+
+  it("still reports data on file when a source answered but named no family or type", () => {
+    // hasData is what tells classifyHashLabel's "Unknown file" from its "File"
+    // fallback apart; an empty sources array can never make hasData true, so
+    // the earlier fixture never reached this branch.
+    expect(lastResortClaim(hashResult([src({ id: "virustotal", score: 5 })]))).toEqual({
+      label: "File",
       sources: ["file metadata"],
     });
   });

@@ -56,4 +56,8 @@ describe("classifyHashLabel", () => {
     expect(classifyHashLabel({ fileType: "PDF document" }, true).label).toBe("PDF document");
     expect(classifyHashLabel(undefined, false).label).toBe("Unknown file");
   });
+
+  it("calls it just File when something answered but named neither a family nor a type", () => {
+    expect(classifyHashLabel(undefined, true).label).toBe("File");
+  });
 });
