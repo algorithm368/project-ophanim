@@ -30,6 +30,15 @@ export type SubjectRecord = {
   hostedOn?: Claim;
   /** What it did, as reported. */
   reportedFor?: Claim & { also: string[] };
+  /**
+   * Hash only: the multi-engine detection tally. Undefined for IP and domain,
+   * and undefined on a hash when VirusTotal (key-gated, the only source that
+   * sets it) did not answer. This is display text, not a sprite input: it may
+   * come and go with a key or a quota without ever moving the picture, which
+   * is exactly the distinction the ladders in this file exist to enforce.
+   * Never promote it into a resolver rung.
+   */
+  detections?: { malicious: number; total: number };
   /** ISO days. */
   seen?: { first?: string; last?: string };
   sprite: SpriteSpec;
@@ -468,6 +477,7 @@ export function buildSubjectRecord(r: AnyResult): SubjectRecord {
     reportedFor: behaviour
       ? { label: behaviour.type, sources: behaviour.sources, also: behaviour.also }
       : undefined,
+    detections: isHash(r) ? r.context?.detectionRatio : undefined,
     seen: seenRange(r.sources, isHash(r) ? r.context : undefined),
     sprite: spriteFor(r, infra, threat, flagged),
     footer: `Enriched from ${responded} source${responded === 1 ? "" : "s"}, checked ${new Date(

@@ -80,6 +80,17 @@ export const SubjectMasthead = memo(function SubjectMasthead({
                         <span className="text-muted-foreground">Nothing on file</span>
                     )}
                 </Row>
+                {record.detections && (
+                    // VirusTotal is the only source that sets detectionRatio, and it is
+                    // key-gated: on a keyless deployment this row simply does not render,
+                    // same as hostedOn or seen when nothing backs them. That is correct,
+                    // this is text on the card, not a rung the sprite depends on, so it
+                    // never needs the free-source guard the ladders in subject-record.ts
+                    // enforce. Do not turn this into a resolver rung.
+                    <Row label="Detections" sources={["virustotal"]}>
+                        {record.detections.malicious} of {record.detections.total} engines
+                    </Row>
+                )}
                 {seen && <Row label="Seen">{seen}</Row>}
             </dl>
 

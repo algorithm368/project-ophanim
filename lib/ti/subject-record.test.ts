@@ -651,4 +651,21 @@ describe("buildSubjectRecord", () => {
   it("carries the algorithm as the hash qualifier", () => {
     expect(buildSubjectRecord(hashResult([])).qualifier).toBe("SHA-256");
   });
+
+  it("surfaces VirusTotal's detection ratio on a hash, and only on a hash", () => {
+    const rec = buildSubjectRecord(
+      hashResult([src({ id: "virustotal", requiresKey: true, score: 60 })], {
+        detectionRatio: { malicious: 58, total: 72 },
+      }),
+    );
+    expect(rec.detections).toEqual({ malicious: 58, total: 72 });
+    // Neither an IP nor a domain has a context shaped like this; buildSubjectRecord
+    // must not carry a stray field across from a hash-only context.
+    expect(buildSubjectRecord(ipResult([])).detections).toBeUndefined();
+    expect(buildSubjectRecord(domainResult([])).detections).toBeUndefined();
+  });
+
+  it("leaves detections undefined when no source reported a ratio", () => {
+    expect(buildSubjectRecord(hashResult([])).detections).toBeUndefined();
+  });
 });
