@@ -1,4 +1,7 @@
-import type { SourceResult } from "./types";
+import { cloudProvider } from "./cloud";
+import { classifyIpLabel } from "./indicator-class";
+import { maliciousTags } from "./sources/shodan-internetdb";
+import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
 import type { SpriteSpec } from "./sprite";
 
 /**
@@ -93,10 +96,6 @@ export function seenRange(
     last: lasts.length ? isoDay(Math.max(...lasts)) : undefined,
   };
 }
-
-import { cloudProvider } from "./cloud";
-import { classifyIpLabel } from "./indicator-class";
-import type { CheckResult, DomainCheckResult, HashCheckResult } from "./types";
 
 export type AnyResult = CheckResult | DomainCheckResult | HashCheckResult;
 export type Resolver = (r: AnyResult) => Claim | null;
@@ -203,4 +202,87 @@ const INFRA: Resolver[] = [
 /** Who runs the box, from free, unmetered sources only. */
 export function infraClaim(r: AnyResult): Claim | null {
   return firstClaim(INFRA, r);
+}
+
+/** Feodo names the malware family, free and with no key. "Dridex C2" places the
+ *  host far better than the bare "c2" that survives classifyCategory today. */
+const fromFeodo: Resolver = (r) => {
+  const hit = ok(r.sources, "feodo");
+  if (!hit?.malicious) return null;
+  const family = str(hit.details?.malware);
+  return { label: family ? `${family} C2` : "Botnet C2", sources: ["feodo"] };
+};
+
+const fromTor: Resolver = (r) => {
+  const role = str(ok(r.sources, "tor-project")?.details?.role);
+  if (!role) return null;
+  return {
+    label: role === "exit" ? "Tor exit node" : "Tor relay",
+    sources: ["tor-project"],
+  };
+};
+
+const fromScannerId: Resolver = (r) => {
+  const operator = str(ok(r.sources, "scanner-id")?.details?.operator);
+  return operator
+    ? { label: `Research scanner, ${operator}`, sources: ["scanner-id"] }
+    : null;
+};
+
+/** How Shodan's own malicious-tag set reads as a sentence. The set is malware,
+ *  compromised, c2, phishing, botnet, honeypot; nothing else in `tags` is a
+ *  claim about the host itself. */
+const SHODAN_TAG_LABEL: Record<string, string> = {
+  honeypot: "Honeypot",
+  c2: "Command and control",
+  botnet: "Botnet node",
+  compromised: "Compromised host",
+  malware: "Malware host",
+  phishing: "Phishing host",
+};
+
+const fromShodanThreatTags: Resolver = (r) => {
+  const tags = strArr(ok(r.sources, "shodan-internetdb")?.details?.tags);
+  const first = maliciousTags(tags)[0]?.toLowerCase();
+  const label = first ? SHODAN_TAG_LABEL[first] : undefined;
+  return label ? { label, sources: ["shodan-internetdb"] } : null;
+};
+
+/** A category the adapter emits as its own constant, so matching the string is
+ *  matching the adapter, not guessing at a display name. */
+function fromCategory(id: string, category: string, label: string): Resolver {
+  return (r) => {
+    const cats = ok(r.sources, id)?.categories ?? [];
+    return cats.includes(category) ? { label, sources: [id] } : null;
+  };
+}
+
+/** geo.isProxy is a reconciled flag, same story as fromAsnTable: a key-gated
+ *  provider can outvote every free one in the weighted vote, so on a day only
+ *  they answer, the "fact" behind Anonymizer could be a key-gated pick. That
+ *  selects the anonymizer sprite body, so it moves the picture and needs the
+ *  same guard. (Contrast fromGeoFlags above, which reads isHosting unguarded:
+ *  its label maps to the hosting sprite body, which is also the IP fallback
+ *  body, so there's nothing the guard would protect.) */
+const fromProxyFlag: Resolver = (r) => {
+  const geo = geoOf(r);
+  if (!geo?.isProxy) return null;
+  const backers = geoResolutionOf(r)?.flags?.sources?.isProxy;
+  if (backers && !backedByFreeSource(r, backers)) return null;
+  return { label: "Anonymizer", sources: ["geo flags"] };
+};
+
+const THREAT: Resolver[] = [
+  fromFeodo,
+  fromTor,
+  fromScannerId,
+  fromShodanThreatTags,
+  fromCategory("spamhaus-drop", "criminal-netblock", "Criminal netblock"),
+  fromCategory("et-open", "compromised", "Compromised host"),
+  fromProxyFlag,
+];
+
+/** What the box is, from free, unmetered sources only. */
+export function threatClaim(r: AnyResult): Claim | null {
+  return firstClaim(THREAT, r);
 }

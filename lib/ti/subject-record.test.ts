@@ -277,3 +277,110 @@ describe("infraClaim", () => {
     expect(infraClaim(ipResult([]))).toBeNull();
   });
 });
+
+import { threatClaim } from "@/lib/ti/subject-record";
+
+/** A minimal GeoResolution carrying only what the free-source guard reads for
+ *  isProxy: which provider ids backed the winning flag. */
+function geoResolutionWithProxy(backers: string[]): NonNullable<CheckResult["geoResolution"]> {
+  return {
+    flags: { isHosting: false, isProxy: true, isMobile: false, sources: { isProxy: backers } },
+    providerCount: backers.length,
+  };
+}
+
+describe("threatClaim, IP rungs", () => {
+  it("names the family Feodo already knows", () => {
+    expect(
+      threatClaim(
+        ipResult([
+          src({
+            id: "feodo",
+            malicious: true,
+            categories: ["botnet-c2", "Dridex"],
+            details: { malware: "Dridex", port: 443, status: "online" },
+          }),
+        ]),
+      ),
+    ).toEqual({ label: "Dridex C2", sources: ["feodo"] });
+  });
+
+  it("falls back to a bare C2 when Feodo has no family for the hit", () => {
+    expect(
+      threatClaim(ipResult([src({ id: "feodo", malicious: true, details: { port: 443 } })])),
+    ).toEqual({ label: "Botnet C2", sources: ["feodo"] });
+  });
+
+  it("tells an exit node from a relay", () => {
+    expect(
+      threatClaim(ipResult([src({ id: "tor-project", details: { role: "exit" } })])),
+    ).toEqual({ label: "Tor exit node", sources: ["tor-project"] });
+    expect(
+      threatClaim(ipResult([src({ id: "tor-project", details: { role: "relay" } })])),
+    ).toEqual({ label: "Tor relay", sources: ["tor-project"] });
+  });
+
+  it("names the scanner operator the host's own PTR gave up", () => {
+    expect(
+      threatClaim(
+        ipResult([
+          src({
+            id: "scanner-id",
+            weight: 0,
+            details: { operator: "Censys", hostname: "scanner.censys.io" },
+          }),
+        ]),
+      ),
+    ).toEqual({ label: "Research scanner, Censys", sources: ["scanner-id"] });
+  });
+
+  it("reads only the tags Shodan treats as marking the host itself", () => {
+    expect(
+      threatClaim(
+        ipResult([src({ id: "shodan-internetdb", details: { tags: ["honeypot", "cdn"] } })]),
+      ),
+    ).toEqual({ label: "Honeypot", sources: ["shodan-internetdb"] });
+    // "cdn" alone is infrastructure, not a threat claim.
+    expect(
+      threatClaim(ipResult([src({ id: "shodan-internetdb", details: { tags: ["cdn"] } })])),
+    ).toBeNull();
+  });
+
+  it("reads the netblock and compromised-host rungs", () => {
+    expect(
+      threatClaim(ipResult([src({ id: "spamhaus-drop", categories: ["criminal-netblock"] })])),
+    ).toEqual({ label: "Criminal netblock", sources: ["spamhaus-drop"] });
+    expect(
+      threatClaim(ipResult([src({ id: "et-open", categories: ["compromised", "et-open"] })])),
+    ).toEqual({ label: "Compromised host", sources: ["et-open"] });
+  });
+
+  it("reads the proxy flag the infra ladder declined", () => {
+    expect(threatClaim(ipResult([], { isProxy: true }))).toEqual({
+      label: "Anonymizer",
+      sources: ["geo flags"],
+    });
+  });
+
+  it("ignores a source that timed out", () => {
+    expect(
+      threatClaim(
+        ipResult([src({ id: "feodo", status: "timeout", details: { malware: "Dridex" } })]),
+      ),
+    ).toBeNull();
+  });
+
+  it("#37 again: declines the Anonymizer claim when isProxy is backed only by key-gated sources", () => {
+    // Mirrors fromAsnTable's guard: geo.isProxy is a reconciled flag, not one
+    // source's field, and a key-gated provider can outvote every free one. If
+    // fromProxyFlag's guard were removed this would wrongly return Anonymizer.
+    const claim = threatClaim(
+      ipResult(
+        [src({ id: "ipinfo", requiresKey: true })],
+        { isProxy: true },
+        geoResolutionWithProxy(["ipinfo"]),
+      ),
+    );
+    expect(claim).toBeNull();
+  });
+});
