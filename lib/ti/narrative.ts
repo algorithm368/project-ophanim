@@ -504,8 +504,8 @@ export function threatSentences(
  * profile card shows both trait chips, so collapsing to "anonymizer" alone
  * would drop the datacenter context (issue #9). No flag at all means ip-api
  * did not classify the address, which is "unclassified" rather than positive
- * evidence of an end-user network, so the last case hedges the way
- * classifyType() does instead of asserting it (issue #10).
+ * evidence of an end-user network, so the last case hedges rather than
+ * asserts (issue #10).
  */
 function addressType(geo: GeoContext): { phrase: string; tail: string } {
   if (geo.isProxy) {

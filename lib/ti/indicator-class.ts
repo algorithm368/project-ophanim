@@ -1,9 +1,9 @@
 import type { DomainContext, GeoContext, HashContext } from "./types";
 
-/** What an indicator is, in one short label plus a sentence of why. The icon
- *  that used to travel with these lives in components/CheckResults/classify.ts,
- *  which now wraps these functions. Splitting them is what lets lib/ and the
- *  coverage scope reach the labels. */
+/** What an indicator is, in one short label plus a sentence of why. These
+ *  functions live in lib/ so lib/ti/subject-record.ts and the coverage scope
+ *  can reach them; the icon that used to pair with each label lived in
+ *  components/CheckResults/classify.ts, which is gone along with its callers. */
 export type IndicatorClass = { label: string; desc: string };
 
 /** Classify an IP from the geo provider flags. */
