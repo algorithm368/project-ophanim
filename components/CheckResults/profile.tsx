@@ -19,22 +19,18 @@ import {
     hashBehaviorSummary,
 } from "@/lib/ti/narrative";
 import { describeDll } from "@/lib/ti/dll-dictionary";
+import { buildSubjectRecord } from "@/lib/ti/subject-record";
 import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-    classifyDomain,
-    classifyHash,
-    domainTone,
-} from "./classify";
 import {
     Field,
     PivotList,
     SectionHeading,
     useCopied,
 } from "./primitives";
-import type { IconType } from "./types";
+import { SubjectMasthead, SubjectMastheadSkeleton } from "./record";
 
 /** A flat group of related fields: a small uppercase label over hairline-
  *  separated rows. The minimal, borderless replacement for the old bento cell —
@@ -55,50 +51,6 @@ function Group({ label, children }: Readonly<{ label: string; children: ReactNod
 /** A hairline rule used to separate the identity line from the field groups. */
 export function Rule() {
     return <div className="h-px bg-foreground/10" />;
-}
-
-/** Compact classification header for the domain / hash profile cards: a small
- *  tinted icon, the type label, and a one-line plain-language description. */
-function IdentityHeader({
-    icon: Icon,
-    label,
-    desc,
-    tone,
-}: Readonly<{
-    icon?: IconType;
-    label: string;
-    desc?: string;
-    tone?: string;
-}>) {
-    return (
-        <div className="flex items-start gap-3">
-            {Icon && (
-                <span
-                    className={cn(
-                        "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background",
-                        tone,
-                    )}
-                >
-                    <Icon className="size-5" />
-                </span>
-            )}
-            <div className="min-w-0">
-                <div
-                    className={cn(
-                        "text-lg font-bold leading-tight tracking-tight",
-                        tone,
-                    )}
-                >
-                    {label}
-                </div>
-                {desc && (
-                    <div className="mt-0.5 text-sm text-muted-foreground">
-                        {desc}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
 }
 
 type DomainContextOf = NonNullable<DomainCheckResult["context"]>;
@@ -287,11 +239,8 @@ export function DomainProfileCard({
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-4">
-                    <SectionHeading icon={Globe}>Registration &amp; DNS</SectionHeading>
-                    <div className="flex items-center gap-3">
-                        <span className="sweep h-9 w-9 shrink-0 rounded-md" />
-                        <span className="sweep h-5 w-40 rounded" />
-                    </div>
+                    <SectionHeading icon={Globe}>Subject record</SectionHeading>
+                    <SubjectMastheadSkeleton />
                     <div className="space-y-2">
                         <span className="sweep block h-3 w-full rounded" />
                         <span className="sweep block h-3 w-5/6 rounded" />
@@ -303,27 +252,14 @@ export function DomainProfileCard({
     }
 
     const ctx = result.context;
-    const resolves =
-        (ctx?.resolvedIps?.length ?? 0) > 0 || (ctx?.ipv6?.length ?? 0) > 0;
-    const type = classifyDomain(ctx, resolves);
-    const tone = domainTone(type.label);
+    const record = buildSubjectRecord(result);
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading
-                    icon={Globe}
-                    action={
-                        <code className="rounded-sm border border-foreground/15 bg-muted/60 px-2.5 py-1 font-mono text-xs font-semibold tracking-tight">
-                            {result.domain}
-                        </code>
-                    }
-                >
-                    Registration &amp; DNS
-                </SectionHeading>
+                <SectionHeading icon={Globe}>Subject record</SectionHeading>
 
-                {/* Classification identity header (no icon, per design). */}
-                <IdentityHeader label={type.label} desc={type.desc} tone={tone} />
+                <SubjectMasthead record={record} verdict={result.verdict} />
 
                 {ctx ? (
                     <div className="space-y-4">
@@ -365,28 +301,6 @@ function CopyHashButton({ value }: Readonly<{ value: string }>) {
                 <Copy className="size-3.5" />
             )}
         </Button>
-    );
-}
-
-/** A minimal verdict marker, the one place this card carries color: filled red
- *  for a flagged file, filled neutral for a known but unflagged file, and a
- *  hollow ring for an unknown one, so the verdict reads at a glance. */
-export function StatusDot({
-    kind,
-}: Readonly<{
-    kind: "malicious" | "clean" | "known" | "unknown";
-}>) {
-    return (
-        <span
-            aria-hidden
-            className={cn(
-                "mt-[7px] size-2.5 shrink-0 rounded-full",
-                kind === "malicious" && "bg-red-500 dark:bg-red-400",
-                kind === "clean" && "bg-emerald-500 dark:bg-emerald-400",
-                kind === "known" && "bg-foreground/40",
-                kind === "unknown" && "border-[1.5px] border-muted-foreground/50",
-            )}
-        />
     );
 }
 
@@ -743,83 +657,6 @@ function refLabel(href: string): string {
     }
 }
 
-/** Substring, normalized-category pairs. Ordered so more specific tokens are
- *  listed first; substrings must not overlap (e.g. no bare "loader" that would
- *  also fire on "downloader"). */
-const CATEGORY_TOKENS: { match: string; label: string }[] = [
-    { match: "ransomware", label: "ransomware" },
-    { match: "ransom", label: "ransomware" },
-    { match: "downloader", label: "downloader" },
-    { match: "dropper", label: "dropper" },
-    { match: "backdoor", label: "backdoor" },
-    { match: "keylog", label: "keylogger" },
-    { match: "spyware", label: "spyware" },
-    { match: "adware", label: "adware" },
-    { match: "rootkit", label: "rootkit" },
-    { match: "worm", label: "worm" },
-    { match: "banker", label: "banker" },
-    { match: "stealer", label: "stealer" },
-    { match: "miner", label: "miner" },
-    { match: "inject", label: "injector" },
-    { match: "trojan", label: "trojan" },
-    { match: "botnet", label: "botnet" },
-    { match: "exploit", label: "exploit" },
-    { match: "riskware", label: "riskware" },
-    { match: "clicker", label: "clicker" },
-    { match: "hacktool", label: "hacktool" },
-];
-
-/** Summarize what a file is from its engine detection labels: the malware
- *  categories the engines keep naming, most frequent first, capped at four.
- *  Turns a wall of vendor strings into an at-a-glance read. Detection labels
- *  only, not tags, which are often joke or user labels (EICAR's are nonsense). */
-function deriveCategories(labels: string[]): string[] {
-    const haystack = labels.map((s) => s.toLowerCase());
-    const counts = new Map<string, number>();
-    for (const { match, label } of CATEGORY_TOKENS) {
-        const n = haystack.filter((s) => s.includes(match)).length;
-        if (n > 0) counts.set(label, (counts.get(label) ?? 0) + n);
-    }
-    return [...counts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4)
-        .map(([label]) => label);
-}
-
-/** `N of M flagged` engines chip, shown in the identity header. */
-function EnginesChip({ malicious, total }: Readonly<{ malicious: number; total: number }>) {
-    return (
-        <code className="ml-auto shrink-0 rounded-sm border border-foreground/15 bg-muted/60 px-2 py-0.5 font-mono text-[11px] font-semibold tracking-tight text-foreground/80">
-            {malicious} / {total} flagged
-        </code>
-    );
-}
-
-type HashKind = "malicious" | "clean" | "known" | "unknown";
-
-/**
- * How severe the hash card reads.
- *
- * The signal follows the actual verdict, not just whether a family label
- * exists: otherwise a clean file that has one (EICAR) looks malicious, and a
- * malicious file without one (a flagged script) looks benign. "unknown" is
- * reserved for a file nothing recognized at all, so an unrecognized hash and a
- * recognized-but-unflagged one stay distinguishable.
- */
-function hashKind(verdict: HashCheckResult["verdict"], known: boolean): HashKind {
-    if (verdict === "malicious" || verdict === "suspicious") return "malicious";
-    if (verdict === "clean") return "clean";
-    if (verdict === "unknown" && !known) return "unknown";
-    return "known";
-}
-
-const HASH_KIND_TONE: Record<HashKind, string> = {
-    malicious: "text-red-600 dark:text-red-400",
-    clean: "text-emerald-600 dark:text-emerald-400",
-    known: "text-foreground/80",
-    unknown: "text-foreground/80",
-};
-
 export function HashProfileCard({
     result,
     streaming = false,
@@ -833,14 +670,8 @@ export function HashProfileCard({
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-4">
-                    <SectionHeading icon={FileDigit}>File identity</SectionHeading>
-                    <div className="flex items-start gap-3">
-                        <span className="sweep mt-0.5 size-2.5 shrink-0 rounded-full" />
-                        <div className="min-w-0 flex-1 space-y-2">
-                            <span className="sweep inline-block h-5 w-32 rounded" />
-                            <span className="sweep block h-3 w-2/3 rounded" />
-                        </div>
-                    </div>
+                    <SectionHeading icon={FileDigit}>Subject record</SectionHeading>
+                    <SubjectMastheadSkeleton />
                     <div className="space-y-2">
                         <span className="sweep block h-3 w-full rounded" />
                         <span className="sweep block h-3 w-5/6 rounded" />
@@ -851,12 +682,7 @@ export function HashProfileCard({
     }
 
     const ctx = result.context;
-    const hasData = result.sources.some(
-        (s) => s.status === "ok" && s.score !== undefined,
-    );
-    const type = classifyHash(ctx, hasData);
-    const kind = hashKind(result.verdict, Boolean(ctx));
-    const tone = HASH_KIND_TONE[kind];
+    const record = buildSubjectRecord(result);
 
     const size = formatBytes(ctx?.fileSize);
     const firstSeen = formatDate(ctx?.firstSeen);
@@ -889,12 +715,9 @@ export function HashProfileCard({
     const behaviorSummary = isClean ? undefined : hashBehaviorSummary(ctx);
     const dlls = ctx?.importedDlls ?? [];
     const refs = ctx?.familyRefs ?? [];
-    // Full set drives category derivation; the tidied set is what we display.
+    // Deduplicated before the noise filter below tidies the labels for display.
     const detectionsAll = [...new Set(ctx?.detectionNames ?? [])];
     const detections = tidyDetections(detectionsAll);
-    const ratio = ctx?.detectionRatio;
-    // A named YARA rule with a named author is a lead an analyst can follow;
-    // a detection ratio is a number to quote. They belong side by side.
     const yaraRules = [
         ...new Set(
             (result.sources.find((s) => s.source.id === "yaraify")?.details
@@ -919,7 +742,6 @@ export function HashProfileCard({
         extraTech.length === 0 &&
         dlls.length === 0 &&
         !ctx?.sandboxBehavior;
-    const categories = deriveCategories(detectionsAll);
     const hasIdentityFacts = Boolean(
         ctx?.fileName || ctx?.fileType || size || firstSeen || lastSeen,
     );
@@ -927,56 +749,9 @@ export function HashProfileCard({
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading
-                    icon={FileDigit}
-                    action={
-                        <code className="rounded-sm border border-foreground/15 bg-muted/60 px-2.5 py-1 font-mono text-xs font-semibold tracking-tight">
-                            {HASH_ALGO_LABEL[result.algorithm]}
-                        </code>
-                    }
-                >
-                    File identity
-                </SectionHeading>
+                <SectionHeading icon={FileDigit}>Subject record</SectionHeading>
 
-                {/* Header: verdict dot, family, at-a-glance categories + tally. */}
-                <div className="flex items-start gap-3">
-                    <StatusDot kind={kind} />
-                    <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                            <span
-                                className={cn(
-                                    "text-lg font-bold uppercase leading-tight tracking-tight",
-                                    tone,
-                                )}
-                            >
-                                {type.label}
-                            </span>
-                            {ratio && (
-                                <EnginesChip
-                                    malicious={ratio.malicious}
-                                    total={ratio.total}
-                                />
-                            )}
-                        </div>
-                        {type.desc && (
-                            <div className="mt-0.5 text-sm text-muted-foreground">
-                                {type.desc}
-                            </div>
-                        )}
-                        {categories.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                {categories.map((c) => (
-                                    <span
-                                        key={c}
-                                        className="inline-flex items-center rounded-md border border-foreground/15 bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground/75"
-                                    >
-                                        {c}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
+                <SubjectMasthead record={record} verdict={result.verdict} />
 
                 {/* Plain-language lead: what it does, then the family write-up. */}
                 {behaviorSummary && (
