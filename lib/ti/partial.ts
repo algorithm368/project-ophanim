@@ -8,7 +8,7 @@ import type { GeoContext, SourceMeta, SourceResult } from "./types";
  * answered. Nothing here needs the whole panel, which is the line the spec
  * draws: a count is honest while incomplete, a score is not.
  */
-export interface PartialCounts {
+interface PartialCounts {
   /** Size of the panel, from the stream's `start` event. */
   total: number;
   /** How many of the panel are detectors, i.e. sources whose weight lets them

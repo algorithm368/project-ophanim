@@ -20,7 +20,7 @@ export function rdapIpToGeo(data: RdapIpResponse): GeoContext {
 }
 
 /** Whole-day age of the allocation from its RDAP "registration" event. */
-export function allocationAgeDays(
+function allocationAgeDays(
   events: RdapIpResponse["events"],
   now = Date.now(),
 ): number | undefined {

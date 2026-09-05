@@ -11,7 +11,7 @@ interface SbResponse {
   error?: { message?: string };
 }
 
-export const THREAT_LABEL: Record<string, string> = {
+const THREAT_LABEL: Record<string, string> = {
   MALWARE: "malware",
   SOCIAL_ENGINEERING: "phishing",
   UNWANTED_SOFTWARE: "unwanted software",

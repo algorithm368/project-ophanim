@@ -170,8 +170,7 @@ export function SectionHeading({
 
 /** One labeled datum, rendered as an aligned readout row: a fixed label column
  *  on the left, the value flowing in the column beside it. Stacks label-over-value
- *  on narrow screens. Grouped under a <FieldGroup> for a scannable, report-style
- *  layout — no per-field boxes or icons. */
+ *  on narrow screens. No per-field boxes or icons. */
 export function Field({
     label,
     children,
@@ -238,49 +237,3 @@ export function Field({
     );
 }
 
-/** A bordered "bento" cell with an uppercase section label — the building block
- *  of the report's left-to-right grid. Pass `span` to make a cell occupy the
- *  full grid width (for groups with long values that shouldn't be cramped). */
-export function BentoCell({
-    label,
-    children,
-    span = false,
-}: Readonly<{
-    label: string;
-    children: ReactNode;
-    span?: boolean;
-}>) {
-    return (
-        <div
-            className={cn(
-                "rounded-xl border border-foreground/10 bg-muted/30 p-3.5",
-                span && "sm:col-span-2",
-            )}
-        >
-            <div className="mb-2 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                {label}
-            </div>
-            {children}
-        </div>
-    );
-}
-
-/** A labeled sub-section of related fields, rendered as a bento cell of aligned
- *  <Field> rows separated by hairlines. Pass `span` for full-width groups. */
-export function FieldGroup({
-    label,
-    children,
-    span = false,
-}: Readonly<{
-    label: string;
-    children: ReactNode;
-    span?: boolean;
-}>) {
-    return (
-        <BentoCell label={label} span={span}>
-            <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
-                {children}
-            </dl>
-        </BentoCell>
-    );
-}

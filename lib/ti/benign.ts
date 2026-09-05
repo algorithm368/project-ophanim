@@ -26,12 +26,6 @@ const EMPTY_FILE = new Set<string>([
   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", // sha256
 ]);
 
-/** Every hash the aggregate forces to clean, whatever the sources say. */
-export const KNOWN_BENIGN_HASHES = new Set<string>([
-  ...TEST_ARTIFACTS,
-  ...EMPTY_FILE,
-]);
-
 export type BenignReason = "eicar-test-file" | "empty-file";
 
 /** Returns a stable marker for a known-benign hash, else undefined. */

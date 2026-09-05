@@ -1,20 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import { SignalHigh, SignalLow, SignalMedium } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Confidence, GeoResolution, ResolvedField } from "@/lib/ti/types";
+import type { Confidence, GeoResolution } from "@/lib/ti/types";
 import type { IconType } from "./types";
 
 /** Fixed three-letter codes so the confidence levels are equal width in mono. */
-export const CONF_ABBR: Record<Confidence, string> = {
+const CONF_ABBR: Record<Confidence, string> = {
   high: "HIG",
   medium: "MED",
   low: "LOW",
 };
 
 /** Plain signal-strength icon, bars reflecting the level. */
-export const CONF_ICON: Record<Confidence, IconType> = {
+const CONF_ICON: Record<Confidence, IconType> = {
   high: SignalHigh,
   medium: SignalMedium,
   low: SignalLow,
@@ -96,33 +95,4 @@ export function geoConfidenceReason(res: GeoResolution): string {
     }
   }
   return parts.join(", ");
-}
-
-/** Tappable disclosure of which providers disagreed on a field. */
-export function Disagreement<T>({ field }: Readonly<{ field: ResolvedField<T> }>) {
-  const [open, setOpen] = useState(false);
-  const alts = field.alternatives;
-  if (!alts || alts.length === 0) return null;
-  const dissenters = alts.reduce((n, a) => n + a.sources.length, 0);
-
-  return (
-    <span className="ml-2 align-middle text-[11px]">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="underline decoration-dotted underline-offset-2 text-muted-foreground transition-colors hover:text-foreground"
-      >
-        {field.sources.length} agree · {dissenters} disagree
-      </button>
-      {open && (
-        <ul className="mt-1 space-y-0.5 text-muted-foreground">
-          {alts.map((a) => (
-            <li key={String(a.value)}>
-              {String(a.value)}, {a.sources.join(", ")}
-            </li>
-          ))}
-        </ul>
-      )}
-    </span>
-  );
 }

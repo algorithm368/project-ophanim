@@ -241,7 +241,7 @@ export interface ResolvedField<T> {
   alternatives?: { value: T; sources: string[] }[];
 }
 
-export interface GeoFlags {
+interface GeoFlags {
   isHosting: boolean;
   isProxy: boolean;
   isMobile: boolean;

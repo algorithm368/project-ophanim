@@ -314,7 +314,7 @@ function CopyHashButton({ value }: Readonly<{ value: string }>) {
 /** One aligned readout row: a fixed lowercase label column, the value beside it,
  *  and an optional trailing action (e.g. a copy button). Every row shares the
  *  same label width so the whole card reads as a single column. */
-export function HashRow({
+function HashRow({
     label,
     hint,
     mono = false,

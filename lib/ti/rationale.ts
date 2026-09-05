@@ -16,7 +16,7 @@ import type { ScoreBreakdown, SourceResult } from "./types";
  * source, and a sentence saying so both repeats the row above it and editorial-
  * ises on top of it.
  */
-export interface RationaleTerm {
+interface RationaleTerm {
   label: string;
   /** A string only where the fact genuinely is not a number. */
   value: number | string;

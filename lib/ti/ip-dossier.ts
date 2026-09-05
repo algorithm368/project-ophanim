@@ -9,12 +9,12 @@ import { cpeLabel } from "@/lib/cpe";
 import { relationsFor } from "@/lib/relations";
 import { count } from "@/lib/text";
 
-export type DossierField = { label: string; value: string; hint?: string; mono?: boolean };
+type DossierField = { label: string; value: string; hint?: string; mono?: boolean };
 export type DossierGroup = { id: string; title: string; fields: DossierField[] };
 export type IpDossier = { groups: DossierGroup[]; footer: string };
 
 /** Find a settled source result by its registry id. */
-export function findFinding(result: CheckResult, id: string): SourceResult | undefined {
+function findFinding(result: CheckResult, id: string): SourceResult | undefined {
   return result.sources.find((s) => s.source.id === id);
 }
 

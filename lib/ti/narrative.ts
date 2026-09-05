@@ -172,7 +172,7 @@ export function aggregateCategories(
   return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }
 
-export function joinPlace(parts: (string | undefined)[]): string {
+function joinPlace(parts: (string | undefined)[]): string {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const p of parts) {

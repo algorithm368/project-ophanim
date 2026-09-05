@@ -1,6 +1,6 @@
 import { getJson } from "../http";
 
-export interface DohAnswer {
+interface DohAnswer {
   name?: string;
   type?: number;
   data?: string;

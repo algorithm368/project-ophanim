@@ -260,7 +260,7 @@ export const RELATION_META: Record<string, { label: string; description: string 
   },
 };
 
-export const RELATION_ORDER = [
+const RELATION_ORDER = [
   "contacts",
   "drops",
   "parent",

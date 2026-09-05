@@ -47,7 +47,7 @@ export type SubjectRecord = {
 /** A settled, successful row for a given source id. A timed-out or errored
  *  source must not back a claim, which is why the status is checked here rather
  *  than at each call site. */
-export function ok(sources: SourceResult[], id: string): SourceResult | undefined {
+function ok(sources: SourceResult[], id: string): SourceResult | undefined {
   return sources.find((s) => s.source.id === id && s.status === "ok");
 }
 
@@ -108,12 +108,12 @@ export function seenRange(
 }
 
 export type AnyResult = CheckResult | DomainCheckResult | HashCheckResult;
-export type Resolver = (r: AnyResult) => Claim | null;
+type Resolver = (r: AnyResult) => Claim | null;
 
 /** First resolver that answers wins. Written as a reduce rather than a chain of
  *  ifs so the ladder stays one statement and S3776 stays flat however long it
  *  gets. */
-export function firstClaim(resolvers: Resolver[], r: AnyResult): Claim | null {
+function firstClaim(resolvers: Resolver[], r: AnyResult): Claim | null {
   return resolvers.reduce<Claim | null>((hit, f) => hit ?? f(r), null);
 }
 
