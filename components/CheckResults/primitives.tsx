@@ -221,11 +221,11 @@ export function Field({
     // values keep the aligned label→value columns.
     if (wrap) {
         return (
-            <div className="py-1.5">
+            <div className="py-1">
                 {labelEl}
                 <dd
                     className={cn(
-                        "mt-1 min-w-0 text-sm font-medium",
+                        "mt-0.5 min-w-0 text-sm",
                         tone ?? "text-foreground",
                     )}
                 >
@@ -236,11 +236,11 @@ export function Field({
     }
 
     return (
-        <div className="flex flex-col gap-x-3 gap-y-0.5 py-1.5 sm:flex-row sm:items-baseline">
+        <div className="flex flex-col gap-x-3 gap-y-0.5 py-1 sm:flex-row sm:items-baseline">
             {labelEl}
             <dd
                 className={cn(
-                    "min-w-0 flex-1 truncate text-sm font-medium",
+                    "min-w-0 flex-1 truncate text-sm",
                     tone ?? "text-foreground",
                 )}
             >
