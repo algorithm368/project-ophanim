@@ -24,9 +24,20 @@ interface GcpRanges {
   prefixes?: { ipv4Prefix?: string; service?: string; scope?: string }[];
 }
 
+interface AzureRanges {
+  values?: {
+    properties?: { region?: string; systemService?: string; addressPrefixes?: string[] };
+  }[];
+}
+
 const AWS_URL = "https://ip-ranges.amazonaws.com/ip-ranges.json";
 const GCP_URL = "https://www.gstatic.com/ipranges/cloud.json";
 const CLOUDFLARE_URL = "https://www.cloudflare.com/ips-v4";
+// Microsoft publishes no stable URL for the ranges file itself: this page
+// serves a new ServiceTags_Public_<date>.json link every week, so fetching
+// Azure is two hops - read the page, then follow the link it names today.
+const AZURE_INDEX_URL =
+  "https://www.microsoft.com/en-us/download/confirmation.aspx?id=56519";
 
 // Providers publish these on a schedule measured in hours, and the cost of a
 // stale entry is a slightly wrong label, so the refresh is lazy and generous.
@@ -110,6 +121,43 @@ export function parseCloudflare(text: string): CloudPrefix[] {
     .map((cidr) => ({ cidr, provider: "Cloudflare" }));
 }
 
+/**
+ * Service tags cover both address families; only IPv4 is in scope here, the
+ * same restriction `ipv4ToInt`/`inCidr` already carry. A region-only breakdown
+ * of the umbrella tag ("AzureCloud.eastus") has no `systemService` of its own,
+ * so it passes through with `service` undefined exactly like AWS's broad
+ * "AMAZON" catch-all - `matchPrefix` still prefers it over the umbrella tag
+ * when it is the narrower block, so the region survives even without a name.
+ */
+export function parseAzure(data: AzureRanges): CloudPrefix[] {
+  const prefixes: CloudPrefix[] = [];
+  for (const v of data.values ?? []) {
+    const region = v.properties?.region || undefined;
+    const service = v.properties?.systemService || undefined;
+    for (const cidr of v.properties?.addressPrefixes ?? []) {
+      if (cidr.includes(":")) continue;
+      prefixes.push({ cidr, provider: "Microsoft Azure", region, service });
+    }
+  }
+  return prefixes;
+}
+
+/** The page embeds today's dated JSON link in more than one place (a script
+ *  blob and the download button's href); the first match is enough. */
+export function extractAzureJsonUrl(html: string): string | undefined {
+  return html.match(/https:\/\/download\.microsoft\.com\/download\/[^"'\s]+\.json/i)?.[0];
+}
+
+/** Two sequential hops because the JSON has no stable URL; a failure at either
+ *  one drops only Azure, same as every other provider below. */
+async function fetchAzurePrefixes(signal: AbortSignal): Promise<CloudPrefix[]> {
+  const index = await getText(AZURE_INDEX_URL, signal);
+  const jsonUrl = index.ok ? extractAzureJsonUrl(index.text) : undefined;
+  if (!jsonUrl) return [];
+  const data = await getJson<AzureRanges>(jsonUrl, signal);
+  return data.ok && data.data ? parseAzure(data.data) : [];
+}
+
 let cache: { prefixes: CloudPrefix[]; fetchedAt: number } | null = null;
 
 /**
@@ -118,10 +166,11 @@ let cache: { prefixes: CloudPrefix[]; fetchedAt: number } | null = null;
  * respond, and the ASN table in `cloud.ts` still covers the rest.
  */
 const download = sharedLoader(async (signal): Promise<CloudPrefix[]> => {
-  const [aws, gcp, cloudflare] = await Promise.allSettled([
+  const [aws, gcp, cloudflare, azure] = await Promise.allSettled([
     getJson<AwsRanges>(AWS_URL, signal),
     getJson<GcpRanges>(GCP_URL, signal),
     getText(CLOUDFLARE_URL, signal),
+    fetchAzurePrefixes(signal),
   ]);
 
   const prefixes: CloudPrefix[] = [];
@@ -133,6 +182,9 @@ const download = sharedLoader(async (signal): Promise<CloudPrefix[]> => {
   }
   if (cloudflare.status === "fulfilled" && cloudflare.value.ok) {
     prefixes.push(...parseCloudflare(cloudflare.value.text ?? ""));
+  }
+  if (azure.status === "fulfilled") {
+    prefixes.push(...azure.value);
   }
 
   // Only cache a useful answer, so a total outage retries on the next lookup

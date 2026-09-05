@@ -28,6 +28,28 @@ const GCP = {
   text: "",
 };
 const CF = { ok: true, status: 200, data: null, text: "104.16.0.0/13\n" };
+const AZURE_INDEX = {
+  ok: true,
+  status: 200,
+  data: null,
+  text: '<a href="https://download.microsoft.com/download/x/ServiceTags_Public_20260901.json">Download</a>',
+};
+const AZURE_JSON = {
+  ok: true,
+  status: 200,
+  data: {
+    values: [
+      {
+        properties: {
+          region: "eastus",
+          systemService: "AzureStorage",
+          addressPrefixes: ["20.60.0.0/16"],
+        },
+      },
+    ],
+  },
+  text: "",
+};
 
 describe("cloudPrefixes", () => {
   afterEach(() => {
@@ -48,6 +70,24 @@ describe("cloudPrefixes", () => {
       "Cloudflare",
       "Google Cloud",
     ]);
+  });
+
+  it("also merges Azure once the index page names this week's file", async () => {
+    vi.mocked(getJson).mockImplementation(async (url: string) => {
+      if (url.includes("amazonaws")) return AWS;
+      if (url.includes("download.microsoft.com")) return AZURE_JSON;
+      return GCP;
+    });
+    vi.mocked(getText).mockImplementation(async (url: string) =>
+      url.includes("cloudflare.com") ? CF : AZURE_INDEX,
+    );
+    const prefixes = await cloudPrefixes(signal());
+    expect(prefixes).toContainEqual({
+      cidr: "20.60.0.0/16",
+      provider: "Microsoft Azure",
+      region: "eastus",
+      service: "AzureStorage",
+    });
   });
 
   it("drops only the provider that failed", async () => {
