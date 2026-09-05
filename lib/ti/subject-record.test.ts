@@ -564,6 +564,119 @@ describe("originOf", () => {
   });
 });
 
+import { priorsOf } from "@/lib/ti/subject-record";
+import type { ThreatTypeVerdict } from "@/lib/ti/threat-type";
+
+describe("priorsOf", () => {
+  it("rung 1: counts AbuseIPDB's own report taxonomy, not the tor tag it also carries", () => {
+    const claim = priorsOf(
+      ipResult([
+        src({
+          id: "abuseipdb",
+          malicious: true,
+          categories: ["tor", "Fixed Line ISP", "web app attack", "hacking", "brute-force"],
+          details: {
+            totalReports: 148,
+            reportCategories: [
+              { name: "Web App Attack", count: 70 },
+              { name: "Hacking", count: 49 },
+              { name: "Brute-Force", count: 18 },
+              { name: "Port Scan", count: 9 },
+            ],
+          },
+        }),
+      ]),
+      null,
+      { label: "Tor exit node", sources: ["tor-project"] },
+    );
+    expect(claim).toEqual({
+      label: "148 reports, led by web app attack (70), hacking (49), brute force (18)",
+      sources: ["abuseipdb"],
+      also: [],
+    });
+  });
+
+  it("rung 2: falls back to the behaviour ballot when AbuseIPDB has no report breakdown", () => {
+    const behaviour: ThreatTypeVerdict = { type: "brute force", sources: ["otx"], also: ["scanner"] };
+    const claim = priorsOf(ipResult([]), behaviour, { label: "Hosting / Datacenter", sources: [] });
+    expect(claim).toEqual({ label: "Brute force", sources: ["otx"], also: ["scanner"] });
+  });
+
+  it("rung 3: names who flagged it, with a vendor count, when VirusTotal alone floored the score", () => {
+    const flagged = ipResult([
+      src({
+        id: "virustotal",
+        malicious: true,
+        score: 100,
+        details: { maliciousVendors: 15, totalVendors: 91 },
+      }),
+    ]);
+    flagged.verdict = "malicious";
+    flagged.scoreBreakdown = {
+      effectiveMax: 100,
+      weightedAvg: 15,
+      floorApplied: true,
+      flooredBy: "virustotal",
+      floorValue: 75,
+      borderline: true,
+      allowlistSuppressed: false,
+    };
+    const claim = priorsOf(flagged, null, { label: "Hosting / Datacenter", sources: ["geo flags"] });
+    expect(claim).toEqual({
+      label: "Flagged by virustotal (15 of 91 vendors)",
+      sources: ["virustotal"],
+      also: [],
+    });
+  });
+
+  it("rung 3: names a non-VirusTotal flooring source without a count it cannot generically read", () => {
+    const flagged = ipResult([src({ id: "feodo", malicious: true })]);
+    flagged.verdict = "malicious";
+    flagged.scoreBreakdown = {
+      effectiveMax: 100,
+      weightedAvg: 60,
+      floorApplied: true,
+      flooredBy: "feodo",
+      floorValue: 75,
+      borderline: false,
+      allowlistSuppressed: false,
+    };
+    const claim = priorsOf(flagged, null, { label: "Hosting / Datacenter", sources: [] });
+    expect(claim).toEqual({ label: "Flagged by feodo", sources: ["feodo"], also: [] });
+  });
+
+  it("rung 4: says so when there is nothing to charge", () => {
+    const clean = ipResult([]);
+    clean.verdict = "clean";
+    expect(priorsOf(clean, null, { label: "Hosting / Datacenter", sources: [] })).toEqual({
+      label: "No record",
+      sources: [],
+      also: [],
+    });
+  });
+
+  it("rung 4: names the Tranco voucher when CLASS did not already claim it", () => {
+    const clean = domainResult([src({ id: "tranco", details: { rank: 412, vouched: true } })]);
+    clean.verdict = "clean";
+    const claim = priorsOf(clean, null, { label: "Hosting / Datacenter", sources: [] });
+    expect(claim).toEqual({
+      label: "No record, vouched by Tranco (rank 412)",
+      sources: ["tranco"],
+      also: [],
+    });
+  });
+
+  it("rung 4: does not repeat Tranco's vouch when CLASS already carries it", () => {
+    const clean = domainResult([src({ id: "tranco", details: { rank: 1, vouched: true } })]);
+    clean.verdict = "clean";
+    const claim = priorsOf(clean, null, {
+      label: "Popular domain, Tranco rank 1",
+      sources: ["tranco"],
+    });
+    expect(claim).toEqual({ label: "No record", sources: [], also: [] });
+  });
+});
+
 describe("lastResortClaim", () => {
   it("vouches for a domain in the Tranco top million", () => {
     expect(

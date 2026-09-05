@@ -3,6 +3,7 @@ import { HASH_ALGO_LABEL } from "../hash";
 import { classifyDomainLabel, classifyHashLabel, classifyIpLabel } from "./indicator-class";
 import { maliciousTags } from "./sources/shodan-internetdb";
 import { IDENTIFIERS, threatTypeOf } from "./threat-type";
+import type { ThreatTypeVerdict } from "./threat-type";
 import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
 import type { BodyKey, MarkKey, SpriteSpec } from "./sprite";
 
@@ -489,6 +490,128 @@ export function originOf(r: AnyResult): Origin | undefined {
     .filter(Boolean)
     .join(", ");
   return { label, sources: [] };
+}
+
+type ReportCategory = { name: string; count: number };
+
+/** AbuseIPDB's own named report-reason tally, count descending (already
+ *  sorted by categoryBreakdown in lib/ti/sources/abuseipdb.ts) — never the
+ *  `categories` array a `tor` tag can slip into. */
+function reportCategoriesOf(details: Record<string, unknown> | undefined): ReportCategory[] {
+  const raw = details?.reportCategories;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (c): c is ReportCategory =>
+      typeof c === "object" &&
+      c !== null &&
+      typeof (c as ReportCategory).name === "string" &&
+      typeof (c as ReportCategory).count === "number",
+  );
+}
+
+/**
+ * Rung 1: counted charges. The report total leads the label rather than
+ * living in the provenance line, which is a bare list of source ids
+ * everywhere else in this file. The three shown counts do not have to sum to
+ * the total (one report can carry several categories), so "led by", not
+ * "for": these are the largest buckets, not claimed to be all of them.
+ */
+function fromAbuseReports(r: AnyResult): (Claim & { also: string[] }) | null {
+  const hit = ok(r.sources, "abuseipdb");
+  const total = hit?.details?.totalReports;
+  const cats = reportCategoriesOf(hit?.details);
+  if (typeof total !== "number" || cats.length === 0) return null;
+  // AbuseIPDB's own category names hyphenate ("Brute-Force"); every other
+  // label on this card reads as natural prose, so the hyphen is normalized to
+  // a space alongside the lowercasing, not just lowercased in place.
+  const top = cats
+    .slice(0, 3)
+    .map((c) => `${c.name.toLowerCase().replace(/-/g, " ")} (${c.count})`);
+  return { label: `${total} reports, led by ${top.join(", ")}`, sources: ["abuseipdb"], also: [] };
+}
+
+/** Rung 2: the existing behaviour ballot, unchanged. Capitalized here, once,
+ *  rather than with a CSS transform in record.tsx: a per-word CSS capitalize
+ *  would wrongly title-case rung 1 and rung 3's multi-word sentences too, and
+ *  this is the only rung whose label was ever a bare lowercase enum value. */
+function fromBehaviour(behaviour: ThreatTypeVerdict | null): (Claim & { also: string[] }) | null {
+  if (!behaviour) return null;
+  const label = behaviour.type.charAt(0).toUpperCase() + behaviour.type.slice(1);
+  return { label, sources: behaviour.sources, also: behaviour.also };
+}
+
+/**
+ * Rung 3: flagged with no charges. Names who flagged it rather than leaving
+ * the row silent under a malicious/suspicious verdict. Only VirusTotal gets a
+ * vendor-count parenthetical, since it is the one source whose `details`
+ * shape this file already reads elsewhere (`maliciousVendors`/
+ * `totalVendors`); every other flooring/dominant source is still named, just
+ * without a count this function has no generic way to read.
+ */
+function fromFloorOrDominant(r: AnyResult): (Claim & { also: string[] }) | null {
+  if (r.verdict !== "malicious" && r.verdict !== "suspicious") return null;
+  const sb = r.scoreBreakdown;
+  const sourceId = sb?.flooredBy ?? sb?.dominantSourceId;
+  if (!sourceId) return null;
+  const hit = ok(r.sources, sourceId);
+  if (!hit) return null;
+  const name = hit.source.name;
+  if (sourceId === "virustotal") {
+    const malicious = hit.details?.maliciousVendors;
+    const total = hit.details?.totalVendors;
+    if (typeof malicious === "number" && typeof total === "number") {
+      return {
+        label: `Flagged by ${name} (${malicious} of ${total} vendors)`,
+        sources: [sourceId],
+        also: [],
+      };
+    }
+  }
+  return { label: `Flagged by ${name}`, sources: [sourceId], also: [] };
+}
+
+/**
+ * Rung 4: no charges, nothing flagged. Names the voucher when one cleared it
+ * (Tranco rank, hashlookup known-good), unless `klass` already carries that
+ * same fact: a Tranco-vouched popular domain already says so in `CLASS`
+ * (`lastResortClaim`'s `fromTranco`), and citing it again here would repeat a
+ * row rather than add one — the same failure mode `hostedOn` already guards
+ * against for `class`.
+ */
+function fromNoRecord(r: AnyResult, klass: Claim): Claim & { also: string[] } {
+  if (!klass.sources.includes("tranco")) {
+    const tranco = ok(r.sources, "tranco");
+    const rank = tranco?.details?.rank;
+    if (tranco?.details?.vouched === true && typeof rank === "number") {
+      return { label: `No record, vouched by Tranco (rank ${rank})`, sources: ["tranco"], also: [] };
+    }
+  }
+  if (!klass.sources.includes("hashlookup")) {
+    const hashlookup = ok(r.sources, "hashlookup");
+    if (hashlookup && hashlookup.malicious !== true && hashlookup.score === 0) {
+      return { label: "No record, vouched by hashlookup", sources: ["hashlookup"], also: [] };
+    }
+  }
+  return { label: "No record", sources: [], also: [] };
+}
+
+/**
+ * What the subject is charged with, counted rather than elected. A rap sheet
+ * lists charges; it does not pick one word to summarise a person, which is
+ * what the single-winner ballot in threatTypeOf did when a stray "tor"
+ * category (emitted by non-identifier sources like virustotal and abuseipdb)
+ * out-voted 148 real abuse reports on 185.220.101.42. This routes around that
+ * bug rather than fixing threatTypeOf itself, which verdict.tsx still calls
+ * unfiltered for the headline. Never returns null: rung 4 always answers.
+ */
+export function priorsOf(
+  r: AnyResult,
+  behaviour: ThreatTypeVerdict | null,
+  klass: Claim,
+): Claim & { also: string[] } {
+  return (
+    fromAbuseReports(r) ?? fromBehaviour(behaviour) ?? fromFloorOrDominant(r) ?? fromNoRecord(r, klass)
+  );
 }
 
 function subjectOf(r: AnyResult): string {
