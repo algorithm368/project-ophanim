@@ -4,7 +4,6 @@ import {
     Check,
     Copy,
     ExternalLink,
-    Link2,
     ShieldCheck,
 } from "lucide-react";
 import {
@@ -51,7 +50,7 @@ export const ConnectionsCard = memo(function ConnectionsCard({
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading icon={Link2} action={<PivotCount n={pivots.length} />}>
+                <SectionHeading action={<PivotCount n={pivots.length} />}>
                     Related indicators
                 </SectionHeading>
                 <RelationTable related={pivots} />
@@ -278,7 +277,7 @@ export function DistributionUrlsCard({
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-3">
-                <SectionHeading icon={Link2}>
+                <SectionHeading>
                     Distribution URLs
                 </SectionHeading>
                 <p className="text-xs text-muted-foreground">

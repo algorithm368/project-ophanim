@@ -10,7 +10,6 @@ import {
     ImageOff,
     Loader2,
     Maximize2,
-    Telescope,
 } from "lucide-react";
 import { ArchivePreview } from "@/components/ArchivePreview";
 import { ImageInspector } from "@/components/ImageInspector";
@@ -585,7 +584,7 @@ export function ResearchCard({
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-5">
-                    <SectionHeading icon={Telescope}>Research</SectionHeading>
+                    <SectionHeading>Research</SectionHeading>
                     <div className="space-y-2">
                         <span className="sweep block h-3 w-24 rounded" />
                         <div className="flex flex-wrap gap-1.5">
@@ -610,7 +609,6 @@ export function ResearchCard({
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-5">
                 <SectionHeading
-                    icon={Telescope}
                     action={
                         <div className="flex min-w-0 items-center gap-1.5">
                             <code className="max-w-[150px] truncate font-mono text-[12px] text-muted-foreground sm:max-w-[260px]">

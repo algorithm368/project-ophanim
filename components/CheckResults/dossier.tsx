@@ -1,6 +1,5 @@
 "use client";
 
-import { FileUser } from "lucide-react";
 import { memo, useMemo } from "react";
 import type { CheckResult } from "@/lib/ti/types";
 import { buildIpDossier } from "@/lib/ti/ip-dossier";
@@ -45,7 +44,7 @@ export const IpDossierCard = memo(function IpDossierCard({
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-5">
-                    <SectionHeading icon={FileUser}>Subject record</SectionHeading>
+                    <SectionHeading>Subject record</SectionHeading>
                     <SubjectMastheadSkeleton />
                     <div className="space-y-3">
                         <Rule />
@@ -64,7 +63,7 @@ export const IpDossierCard = memo(function IpDossierCard({
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-5">
-                <SectionHeading icon={FileUser}>Subject record</SectionHeading>
+                <SectionHeading>Subject record</SectionHeading>
 
                 <SubjectMasthead record={record} verdict={result.verdict} />
 

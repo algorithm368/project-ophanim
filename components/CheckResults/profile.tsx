@@ -1,13 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import {
-    Check,
-    ChevronRight,
-    Copy,
-    FileDigit,
-    Globe,
-} from "lucide-react";
+import { Check, ChevronRight, Copy } from "lucide-react";
 import {
     type DomainCheckResult,
     type HashCheckResult,
@@ -232,7 +226,7 @@ export function DomainProfileCard({
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-4">
-                    <SectionHeading icon={Globe}>Subject record</SectionHeading>
+                    <SectionHeading>Subject record</SectionHeading>
                     <SubjectMastheadSkeleton />
                     <div className="space-y-2">
                         <span className="sweep block h-3 w-full rounded" />
@@ -249,7 +243,7 @@ export function DomainProfileCard({
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading icon={Globe}>Subject record</SectionHeading>
+                <SectionHeading>Subject record</SectionHeading>
 
                 <SubjectMasthead record={record} verdict={result.verdict} />
 
@@ -670,7 +664,7 @@ export function HashProfileCard({
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-4">
-                    <SectionHeading icon={FileDigit}>Subject record</SectionHeading>
+                    <SectionHeading>Subject record</SectionHeading>
                     <SubjectMastheadSkeleton />
                     <div className="space-y-2">
                         <span className="sweep block h-3 w-full rounded" />
@@ -748,7 +742,7 @@ export function HashProfileCard({
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading icon={FileDigit}>Subject record</SectionHeading>
+                <SectionHeading>Subject record</SectionHeading>
 
                 <SubjectMasthead record={record} verdict={result.verdict} />
 

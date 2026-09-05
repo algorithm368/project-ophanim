@@ -144,7 +144,7 @@ export function LayerStack({
   if (streaming || !result) {
     return (
       <div className="space-y-4">
-        <SectionHeading icon={Link2}>Layers</SectionHeading>
+        <SectionHeading>Layers</SectionHeading>
         <div className="space-y-1.5">
           {["w-full", "w-5/6", "w-2/3"].map((w) => (
             <span key={w} className={`sweep block h-3 rounded ${w}`} />
@@ -155,7 +155,7 @@ export function LayerStack({
   }
   return (
     <div className="space-y-4">
-      <SectionHeading icon={Link2}>Layers</SectionHeading>
+      <SectionHeading>Layers</SectionHeading>
       <p className="text-sm text-foreground/75">
         {ATTRIBUTION[result.headlineLayer]}
       </p>

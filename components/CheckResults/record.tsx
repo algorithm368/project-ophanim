@@ -121,24 +121,33 @@ export const SubjectMasthead = memo(function SubjectMasthead({
                 {seen && <Row label="Record">{seen}</Row>}
             </dl>
 
-            <div
-                className={cn(
-                    "flex size-16 shrink-0 items-center justify-center rounded-md border border-foreground/20 bg-background sm:size-20",
-                    VERDICT_STYLE[verdict].text,
-                )}
-            >
-                <Sprite
-                    spec={record.sprite}
-                    px={48}
-                    title={record.class.label}
-                    className="sm:hidden"
-                />
-                <Sprite
-                    spec={record.sprite}
-                    px={64}
-                    title={record.class.label}
-                    className="hidden sm:block"
-                />
+            {/* Corner brackets, not a plain box: an evidence-photo crop marker
+                rather than another bordered cell, in keeping with the card's
+                subject-record framing. */}
+            <div className="relative flex size-16 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background sm:size-20">
+                <span
+                    aria-hidden
+                    className={cn("absolute inset-0", VERDICT_STYLE[verdict].text)}
+                >
+                    <span className="absolute -top-px -left-px size-2.5 border-t-2 border-l-2 border-current sm:size-3" />
+                    <span className="absolute -top-px -right-px size-2.5 border-t-2 border-r-2 border-current sm:size-3" />
+                    <span className="absolute -bottom-px -left-px size-2.5 border-b-2 border-l-2 border-current sm:size-3" />
+                    <span className="absolute -right-px -bottom-px size-2.5 border-r-2 border-b-2 border-current sm:size-3" />
+                </span>
+                <span className={VERDICT_STYLE[verdict].text}>
+                    <Sprite
+                        spec={record.sprite}
+                        px={48}
+                        title={record.class.label}
+                        className="sm:hidden"
+                    />
+                    <Sprite
+                        spec={record.sprite}
+                        px={64}
+                        title={record.class.label}
+                        className="hidden sm:block"
+                    />
+                </span>
             </div>
         </div>
     );

@@ -9,7 +9,6 @@ import {
 import { Check, Copy, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import type { IconType } from "./types";
 
 /**
  * Lets nested result fields launch a fresh check for a related indicator,
@@ -143,11 +142,9 @@ export function CopyableSummary({ text }: Readonly<{ text: string }>) {
 }
 
 export function SectionHeading({
-    icon: Icon,
     children,
     action,
 }: Readonly<{
-    icon: IconType;
     children: ReactNode;
     /** Optional right-aligned content (e.g. the indicator chip) shown on the
      *  same row as the title, above the shared divider. */
@@ -155,13 +152,8 @@ export function SectionHeading({
 }>) {
     return (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-foreground/10 pb-3">
-            <h2 className="flex items-center gap-2.5">
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-foreground/65">
-                    <Icon className="size-4" />
-                </span>
-                <span className="font-mono text-[13px] font-semibold tracking-[0.12em] text-foreground uppercase">
-                    {children}
-                </span>
+            <h2 className="font-mono text-[13px] font-semibold tracking-[0.12em] text-foreground uppercase">
+                {children}
             </h2>
             {action}
         </div>
@@ -174,7 +166,7 @@ export function SectionHeading({
 export function Group({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
     return (
         <div className="space-y-1">
-            <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+            <div className="border-l-2 border-foreground/25 pl-2 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
                 {label}
             </div>
             <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
