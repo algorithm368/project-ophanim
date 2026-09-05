@@ -98,14 +98,34 @@ origin by nature.
 Four rungs, first that answers wins.
 
 1. **Counted charges.** `abuseipdb` `details.reportCategories`, sorted by
-   count descending, top three named, the rest summarised:
+   count descending, top three named, the rest dropped rather than
+   summarised. Counts render as `(n)`, parenthetical, after the charge, not
+   inline with a symbol. The report total leads the sentence, not the
+   provenance line:
 
    ```
-   PRIORS      Web app attack ×70, hacking ×49, brute force ×18, +8 more
-               abuseipdb, 148 reports
+   PRIORS      148 reports, led by web app attack (70), hacking (49),
+               brute force (18)
+               abuseipdb
    ```
 
-   The report count comes from `details.totalReports`, not from summing the
+   The total leading the label, rather than sitting in the provenance line as
+   an earlier draft had it (`abuseipdb, 148 reports`), is not a style choice:
+   `Row`'s `sources` prop is a list of source ids everywhere else in this file
+   (`["cymru-mhr"]`, `["peeringdb"]`) and never carries a second, unrelated
+   number. Keeping that contract means every provenance line in the card can
+   be read the same way, source ids only.
+
+   `148`, not the sum of the three shown categories, is also the tell that
+   more exist: `70 + 49 + 18 = 137 < 148`, so "led by" rather than "for" is
+   deliberate — these three are not claimed to be the whole 148, only the
+   largest buckets in it. No `, and 8 more` clause: an earlier draft carried
+   one (matching `linkLine` in `components/ScanReport/target.tsx`, prose
+   joined into the sentence rather than the `+N more` toggle-button label
+   `ExpandableList`/`primitives.tsx` use elsewhere, since nothing in this row
+   expands), cut for length once the leading total already implied it.
+
+   The total comes from `details.totalReports`, not from summing the
    per-category counts. The two do not match and are not meant to: one report
    can carry several categories, so this payload's counts sum to 173 across 148
    reports. Rendering the sum would overstate the record.
@@ -117,17 +137,23 @@ Four rungs, first that answers wins.
 3. **Flagged with no charges.** When the verdict is malicious or suspicious and
    neither rung above answered, name who flagged it, from
    `scoreBreakdown.flooredBy` if a floor was applied, else
-   `scoreBreakdown.dominantSourceId`, with that source's own summary count:
+   `scoreBreakdown.dominantSourceId`, with that source's own summary count. No
+   preamble sentence stating that nothing was categorised: every other row on
+   this card is a noun phrase, and a card that suddenly explains its own data
+   model reads as an apology rather than a record.
 
    ```
-   PRIORS      No categorised reports. Flagged by VirusTotal, 15 of 91 vendors.
+   PRIORS      Flagged by VirusTotal (15 of 91 vendors)
                virustotal
    ```
 
    This is the row that fixes the `45.155.205.233` contradiction.
 
-4. **No record.** When the verdict is clean or unknown, `No record`, with the
-   vouching source when one exists (`tranco` rank, `hashlookup` known-good).
+4. **No record.** When the verdict is clean or unknown, `No record` alone, or,
+   when a voucher exists (`tranco` rank, `hashlookup` known-good), `No record,
+   vouched by Tranco (rank 1)`. One line, no closing period, matching every
+   other row's noun-phrase register; the memory constraint against
+   dash-separated copy rules out an em-dash join here too.
 
 ### RECORD, renamed from SEEN
 
@@ -148,11 +174,11 @@ Applied:
 - `RECORD` drops the `5 of 27 sources flagged` line that an earlier draft of
   this design carried. The same tally is already the point of the source
   breakdown further down the page.
-- `PRIORS` rung 1 shows `abuseipdb, 148 reports`, not `148 reports from 62
+- `PRIORS` rung 1 leads with `148 reports`, not `148 reports from 62
   reporters`. The report count carries weight; the reporter count is a second
   number that does not change the reading.
 - Two counts stay, because in both the number *is* the substance of the row:
-  `Flagged by VirusTotal, 15 of 91 vendors` (a 15/91 minority reads very
+  `Flagged by VirusTotal (15 of 91 vendors)` (a 15/91 minority reads very
   differently from 80/91, and this row exists precisely to explain a verdict a
   reader is questioning) and the existing hash `DETECTIONS 66 of 68 engines`.
 
@@ -161,8 +187,6 @@ Applied:
 `lib/ti/subject-record.ts`:
 
 ```ts
-export type Prior = { label: string; count: number };
-
 export type Origin = Claim & {
   countryCode?: string;
   city?: string;
@@ -176,15 +200,23 @@ export type SubjectRecord = {
   class: Claim;
   origin?: Origin;                              // new, IP only
   hostedOn?: Claim;
-  priors?: Claim & { items?: Prior[]; more?: number };  // replaces reportedFor
+  priors?: Claim & { also: string[] };          // replaces reportedFor
   detections?: { malicious: number; total: number };
   seen?: { first?: string; last?: string };
   sprite: SpriteSpec;
 };
 ```
 
-`reportedFor` is removed. Rung 2 populates `priors` with a `label` and no
-`items`, so the renderer has one shape to handle either way.
+`reportedFor` is renamed to `priors`, keeping its shape rather than gaining a
+structured `items` list: every rung, including rung 1, resolves to one
+fully-formed `label` string (`"148 reports, led by web app attack (70), ..."`),
+built in `lib/ti/subject-record.ts` exactly the way `class` and `hostedOn`
+already are. `record.tsx` needs no new rendering branch for `priors`, only the
+rename. `also` stays, because rung 2 (the unmodified `threatTypeOf` result) is
+the one caller that still populates it with runner-up types; rungs 1, 3, and 4
+leave it `[]`, and the component's existing `reported?.also.length ? ... : ""`
+guard already renders nothing for an empty array, so that line of `record.tsx`
+does not change.
 
 ## Worked results
 
@@ -197,8 +229,9 @@ CLASS       Tor exit node
 ORIGIN      Germany (DE), Berlin
 HOSTED ON   Non-Profit, Zwiebelfreunde
             peeringdb
-PRIORS      Web app attack ×70, hacking ×49, brute force ×18, +8 more
-            abuseipdb, 148 reports
+PRIORS      148 reports, led by web app attack (70), hacking (49),
+            brute force (18)
+            abuseipdb
 RECORD      2020-03-20 to 2026-09-05
 ```
 
@@ -209,7 +242,7 @@ SUBJECT     45.155.205.233
 CLASS       Hosting / Datacenter
             geo flags
 ORIGIN      Russia (RU), Moscow
-PRIORS      No categorised reports. Flagged by VirusTotal, 15 of 91 vendors.
+PRIORS      Flagged by VirusTotal (15 of 91 vendors)
             virustotal
 RECORD      2020-01-15 to 2026-08-13
 ```
@@ -223,8 +256,8 @@ is an origin claim, and the country is the claim.
 ## Files
 
 ```
-edit    lib/ti/subject-record.ts        Origin + Prior types, priorsOf(),
-                                        originOf(), reportedFor removed
+edit    lib/ti/subject-record.ts        Origin type, priorsOf(), originOf(),
+                                        reportedFor renamed to priors
 edit    lib/ti/subject-record.test.ts   cases below
 edit    components/CheckResults/record.tsx   ORIGIN/PRIORS/RECORD rows
 ```
@@ -241,15 +274,17 @@ Vitest, colocated, per the Sonar `new_coverage` 80% floor on changed lines.
 - `originOf`: unanimous country renders no dissent; a split country populates
   `dissent` from `alternatives`; a result with `geo` but no `geoResolution`
   falls back to `geo.country`; a domain and a hash both yield `undefined`.
-- `priorsOf` rung 1: AbuseIPDB's real `185.220.101.42` payload yields
-  `Web app attack ×70` first and `more: 8`, and the string `anonymizer` appears
-  nowhere in the row.
+- `priorsOf` rung 1: AbuseIPDB's real `185.220.101.42` payload yields a label
+  leading with `148 reports`, exactly three named categories, `web app attack
+  (70)` first, and the string `anonymizer` appears nowhere in it; `sources` is
+  `["abuseipdb"]` only, no count smuggled into that array.
 - `priorsOf` rung 2: with `abuseipdb` absent, the `threatTypeOf` label renders
   as it does today.
 - `priorsOf` rung 3: a malicious verdict with `floorApplied` and no categories
-  names the flooring source, covering `45.155.205.233`.
-- `priorsOf` rung 4: a clean verdict yields `No record`; `google.com` yields it
-  with the Tranco voucher.
+  names the flooring source, covering `45.155.205.233`, and the label carries
+  no preamble sentence, just the noun phrase.
+- `priorsOf` rung 4: a clean verdict with no voucher yields exactly `No
+  record`; `google.com` yields `No record, vouched by Tranco (rank 1)`.
 - The counting rule: no rendered row contains an `n of n` where the two numbers
   are equal.
 
