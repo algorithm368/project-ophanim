@@ -4,18 +4,10 @@ import { memo, useMemo } from "react";
 import type { CheckResult } from "@/lib/ti/types";
 import { buildIpDossier } from "@/lib/ti/ip-dossier";
 import { buildSubjectRecord } from "@/lib/ti/subject-record";
-import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
-import { Field, Group, SectionHeading } from "./primitives";
-import { Rule } from "./profile";
+import { RecordRow, RecordSection, RecordTable, SectionHeading } from "./primitives";
 import { SubjectMasthead, SubjectMastheadSkeleton } from "./record";
 import { VotingCard } from "./voting";
-
-/** Long-form values (CVE lists, allocation ranges, abuse contacts) truncate
- *  unreadably in the aligned label→value row; past this length, stack the
- *  value under the label instead, the same rule the domain profile's DNS
- *  fields already follow for pivot chips. */
-const WRAP_THRESHOLD = 40;
 
 /**
  * The consolidated IP dossier: a passive profile assembled from every source
@@ -47,7 +39,7 @@ export const IpDossierCard = memo(function IpDossierCard({
                     <SectionHeading>Subject record</SectionHeading>
                     <SubjectMastheadSkeleton />
                     <div className="space-y-3">
-                        <Rule />
+                        <div className="h-px bg-foreground/10" />
                         <span className="sweep inline-block h-3 w-32 rounded" />
                         <div className="space-y-2 py-1">
                             <span className="sweep block h-3 w-full rounded" />
@@ -68,26 +60,22 @@ export const IpDossierCard = memo(function IpDossierCard({
                 <div className="max-w-2xl space-y-5">
                     <SubjectMasthead record={record} verdict={result.verdict} />
 
-                    {dossier.groups.map((g) => (
-                        <div key={g.id} className="space-y-3">
-                            <Rule />
-                            <Group label={g.title}>
+                    <RecordTable>
+                        {dossier.groups.map((g) => (
+                            <RecordSection key={g.id} title={g.title}>
                                 {g.fields.map((f) => (
-                                    <Field
+                                    <RecordRow
                                         key={f.label}
                                         label={f.label}
                                         hint={f.hint}
-                                        wide
-                                        wrap={f.value.length > WRAP_THRESHOLD}
+                                        mono={f.mono}
                                     >
-                                        <span className={cn(f.mono && "font-mono text-[13px]")}>
-                                            {f.value}
-                                        </span>
-                                    </Field>
+                                        {f.value}
+                                    </RecordRow>
                                 ))}
-                            </Group>
-                        </div>
-                    ))}
+                            </RecordSection>
+                        ))}
+                    </RecordTable>
 
                     <p
                         suppressHydrationWarning

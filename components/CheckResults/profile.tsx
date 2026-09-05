@@ -19,9 +19,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-    Field,
-    Group,
     PivotList,
+    RecordRow,
+    RecordSection,
+    RecordTable,
     SectionHeading,
     useCopied,
 } from "./primitives";
@@ -58,38 +59,27 @@ function RegistrationGroup({
     const fresh = ctx.ageDays !== undefined && ctx.ageDays < 30;
 
     return (
-        <Group label="Registration">
-            {ctx.registrar && (
-                <Field label="Registrar" wide>
-                    {ctx.registrar}
-                </Field>
-            )}
+        <RecordSection title="Registration">
+            {ctx.registrar && <RecordRow label="Registrar">{ctx.registrar}</RecordRow>}
             {rank !== undefined && (
-                <Field label="Popularity" wide>
+                <RecordRow label="Popularity">
                     Tranco rank {rank.toLocaleString("en-US")}
-                </Field>
+                </RecordRow>
             )}
             {created && (
-                <Field
+                <RecordRow
                     label="Registered"
-                    wide
                     tone={fresh ? "text-orange-600 dark:text-orange-400" : undefined}
                 >
                     {created}
                     {age ? ` · ${age} old` : ""}
-                </Field>
+                </RecordRow>
             )}
-            {expires && (
-                <Field label="Expires" wide>
-                    {expires}
-                </Field>
-            )}
+            {expires && <RecordRow label="Expires">{expires}</RecordRow>}
             {categories.length > 0 && (
-                <Field label="Category" wide>
-                    {categories.slice(0, 3).join(", ")}
-                </Field>
+                <RecordRow label="Category">{categories.slice(0, 3).join(", ")}</RecordRow>
             )}
-        </Group>
+        </RecordSection>
     );
 }
 
@@ -116,37 +106,34 @@ function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
     if (!anything) return null;
 
     return (
-        <Group label="DNS records">
+        <RecordSection title="DNS records">
             {ips.length > 0 && (
-                <Field label="Resolves to" wrap>
+                <RecordRow label="Resolves to">
                     <PivotList values={ips} />
-                </Field>
+                </RecordRow>
             )}
             {ns.length > 0 && (
-                <Field label="Nameservers" wrap>
+                <RecordRow label="Nameservers">
                     <PivotList values={ns} />
-                </Field>
+                </RecordRow>
             )}
             {reverse.length > 0 && (
-                <Field label="Reverse DNS (PTR)" wrap>
+                <RecordRow label="Reverse DNS (PTR)">
                     <PivotList values={reverse} />
-                </Field>
+                </RecordRow>
             )}
             {caa.length > 0 && (
-                <Field
+                <RecordRow
                     label="CAA"
-                    wrap
+                    mono
                     hint="Certificate Authority Authorization, which CAs may issue TLS certs for this domain"
                 >
-                    <span className="font-mono text-[12px] break-all">
-                        {caa.join(", ")}
-                    </span>
-                </Field>
+                    {caa.join(", ")}
+                </RecordRow>
             )}
             {dnssec && (
-                <Field
+                <RecordRow
                     label="DNSSEC"
-                    wide
                     hint="Whether the zone is DNSSEC-signed (resolver set the AD flag)"
                     tone={
                         dnssec === "signed"
@@ -155,12 +142,11 @@ function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
                     }
                 >
                     {dnssec === "signed" ? "Signed" : "Unsigned"}
-                </Field>
+                </RecordRow>
             )}
             {consensus && (
-                <Field
+                <RecordRow
                     label="Resolvers"
-                    wide
                     hint="Unfiltered DoH resolvers queried for the A record, and how many agree on the resolved IP. A low count suggests GeoDNS, split-horizon, or possible poisoning."
                     tone={
                         consensus.bucket === "low"
@@ -170,9 +156,9 @@ function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
                 >
                     {consensus.agreeCount}/{consensus.respondingResolvers}
                     {consensus.bucket === "low" ? " split" : " agree"}
-                </Field>
+                </RecordRow>
             )}
-        </Group>
+        </RecordSection>
     );
 }
 
@@ -182,31 +168,31 @@ function EmailSecurityGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
     if (mx.length === 0 && !ctx.spf && !ctx.dmarc) return null;
 
     return (
-        <Group label="Email security">
+        <RecordSection title="Email security">
             {mx.length > 0 && (
-                <Field label="Mail (MX)" wrap>
+                <RecordRow label="Mail (MX)">
                     <PivotList values={mx} />
-                </Field>
+                </RecordRow>
             )}
             {ctx.spf && (
-                <Field
+                <RecordRow
                     label="SPF"
-                    wrap
+                    mono
                     hint="Sender Policy Framework, which servers may send mail for this domain"
                 >
-                    <span className="font-mono text-[12px] break-all">{ctx.spf}</span>
-                </Field>
+                    {ctx.spf}
+                </RecordRow>
             )}
             {ctx.dmarc && (
-                <Field
+                <RecordRow
                     label="DMARC"
-                    wrap
+                    mono
                     hint="Policy for handling mail that fails SPF/DKIM authentication"
                 >
-                    <span className="font-mono text-[12px] break-all">{ctx.dmarc}</span>
-                </Field>
+                    {ctx.dmarc}
+                </RecordRow>
             )}
-        </Group>
+        </RecordSection>
     );
 }
 
@@ -262,8 +248,7 @@ export function DomainProfileCard({
                     <SubjectMasthead record={record} verdict={result.verdict} />
 
                     {ctx ? (
-                        <div className="space-y-4">
-                            <Rule />
+                        <RecordTable>
                             <RegistrationGroup
                                 ctx={ctx}
                                 rank={
@@ -273,7 +258,7 @@ export function DomainProfileCard({
                             />
                             <DnsRecordsGroup ctx={ctx} />
                             <EmailSecurityGroup ctx={ctx} />
-                        </div>
+                        </RecordTable>
                     ) : (
                         <p className="text-sm text-muted-foreground">
                             No registration or DNS context was returned for this domain.

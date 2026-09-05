@@ -1,46 +1,18 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { memo } from "react";
 import type { SubjectRecord } from "@/lib/ti/subject-record";
 import type { Verdict } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
+import { RecordRow, RecordSection, RecordTable } from "./primitives";
 import { Sprite } from "./sprite";
 import { VERDICT_STYLE } from "./verdict";
 
-/** One labelled row, with the sources that backed it underneath. The provenance
- *  line is what stops this card repeating VerdictHero: the hero says how bad,
- *  this says what, and who said so. `note` is a pre-formatted alternative to
- *  `sources` for a row whose provenance is not a plain list of source ids (the
- *  Origin row's dissent sentence) — the two are mutually exclusive, and no row
- *  ever needs both. */
-function Row({
-    label,
-    sources,
-    note,
-    children,
-}: Readonly<{
-    label: string;
-    sources?: string[];
-    note?: string;
-    children: ReactNode;
-}>) {
-    const provenance = sources?.length ? sources.join(", ") : note;
-    return (
-        <div className="flex flex-wrap items-baseline gap-x-3 py-1 sm:flex-nowrap">
-            <dt className="w-44 shrink-0 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                {label}
-            </dt>
-            <dd className="min-w-0 flex-1">
-                <div className="text-sm text-foreground">{children}</div>
-                {provenance ? (
-                    <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                        {provenance}
-                    </div>
-                ) : null}
-            </dd>
-        </div>
-    );
+/** "1 source says X" / "2 sources say Y", or undefined when nothing backed
+ *  the row — the provenance line is what stops this card repeating
+ *  VerdictHero: the hero says how bad, this says what, and who said so. */
+function sourceNote(sources: string[] | undefined): string | undefined {
+    return sources?.length ? sources.join(", ") : undefined;
 }
 
 function seenText(seen: SubjectRecord["seen"]): string | null {
@@ -74,52 +46,54 @@ export const SubjectMasthead = memo(function SubjectMasthead({
 
     return (
         <div className="flex items-start justify-between gap-4">
-            <dl className="min-w-0 flex-1">
-                <Row label="Subject">
-                    <span className="font-mono break-all">{record.subject}</span>
-                    {record.qualifier && (
-                        <span className="ml-2 font-mono text-xs text-muted-foreground">
-                            {record.qualifier}
-                        </span>
+            <RecordTable>
+                <RecordSection title="Identity">
+                    <RecordRow label="Subject" mono>
+                        {record.subject}
+                        {record.qualifier && (
+                            <span className="ml-2 font-mono text-xs text-muted-foreground">
+                                {record.qualifier}
+                            </span>
+                        )}
+                    </RecordRow>
+                    <RecordRow label="Class" note={sourceNote(record.class.sources)}>
+                        {record.class.label}
+                    </RecordRow>
+                    {record.origin && (
+                        <RecordRow
+                            label="Origin"
+                            note={
+                                record.origin.dissent?.length
+                                    ? dissentText(record.origin.dissent)
+                                    : undefined
+                            }
+                        >
+                            {record.origin.label}
+                        </RecordRow>
                     )}
-                </Row>
-                <Row label="Class" sources={record.class.sources}>
-                    {record.class.label}
-                </Row>
-                {record.origin && (
-                    <Row
-                        label="Origin"
-                        note={
-                            record.origin.dissent?.length
-                                ? dissentText(record.origin.dissent)
-                                : undefined
-                        }
-                    >
-                        {record.origin.label}
-                    </Row>
-                )}
-                {record.hostedOn && (
-                    <Row label="Hosted on" sources={record.hostedOn.sources}>
-                        {record.hostedOn.label}
-                    </Row>
-                )}
-                <Row label="Priors" sources={priors.sources}>
-                    {priors.label}
-                    <span className="text-muted-foreground">{alsoText}</span>
-                </Row>
-                {record.detections && (
-                    // VirusTotal is the only source that sets detectionRatio, and it is
-                    // key-gated: on a keyless deployment this row simply does not render,
-                    // same as hostedOn or seen when nothing backs them. That is correct,
-                    // this is text on the card, not a rung the sprite depends on, so it
-                    // never needs the free-source guard the ladders in subject-record.ts
-                    // enforce. Do not turn this into a resolver rung.
-                    <Row label="Detections" sources={["virustotal"]}>
-                        {record.detections.malicious} of {record.detections.total} engines
-                    </Row>
-                )}
-                {seen && <Row label="Record">{seen}</Row>}
-            </dl>
+                    {record.hostedOn && (
+                        <RecordRow label="Hosted on" note={sourceNote(record.hostedOn.sources)}>
+                            {record.hostedOn.label}
+                        </RecordRow>
+                    )}
+                    <RecordRow label="Priors" note={sourceNote(priors.sources)}>
+                        {priors.label}
+                        <span className="text-muted-foreground">{alsoText}</span>
+                    </RecordRow>
+                    {record.detections && (
+                        // VirusTotal is the only source that sets detectionRatio, and it is
+                        // key-gated: on a keyless deployment this row simply does not render,
+                        // same as hostedOn or seen when nothing backs them. That is correct,
+                        // this is text on the card, not a rung the sprite depends on, so it
+                        // never needs the free-source guard the ladders in subject-record.ts
+                        // enforce. Do not turn this into a resolver rung.
+                        <RecordRow label="Detections" note="virustotal">
+                            {record.detections.malicious} of {record.detections.total} engines
+                        </RecordRow>
+                    )}
+                    {seen && <RecordRow label="Record">{seen}</RecordRow>}
+                </RecordSection>
+            </RecordTable>
 
             {/* Corner brackets, not a plain box: an evidence-photo crop marker
                 rather than another bordered cell, in keeping with the card's
