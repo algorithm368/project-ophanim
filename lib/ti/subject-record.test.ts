@@ -486,6 +486,84 @@ describe("threatClaim, hash rungs", () => {
   });
 });
 
+import { originOf } from "@/lib/ti/subject-record";
+
+/** A GeoResolution carrying only what originOf reads: the country vote,
+ *  optionally a code, a city, and dissenting alternatives. */
+function geoResolutionWithCountry(
+  value: string,
+  sources: string[],
+  opts?: {
+    countryCode?: string;
+    city?: string;
+    alternatives?: { value: string; sources: string[] }[];
+  },
+): NonNullable<CheckResult["geoResolution"]> {
+  return {
+    country: {
+      value,
+      confidence: "high",
+      score: 1,
+      agreement: 1,
+      sources,
+      alternatives: opts?.alternatives,
+    },
+    countryCode: opts?.countryCode,
+    city: opts?.city
+      ? { value: opts.city, confidence: "high", score: 1, agreement: 1, sources }
+      : undefined,
+    flags: { isHosting: false, isProxy: false, isMobile: false, sources: {} },
+    providerCount: sources.length,
+  };
+}
+
+describe("originOf", () => {
+  it("names the country the vote agreed on, with the code and city folded in", () => {
+    const claim = originOf(
+      ipResult(
+        [],
+        undefined,
+        geoResolutionWithCountry("Germany", ["ip-api", "ipwhois"], {
+          countryCode: "DE",
+          city: "Berlin",
+        }),
+      ),
+    );
+    expect(claim).toEqual({
+      label: "Germany (DE), Berlin",
+      sources: ["ip-api", "ipwhois"],
+      dissent: undefined,
+    });
+  });
+
+  it("names the dissent only when the vote actually split", () => {
+    const claim = originOf(
+      ipResult(
+        [],
+        undefined,
+        geoResolutionWithCountry("Germany", ["ip-api"], {
+          countryCode: "DE",
+          alternatives: [{ value: "Netherlands", sources: ["ipwhois", "rdap-ip"] }],
+        }),
+      ),
+    );
+    expect(claim?.dissent).toEqual([{ value: "Netherlands", sources: ["ipwhois", "rdap-ip"] }]);
+  });
+
+  it("falls back to raw geo when the caller never reconciled", () => {
+    const claim = originOf(
+      ipResult([], { country: "Australia", countryCode: "AU", city: "Brisbane" }),
+    );
+    expect(claim).toEqual({ label: "Australia (AU), Brisbane", sources: [] });
+  });
+
+  it("is undefined for a domain, a hash, and an IP with no geo at all", () => {
+    expect(originOf(domainResult([], { resolvedIps: ["1.2.3.4"] }))).toBeUndefined();
+    expect(originOf(hashResult([]))).toBeUndefined();
+    expect(originOf(ipResult([]))).toBeUndefined();
+  });
+});
+
 describe("lastResortClaim", () => {
   it("vouches for a domain in the Tranco top million", () => {
     expect(

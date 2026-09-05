@@ -17,6 +17,12 @@ import type { BodyKey, MarkKey, SpriteSpec } from "./sprite";
  */
 export type Claim = { label: string; sources: string[] };
 
+/** The country the geo providers voted for. `dissent` is populated only when
+ *  the vote actually split; see the counting rule in the design doc. */
+export type Origin = Claim & {
+  dissent?: { value: string; sources: string[] }[];
+};
+
 export type SubjectRecord = {
   /** The indicator, verbatim. */
   subject: string;
@@ -447,6 +453,39 @@ function spriteFor(
     return { body: threatBody, flagged };
   }
   return { body: infra ? "hosting" : typeBody(r), flagged };
+}
+
+/**
+ * The country the geo providers voted for, IP only. Reads the reconciled vote
+ * (`geoResolution.country`) when one exists, falling back to a single
+ * provider's raw `geo.country` when the caller never reconciled. Domains
+ * carry no geo at all today (the domain pipeline fetches none), and a hash
+ * has no origin by nature, so `geoOf`/`geoResolutionOf` returning undefined
+ * for both already makes this undefined for them too.
+ */
+export function originOf(r: AnyResult): Origin | undefined {
+  const resolution = geoResolutionOf(r);
+  const country = resolution?.country;
+  if (country) {
+    const code = resolution?.countryCode;
+    const city = resolution?.city?.value;
+    const label = [code ? `${country.value} (${code})` : country.value, city]
+      .filter(Boolean)
+      .join(", ");
+    return {
+      label,
+      sources: country.sources,
+      dissent: country.alternatives?.length
+        ? country.alternatives.map((a) => ({ value: a.value, sources: a.sources }))
+        : undefined,
+    };
+  }
+  const geo = geoOf(r);
+  if (!geo?.country) return undefined;
+  const label = [geo.countryCode ? `${geo.country} (${geo.countryCode})` : geo.country, geo.city]
+    .filter(Boolean)
+    .join(", ");
+  return { label, sources: [] };
 }
 
 function subjectOf(r: AnyResult): string {
