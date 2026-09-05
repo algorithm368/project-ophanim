@@ -116,7 +116,7 @@ function ScanThumb({ item }: Readonly<{ item: UrlScanItem }>) {
 
     if (status === "error") {
         return (
-            <div className="flex aspect-[4/3] flex-col items-center justify-center gap-1.5 bg-muted text-muted-foreground">
+            <div className="flex aspect-video flex-col items-center justify-center gap-1.5 bg-muted text-muted-foreground">
                 <ImageOff className="size-5" aria-hidden />
                 <span className="max-w-full truncate px-2 font-mono text-[10px]">
                     {hostOf(item.pageUrl)}
@@ -126,14 +126,14 @@ function ScanThumb({ item }: Readonly<{ item: UrlScanItem }>) {
     }
 
     return (
-        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+        <div className="relative aspect-video overflow-hidden bg-muted">
             {status === "loading" && <div className="sweep absolute inset-0" />}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
                 src={item.screenshot}
                 alt={`Screenshot of ${item.pageUrl}`}
                 width={400}
-                height={300}
+                height={225}
                 loading="lazy"
                 decoding="async"
                 fetchPriority="low"
@@ -147,67 +147,52 @@ function ScanThumb({ item }: Readonly<{ item: UrlScanItem }>) {
     );
 }
 
-/** URLScan submissions as tidy rows: a small screenshot that opens full-screen
- *  on click, the page host + capture metadata, and an outbound link to the full
- *  scan. Compact so many scans read as an orderly list rather than a heavy grid. */
+/** URLScan submissions as a thumbnail strip: small screenshots side by side,
+ *  wrapping onto further rows only once the strip runs out of width, rather
+ *  than each scan claiming its own line going down the card. A scan with no
+ *  screenshot falls back to a small dated chip linking straight to the scan,
+ *  so it still occupies its slot in the strip. Click a thumbnail for the full
+ *  screenshot, host, capture date, and a link to the scan itself. */
 function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
     const [zoom, setZoom] = useState<UrlScanItem | null>(null);
 
     return (
         <>
-            <div className="divide-y divide-border overflow-hidden rounded-md border border-border">
-                {scans.map((s) => (
-                    <div
-                        key={s.scanUrl}
-                        className="flex items-center gap-3 bg-background p-2 transition-colors hover:bg-muted/30"
-                    >
+            <div className="flex flex-wrap gap-2">
+                {scans.map((s) =>
+                    s.screenshot ? (
                         <button
+                            key={s.scanUrl}
                             type="button"
-                            onClick={() => s.screenshot && setZoom(s)}
-                            disabled={!s.screenshot}
+                            onClick={() => setZoom(s)}
                             aria-label={`View screenshot of ${s.pageUrl}`}
-                            title={
-                                s.screenshot ? "View screenshot" : "No screenshot"
-                            }
-                            className="group relative w-24 shrink-0 overflow-hidden rounded border border-border enabled:cursor-zoom-in"
+                            title={`${hostOf(s.pageUrl)}, ${fmtDay(s.time)}`}
+                            className="group relative w-24 shrink-0 overflow-hidden rounded border border-border cursor-zoom-in"
                         >
                             <ScanThumb item={s} />
-                            {s.screenshot && (
-                                <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100">
-                                    <Maximize2 className="size-4" />
-                                </span>
-                            )}
+                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100">
+                                <Maximize2 className="size-4" />
+                            </span>
                         </button>
-                        <div className="min-w-0 flex-1">
-                            <div
-                                className="truncate font-mono text-[12px] text-foreground"
-                                title={s.pageUrl}
-                            >
-                                {hostOf(s.pageUrl)}
-                            </div>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
-                                <span className="tabular-nums">
-                                    {fmtDay(s.time)}
-                                </span>
-                                {s.country && <span>{s.country}</span>}
-                                {s.asn && (
-                                    <span className="truncate">{s.asn}</span>
-                                )}
-                            </div>
-                        </div>
+                    ) : (
                         <a
+                            key={s.scanUrl}
                             href={s.scanUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => backgroundClick(e, s.scanUrl)}
                             title={`${s.pageUrl} — open scan`}
-                            aria-label="Open scan"
-                            className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            className="flex aspect-video w-24 shrink-0 flex-col items-center justify-center gap-1 rounded border border-border bg-muted px-1 text-center text-muted-foreground transition-colors hover:border-foreground/40"
                         >
-                            <ExternalLink className="size-3.5" />
+                            <span className="max-w-full truncate font-mono text-[10px]">
+                                {hostOf(s.pageUrl)}
+                            </span>
+                            <span className="font-mono text-[10px] tabular-nums">
+                                {fmtDay(s.time)}
+                            </span>
                         </a>
-                    </div>
-                ))}
+                    ),
+                )}
             </div>
             {zoom?.screenshot && (
                 <ImageInspector
@@ -330,9 +315,9 @@ function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
     const shown = expanded ? certs : certs.slice(0, CERT_PREVIEW);
     return (
         <div className="space-y-1.5">
-            {shown.map((c) => (
+            {shown.map((c, i) => (
                 <div
-                    key={`${c.issuer}-${c.notBefore}-${c.commonName ?? ""}`}
+                    key={`${c.issuer}-${c.notBefore}-${c.commonName ?? ""}-${i}`}
                     className="flex items-baseline justify-between gap-3 text-[13px]"
                 >
                     <span
@@ -366,6 +351,10 @@ function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
  * lane that shrinks when it lands and grows when the next one starts moves the
  * card under the reader's cursor. A slot that never changes size means the only
  * thing that changes is the content.
+ *
+ * A flat row, not a bordered box: `LiveResearch` separates providers with a
+ * `divide-y`, the same idiom the subject record's field groups use, so a card
+ * with several lanes reads as one list rather than a stack of boxes-in-a-box.
  */
 function ProviderShell({
     name,
@@ -381,7 +370,7 @@ function ProviderShell({
     children: React.ReactNode;
 }>) {
     return (
-        <div className="space-y-2 rounded-md border border-foreground/10 bg-muted/20 p-3">
+        <div className="space-y-2 py-3">
             <div className="flex items-center justify-between gap-2">
                 <span className="text-[13px] font-medium text-foreground">
                     {name}
@@ -527,14 +516,16 @@ function LiveResearch({
                 )}
             </div>
 
-            {visible.map((m) => {
-                const r = results[m.id];
-                return r ? (
-                    <ProviderBlock key={m.id} result={r} />
-                ) : (
-                    <ProviderSkeleton key={m.id} name={m.name} />
-                );
-            })}
+            <div className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+                {visible.map((m) => {
+                    const r = results[m.id];
+                    return r ? (
+                        <ProviderBlock key={m.id} result={r} />
+                    ) : (
+                        <ProviderSkeleton key={m.id} name={m.name} />
+                    );
+                })}
+            </div>
             {error && visible.length === 0 && (
                 <p className="font-mono text-[12px] text-muted-foreground">
                     Live lookup unavailable.
