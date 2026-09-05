@@ -83,6 +83,28 @@ describe("greyNoiseSource.check — quota exhaustion", () => {
     expect(f.summary).toContain("cached identification");
   });
 
+  it("drops GreyNoise's own 'unknown' actor sentinel instead of rendering it", async () => {
+    vi.stubEnv("GREYNOISE_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue({
+      ok: false,
+      status: 429,
+      data: { message: "Daily quota exceeded" },
+    } as Awaited<ReturnType<typeof getJson>>);
+    vi.mocked(getCachedGreyNoiseIdentification).mockResolvedValue({
+      classification: "unknown",
+      noise: true,
+      riot: false,
+      actor: "unknown",
+    });
+
+    const f = await greyNoiseSource.check(
+      "203.0.113.9",
+      new AbortController().signal,
+    );
+
+    expect(f.summary).not.toContain("(unknown)");
+  });
+
   it("reports rate_limited when the quota is exhausted and nothing was cached", async () => {
     vi.stubEnv("GREYNOISE_API_KEY", "test-key");
     vi.mocked(getJson).mockResolvedValue({

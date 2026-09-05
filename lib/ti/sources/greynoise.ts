@@ -61,7 +61,10 @@ function findingFromIdentification(
   if (riot) categories.push("common-business-service");
   categories.push(classification);
 
-  const actorSuffix = actor ? ` (${actor})` : "";
+  // GreyNoise's own sentinel for "no attributed actor" is the literal string
+  // "unknown", not an absent field — rendered verbatim it reads as a second,
+  // redundant classification ("unknown (unknown)").
+  const actorSuffix = actor && actor !== "unknown" ? ` (${actor})` : "";
   const scannerSuffix = noise ? " (active scanner)" : "";
   const provenance = fromCache
     ? " — cached identification, today's quota is exhausted"
