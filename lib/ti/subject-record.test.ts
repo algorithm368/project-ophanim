@@ -523,6 +523,17 @@ describe("lastResortClaim", () => {
       sources: ["geo flags"],
     });
   });
+
+  it("names no mechanism for the two 'nothing came back' labels", () => {
+    // classifyHashLabel(undefined, false) is "Unknown file"; there is no file
+    // metadata to be the mechanism behind that, so sources must be empty
+    // rather than naming one anyway (the previous bug: "Unknown file / file
+    // metadata" on the app's commonest card, an unknown hash).
+    expect(lastResortClaim(hashResult([]))).toEqual({ label: "Unknown file", sources: [] });
+    // Same story for classifyIpLabel(undefined) -> "Unknown type": no geo
+    // input, so no "geo flags" mechanism to name.
+    expect(lastResortClaim(ipResult([]))).toEqual({ label: "Unknown type", sources: [] });
+  });
 });
 
 import { buildSubjectRecord } from "@/lib/ti/subject-record";
@@ -661,6 +672,7 @@ describe("buildSubjectRecord", () => {
   it("says so rather than leaving a gap", () => {
     const rec = buildSubjectRecord(ipResult([]));
     expect(rec.class.label).toBe("Unknown type");
+    expect(rec.class.sources).toEqual([]);
     expect(rec.reportedFor).toBeUndefined();
     expect(rec.subject).toBe("185.220.101.42");
   });

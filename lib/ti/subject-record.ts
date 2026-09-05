@@ -42,7 +42,6 @@ export type SubjectRecord = {
   /** ISO days. */
   seen?: { first?: string; last?: string };
   sprite: SpriteSpec;
-  footer: string;
 };
 
 /** A settled, successful row for a given source id. A timed-out or errored
@@ -378,9 +377,21 @@ export function lastResortClaim(r: AnyResult): Claim {
   }
   if (isHash(r)) {
     const hasData = r.sources.some((s) => s.status === "ok" && s.score !== undefined);
-    return { label: classifyHashLabel(r.context, hasData).label, sources: ["file metadata"] };
+    // classifyHashLabel falls all the way to "Unknown file" only when none of
+    // malwareFamily, fileType, or hasData is true, i.e. when no file metadata
+    // exists to be the mechanism. Naming "file metadata" as the source of a
+    // claim that there is none reads backwards, so that branch gets no source
+    // at all; every other branch keeps it, because there the input was real.
+    const hasMetadata = Boolean(r.context?.malwareFamily || r.context?.fileType) || hasData;
+    return {
+      label: classifyHashLabel(r.context, hasData).label,
+      sources: hasMetadata ? ["file metadata"] : [],
+    };
   }
-  return { label: classifyIpLabel(geoOf(r)).label, sources: ["geo flags"] };
+  const geo = geoOf(r);
+  // Same story: classifyIpLabel(undefined) is "Unknown type", and there is no
+  // geo input to call "geo flags" when there was none.
+  return { label: classifyIpLabel(geo).label, sources: geo ? ["geo flags"] : [] };
 }
 
 /** Which drawn mark, if any, a provider name maps to. Anything undrawn falls
@@ -467,7 +478,6 @@ export function buildSubjectRecord(r: AnyResult): SubjectRecord {
   );
 
   const flagged = r.verdict === "malicious" || r.verdict === "suspicious";
-  const responded = r.sources.filter((s) => s.status === "ok").length;
 
   return {
     subject: subjectOf(r),
@@ -480,8 +490,5 @@ export function buildSubjectRecord(r: AnyResult): SubjectRecord {
     detections: isHash(r) ? r.context?.detectionRatio : undefined,
     seen: seenRange(r.sources, isHash(r) ? r.context : undefined),
     sprite: spriteFor(r, infra, threat, flagged),
-    footer: `Enriched from ${responded} source${responded === 1 ? "" : "s"}, checked ${new Date(
-      r.checkedAt,
-    ).toLocaleString()}`,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
     Check,
     ChevronRight,
@@ -235,7 +235,15 @@ export function DomainProfileCard({
      *  there is no registration/DNS context to show until the result lands. */
     streaming?: boolean;
 }>) {
-    if (streaming || !result) {
+    // Hooks run before any early return, matching IpDossierCard: SubjectMasthead
+    // is memo'd on `record`, and a fresh object every render (this card's own,
+    // not while streaming) defeated that memo.
+    const record = useMemo(
+        () => (result ? buildSubjectRecord(result) : null),
+        [result],
+    );
+
+    if (streaming || !result || !record) {
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-4">
@@ -252,7 +260,6 @@ export function DomainProfileCard({
     }
 
     const ctx = result.context;
-    const record = buildSubjectRecord(result);
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -666,7 +673,15 @@ export function HashProfileCard({
      *  no verdict, family, or fingerprint can be shown until the result lands. */
     streaming?: boolean;
 }>) {
-    if (streaming || !result) {
+    // Hooks run before any early return, matching IpDossierCard: SubjectMasthead
+    // is memo'd on `record`, and a fresh object every render (this card's own,
+    // not while streaming) defeated that memo.
+    const record = useMemo(
+        () => (result ? buildSubjectRecord(result) : null),
+        [result],
+    );
+
+    if (streaming || !result || !record) {
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-4">
@@ -682,7 +697,6 @@ export function HashProfileCard({
     }
 
     const ctx = result.context;
-    const record = buildSubjectRecord(result);
 
     const size = formatBytes(ctx?.fileSize);
     const firstSeen = formatDate(ctx?.firstSeen);
