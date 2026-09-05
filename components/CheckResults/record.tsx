@@ -10,12 +10,22 @@ import { VERDICT_STYLE } from "./verdict";
 
 /** One labelled row, with the sources that backed it underneath. The provenance
  *  line is what stops this card repeating VerdictHero: the hero says how bad,
- *  this says what, and who said so. */
+ *  this says what, and who said so. `note` is a pre-formatted alternative to
+ *  `sources` for a row whose provenance is not a plain list of source ids (the
+ *  Origin row's dissent sentence) — the two are mutually exclusive, and no row
+ *  ever needs both. */
 function Row({
     label,
     sources,
+    note,
     children,
-}: Readonly<{ label: string; sources?: string[]; children: ReactNode }>) {
+}: Readonly<{
+    label: string;
+    sources?: string[];
+    note?: string;
+    children: ReactNode;
+}>) {
+    const provenance = sources?.length ? sources.join(", ") : note;
     return (
         <div className="flex flex-wrap items-baseline gap-x-3 py-1.5 sm:flex-nowrap">
             <dt className="w-32 shrink-0 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
@@ -23,9 +33,9 @@ function Row({
             </dt>
             <dd className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-foreground">{children}</div>
-                {sources?.length ? (
+                {provenance ? (
                     <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                        {sources.join(", ")}
+                        {provenance}
                     </div>
                 ) : null}
             </dd>
@@ -41,15 +51,26 @@ function seenText(seen: SubjectRecord["seen"]): string | null {
     return null;
 }
 
+/** "2 sources say Netherlands" for one dissenting value, joined with a comma
+ *  when more than one alternative was reported. Rendered only when the
+ *  country vote actually split; see the counting rule in the design doc. */
+function dissentText(dissent: NonNullable<SubjectRecord["origin"]>["dissent"]): string {
+    return (dissent ?? [])
+        .map((d) =>
+            d.sources.length === 1
+                ? `1 source says ${d.value}`
+                : `${d.sources.length} sources say ${d.value}`,
+        )
+        .join(", ");
+}
+
 export const SubjectMasthead = memo(function SubjectMasthead({
     record,
     verdict,
 }: Readonly<{ record: SubjectRecord; verdict: Verdict }>) {
     const seen = seenText(record.seen);
-    const reported = record.reportedFor;
-    const alsoText = reported?.also.length
-        ? `, also described as ${reported.also.join(", ")}`
-        : "";
+    const priors = record.priors;
+    const alsoText = priors.also.length ? `, also described as ${priors.also.join(", ")}` : "";
 
     return (
         <div className="flex items-start justify-between gap-4">
@@ -65,20 +86,26 @@ export const SubjectMasthead = memo(function SubjectMasthead({
                 <Row label="Class" sources={record.class.sources}>
                     {record.class.label}
                 </Row>
+                {record.origin && (
+                    <Row
+                        label="Origin"
+                        note={
+                            record.origin.dissent?.length
+                                ? dissentText(record.origin.dissent)
+                                : undefined
+                        }
+                    >
+                        {record.origin.label}
+                    </Row>
+                )}
                 {record.hostedOn && (
                     <Row label="Hosted on" sources={record.hostedOn.sources}>
                         {record.hostedOn.label}
                     </Row>
                 )}
-                <Row label="Reported for" sources={reported?.sources}>
-                    {reported ? (
-                        <span className="capitalize">
-                            {reported.label}
-                            <span className="text-muted-foreground normal-case">{alsoText}</span>
-                        </span>
-                    ) : (
-                        <span className="text-muted-foreground">Nothing on file</span>
-                    )}
+                <Row label="Priors" sources={priors.sources}>
+                    {priors.label}
+                    <span className="text-muted-foreground">{alsoText}</span>
                 </Row>
                 {record.detections && (
                     // VirusTotal is the only source that sets detectionRatio, and it is
@@ -91,7 +118,7 @@ export const SubjectMasthead = memo(function SubjectMasthead({
                         {record.detections.malicious} of {record.detections.total} engines
                     </Row>
                 )}
-                {seen && <Row label="Seen">{seen}</Row>}
+                {seen && <Row label="Record">{seen}</Row>}
             </dl>
 
             <div
