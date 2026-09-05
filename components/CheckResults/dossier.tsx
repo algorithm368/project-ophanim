@@ -116,7 +116,10 @@ export const IpDossierCard = memo(function IpDossierCard({
                     </div>
                 ))}
 
-                <p className="font-mono text-[11px] text-muted-foreground">
+                <p
+                    suppressHydrationWarning
+                    className="font-mono text-[11px] text-muted-foreground"
+                >
                     {dossier.footer}
                 </p>
 
