@@ -166,7 +166,7 @@ export function SectionHeading({
 export function Group({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
     return (
         <div className="space-y-1">
-            <div className="border-l-2 border-foreground/25 pl-2 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+            <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
                 {label}
             </div>
             <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
