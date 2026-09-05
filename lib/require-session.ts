@@ -19,6 +19,8 @@
  * the first call, so this costs one module lookup, not one per request.
  */
 export async function requireSession(): Promise<Response | null> {
+  if (process.env.NODE_ENV === "development") return null;
+
   const { auth } = await import("@/auth");
   const session = await auth();
   if (session?.user) return null;

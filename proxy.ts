@@ -14,7 +14,11 @@
 // separate statements.
 import { auth } from "@/auth";
 
-export default auth;
+// ponytail: dev-only bypass, no per-route/per-env-var toggle. Remove if this
+// needs to be conditional on anything besides local `next dev`.
+export default process.env.NODE_ENV === "development"
+  ? () => undefined
+  : auth;
 
 export const config = {
   // Everything except: Auth.js's own endpoints (guarding them would leave no
