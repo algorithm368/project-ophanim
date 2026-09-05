@@ -155,6 +155,15 @@ Four rungs, first that answers wins.
    other row's noun-phrase register; the memory constraint against
    dash-separated copy rules out an em-dash join here too.
 
+   The voucher mention is suppressed when `CLASS` already carries that same
+   fact: `google.com` is `Tranco`-vouched at rank 1, and `lastResortClaim`
+   already renders that as `CLASS: Popular domain, Tranco rank 1`. Naming the
+   same source again in `PRIORS` would repeat a row rather than add one, the
+   same failure mode `hostedOn` already guards against for `class`. This rung
+   takes `klass` (the already-resolved `CLASS` claim) and checks
+   `klass.sources` before citing `tranco` or `hashlookup`; when either is
+   already there, it falls straight to bare `No record`.
+
 ### RECORD, renamed from SEEN
 
 Unchanged data (`seenRange`), renamed to fit the register. No provenance line;
@@ -188,8 +197,6 @@ Applied:
 
 ```ts
 export type Origin = Claim & {
-  countryCode?: string;
-  city?: string;
   /** Dissenting country values, rendered only when non-empty. */
   dissent?: { value: string; sources: string[] }[];
 };
@@ -198,25 +205,38 @@ export type SubjectRecord = {
   subject: string;
   qualifier?: string;
   class: Claim;
-  origin?: Origin;                              // new, IP only
+  origin?: Origin;                     // new, IP only, undefined otherwise
   hostedOn?: Claim;
-  priors?: Claim & { also: string[] };          // replaces reportedFor
+  priors: Claim & { also: string[] };  // replaces reportedFor; always present
   detections?: { malicious: number; total: number };
   seen?: { first?: string; last?: string };
   sprite: SpriteSpec;
 };
 ```
 
-`reportedFor` is renamed to `priors`, keeping its shape rather than gaining a
-structured `items` list: every rung, including rung 1, resolves to one
-fully-formed `label` string (`"148 reports, led by web app attack (70), ..."`),
-built in `lib/ti/subject-record.ts` exactly the way `class` and `hostedOn`
-already are. `record.tsx` needs no new rendering branch for `priors`, only the
-rename. `also` stays, because rung 2 (the unmodified `threatTypeOf` result) is
-the one caller that still populates it with runner-up types; rungs 1, 3, and 4
-leave it `[]`, and the component's existing `reported?.also.length ? ... : ""`
-guard already renders nothing for an empty array, so that line of `record.tsx`
-does not change.
+`Origin.label` is the full display string (`"Germany (DE), Berlin"`), built in
+`originOf()` the same way `class`/`hostedOn` already assemble theirs; it does
+not carry `countryCode`/`city` as separate fields, since nothing renders them
+apart from the whole. `dissent` stays structured, because it decides *whether
+a provenance line renders at all*, not just its wording — see the counting
+rule.
+
+`reportedFor` is renamed to `priors` and becomes **required**, dropping the
+optional `?`. Every rung, including rung 4, now resolves to something (rung 4
+is `No record` at the very least), so `record.tsx`'s old `reported ? (...) :
+"Nothing on file"` fallback is deleted along with the row's optionality — the
+"no data" case moved from a presentational default into rung 4's own return
+value. `priors.label` is one fully-formed string per rung, the same
+convention `class`/`hostedOn` already use; no structured `items` list, since
+nothing needs to style a count differently from its charge. `also` stays,
+because rung 2 (the unmodified `threatTypeOf` result) is the one rung that
+still populates it with runner-up types; rungs 1, 3, and 4 leave it `[]`, and
+the component's existing `also.length ? ... : ""` guard already renders
+nothing for an empty array.
+
+`priorsOf` takes the already-resolved `CLASS` claim as a third argument —
+`priorsOf(r, behaviour, klass)` — solely so rung 4 can check `klass.sources`
+before citing the same voucher twice; see rung 4 above.
 
 ## Worked results
 
@@ -284,7 +304,10 @@ Vitest, colocated, per the Sonar `new_coverage` 80% floor on changed lines.
   names the flooring source, covering `45.155.205.233`, and the label carries
   no preamble sentence, just the noun phrase.
 - `priorsOf` rung 4: a clean verdict with no voucher yields exactly `No
-  record`; `google.com` yields `No record, vouched by Tranco (rank 1)`.
+  record`; a domain vouched by Tranco but not already claimed by it (`klass`
+  from some other rung) yields `No record, vouched by Tranco (rank 1)`; and
+  `google.com`, whose `klass.sources` already contains `"tranco"`, yields bare
+  `No record` — the guard against repeating `CLASS`'s own fact.
 - The counting rule: no rendered row contains an `n of n` where the two numbers
   are equal.
 
