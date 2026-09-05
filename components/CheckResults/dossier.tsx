@@ -65,35 +65,37 @@ export const IpDossierCard = memo(function IpDossierCard({
             <CardContent className="space-y-5">
                 <SectionHeading>Subject record</SectionHeading>
 
-                <SubjectMasthead record={record} verdict={result.verdict} />
+                <div className="max-w-2xl space-y-5">
+                    <SubjectMasthead record={record} verdict={result.verdict} />
 
-                {dossier.groups.map((g) => (
-                    <div key={g.id} className="space-y-3">
-                        <Rule />
-                        <Group label={g.title}>
-                            {g.fields.map((f) => (
-                                <Field
-                                    key={f.label}
-                                    label={f.label}
-                                    hint={f.hint}
-                                    wide
-                                    wrap={f.value.length > WRAP_THRESHOLD}
-                                >
-                                    <span className={cn(f.mono && "font-mono text-[13px]")}>
-                                        {f.value}
-                                    </span>
-                                </Field>
-                            ))}
-                        </Group>
-                    </div>
-                ))}
+                    {dossier.groups.map((g) => (
+                        <div key={g.id} className="space-y-3">
+                            <Rule />
+                            <Group label={g.title}>
+                                {g.fields.map((f) => (
+                                    <Field
+                                        key={f.label}
+                                        label={f.label}
+                                        hint={f.hint}
+                                        wide
+                                        wrap={f.value.length > WRAP_THRESHOLD}
+                                    >
+                                        <span className={cn(f.mono && "font-mono text-[13px]")}>
+                                            {f.value}
+                                        </span>
+                                    </Field>
+                                ))}
+                            </Group>
+                        </div>
+                    ))}
 
-                <p
-                    suppressHydrationWarning
-                    className="font-mono text-[11px] text-muted-foreground"
-                >
-                    {dossier.footer}
-                </p>
+                    <p
+                        suppressHydrationWarning
+                        className="font-mono text-[11px] text-muted-foreground"
+                    >
+                        {dossier.footer}
+                    </p>
+                </div>
 
                 {result.geoResolution && <VotingCard res={result.geoResolution} />}
             </CardContent>

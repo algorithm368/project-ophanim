@@ -59,24 +59,35 @@ function RegistrationGroup({
 
     return (
         <Group label="Registration">
-            {ctx.registrar && <Field label="Registrar">{ctx.registrar}</Field>}
+            {ctx.registrar && (
+                <Field label="Registrar" wide>
+                    {ctx.registrar}
+                </Field>
+            )}
             {rank !== undefined && (
-                <Field label="Popularity">
+                <Field label="Popularity" wide>
                     Tranco rank {rank.toLocaleString("en-US")}
                 </Field>
             )}
             {created && (
                 <Field
                     label="Registered"
+                    wide
                     tone={fresh ? "text-orange-600 dark:text-orange-400" : undefined}
                 >
                     {created}
                     {age ? ` · ${age} old` : ""}
                 </Field>
             )}
-            {expires && <Field label="Expires">{expires}</Field>}
+            {expires && (
+                <Field label="Expires" wide>
+                    {expires}
+                </Field>
+            )}
             {categories.length > 0 && (
-                <Field label="Category">{categories.slice(0, 3).join(", ")}</Field>
+                <Field label="Category" wide>
+                    {categories.slice(0, 3).join(", ")}
+                </Field>
             )}
         </Group>
     );
@@ -135,6 +146,7 @@ function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
             {dnssec && (
                 <Field
                     label="DNSSEC"
+                    wide
                     hint="Whether the zone is DNSSEC-signed (resolver set the AD flag)"
                     tone={
                         dnssec === "signed"
@@ -148,6 +160,7 @@ function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
             {consensus && (
                 <Field
                     label="Resolvers"
+                    wide
                     hint="Unfiltered DoH resolvers queried for the A record, and how many agree on the resolved IP. A low count suggests GeoDNS, split-horizon, or possible poisoning."
                     tone={
                         consensus.bucket === "low"
@@ -245,26 +258,28 @@ export function DomainProfileCard({
             <CardContent className="space-y-4">
                 <SectionHeading>Subject record</SectionHeading>
 
-                <SubjectMasthead record={record} verdict={result.verdict} />
+                <div className="max-w-2xl space-y-4">
+                    <SubjectMasthead record={record} verdict={result.verdict} />
 
-                {ctx ? (
-                    <div className="space-y-4">
-                        <Rule />
-                        <RegistrationGroup
-                            ctx={ctx}
-                            rank={
-                                result.sources.find((s) => s.source.id === "tranco")
-                                    ?.details?.rank as number | undefined
-                            }
-                        />
-                        <DnsRecordsGroup ctx={ctx} />
-                        <EmailSecurityGroup ctx={ctx} />
-                    </div>
-                ) : (
-                    <p className="text-sm text-muted-foreground">
-                        No registration or DNS context was returned for this domain.
-                    </p>
-                )}
+                    {ctx ? (
+                        <div className="space-y-4">
+                            <Rule />
+                            <RegistrationGroup
+                                ctx={ctx}
+                                rank={
+                                    result.sources.find((s) => s.source.id === "tranco")
+                                        ?.details?.rank as number | undefined
+                                }
+                            />
+                            <DnsRecordsGroup ctx={ctx} />
+                            <EmailSecurityGroup ctx={ctx} />
+                        </div>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">
+                            No registration or DNS context was returned for this domain.
+                        </p>
+                    )}
+                </div>
             </CardContent>
         </Card>
     );

@@ -27,12 +27,12 @@ function Row({
 }>) {
     const provenance = sources?.length ? sources.join(", ") : note;
     return (
-        <div className="flex flex-wrap items-baseline gap-x-3 py-1.5 sm:flex-nowrap">
-            <dt className="w-32 shrink-0 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        <div className="flex flex-wrap items-baseline gap-x-3 py-1 sm:flex-nowrap">
+            <dt className="w-44 shrink-0 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
                 {label}
             </dt>
             <dd className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-foreground">{children}</div>
+                <div className="text-sm text-foreground">{children}</div>
                 {provenance ? (
                     <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                         {provenance}
