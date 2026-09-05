@@ -124,6 +124,7 @@ function VerdictShell({
     onRefresh: () => void;
     narrative: string;
 }>) {
+    const [detailsOpen, setDetailsOpen] = useState(false);
     const style = VERDICT_STYLE[result.verdict];
     // What kind of threat, as opposed to how bad. A C2, a spam bot, a Tor exit
     // and a research scanner all read "malicious 75", and the analyst does
@@ -132,6 +133,14 @@ function VerdictShell({
         verdict: result.verdict,
         benignOverride: result.scoreBreakdown?.benignOverride,
     });
+    // "Why this score" and "how much to trust it" are two questions an
+    // analyst asks together, never one without the other, so they sit behind
+    // one disclosure instead of two. Computed here (not inside ScoreDetails)
+    // so the meta row's toggle can know whether there is anything to show.
+    const rationale = scoreRationale(result);
+    const stats = consensusStats(result);
+    const hasDetails = Boolean(rationale) || stats.length > 0;
+    const signalCount = consensusBuckets(result).total;
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -193,31 +202,53 @@ function VerdictShell({
 
                 <CopyableSummary text={narrative} />
 
-                <ScoreRationale result={result} />
+                {/* Meta: one row, not three blocks. How fresh the result is,
+                    the disclosure for why it scored the way it did, and where
+                    it came from are three facts that used to occupy a stamp,
+                    a "why this score" button, and an always-open stat grid;
+                    the grid was the loudest thing on the card for a question
+                    ("how much to trust this") not every reader asks. The
+                    exact stamp is on hover, so nothing is lost.
 
-                <ConsensusLine result={result} />
-
-                {/* Meta: one chip, not three. How fresh the result is and where
-                    it came from are the same fact from two angles, and a stamp
-                    spelled out to the second ("8/21/2026, 7:54:16 AM") answers
-                    a question nobody asks that precisely. The exact stamp is on
-                    hover, so nothing is lost. */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+                    A three-column grid, not a flex row: the details toggle
+                    sits in the fixed centre column, and a fixed min-width on
+                    the button keeps its box (and so its centre, where the
+                    pointer just clicked) from moving when "hide details" swaps
+                    back to the longer "details, N signals" label. */}
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
                     <CheckedAt
                         checkedAt={result.checkedAt}
                         cached={result.cached}
                     />
+                    {hasDetails ? (
+                        <button
+                            type="button"
+                            onClick={() => setDetailsOpen((v) => !v)}
+                            aria-expanded={detailsOpen}
+                            className="min-w-[11.5rem] shrink-0 text-center font-mono text-xs text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
+                        >
+                            {detailsOpen
+                                ? "hide details"
+                                : `details, ${signalCount} signals`}
+                        </button>
+                    ) : (
+                        <span />
+                    )}
                     <Button
                         type="button"
                         variant="ghost"
                         size="xs"
-                        className="ml-auto gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
+                        className="justify-self-end gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
                         onClick={onRefresh}
                     >
                         <RefreshCw className="size-3" />
                         {result.cached ? "fetch fresh" : "re-check"}
                     </Button>
                 </div>
+
+                {detailsOpen && hasDetails && (
+                    <ScoreDetails rationale={rationale} stats={stats} />
+                )}
             </CardContent>
         </Card>
     );
@@ -264,31 +295,24 @@ function CheckedAt({
 }
 
 /**
- * How the score was reached, on demand.
- *
- * `scoreExplanation()` reads the intermediates `aggregateRisk()` recorded rather
- * than re-deriving them, so this cannot drift from the number above it. It is
- * behind a disclosure because the answer to "can I defend this verdict" is
- * wanted only when the verdict is being questioned, and the card is already
- * dense. The fact that it is worth questioning is surfaced on the always-visible
- * consensus line instead.
+ * Why the score is what it is, and how much to trust it, in one panel behind
+ * one disclosure. `scoreRationale()` reads the intermediates `aggregateRisk()`
+ * recorded rather than re-deriving them, so the terms here cannot drift from
+ * the number above them. `consensusStats()` is the same figures the old
+ * always-visible strip showed; folding both behind the meta row's toggle means
+ * the card's default view is the headline, the meter, and the summary, not a
+ * stat grid nobody asked for yet.
  */
-function ScoreRationale({ result }: Readonly<{ result: ResultLike }>) {
-    const [open, setOpen] = useState(false);
-    const rationale = scoreRationale(result);
-    if (!rationale) return null;
-
+function ScoreDetails({
+    rationale,
+    stats,
+}: Readonly<{
+    rationale: ReturnType<typeof scoreRationale>;
+    stats: Stat[];
+}>) {
     return (
-        <div className="space-y-2">
-            <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                aria-expanded={open}
-                className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
-            >
-                {open ? "hide rationale" : "why this score"}
-            </button>
-            {open && (
+        <div className="space-y-3 border-t border-foreground/12 pt-3">
+            {rationale && (
                 <div className="space-y-2">
                     {/* Numbers only. The two rows that answer the question sit
                         next to each other: what the loudest source said, and
@@ -321,6 +345,29 @@ function ScoreRationale({ result }: Readonly<{ result: ResultLike }>) {
                         </p>
                     )}
                 </div>
+            )}
+            {stats.length > 0 && (
+                <dl className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-4 gap-y-3">
+                    {stats.map((s) => (
+                        <div
+                            key={s.key}
+                            title={s.title}
+                            className={cn("min-w-0", s.wide && "col-span-2")}
+                        >
+                            <dt className="font-mono text-[10px] uppercase leading-none tracking-[0.14em] text-muted-foreground">
+                                {s.label}
+                            </dt>
+                            <dd
+                                className={cn(
+                                    "mt-1.5 font-mono text-[13px] leading-snug break-words text-foreground",
+                                    s.emphatic && "font-bold",
+                                )}
+                            >
+                                {s.value}
+                            </dd>
+                        </div>
+                    ))}
+                </dl>
             )}
         </div>
     );
@@ -575,50 +622,4 @@ function consensusStats(result: ResultLike): Stat[] {
     return stats;
 }
 
-/**
- * The evidence behind the verdict, as a strip of labelled figures.
- *
- * This was one dot-separated run of text, and no amount of shortening the
- * wording fixed it: a chain of "· 5 adverse · 7 clean · 1 rate limited" reads
- * as a sentence, so every figure has to be parsed in sequence to find the one
- * being looked for. Small label over value gives each figure a column and a
- * name, which is the same reason the rationale below it is a table.
- *
- * Two tones only: muted labels, plain values. Color stays on the verdict word.
- */
-function ConsensusLine({ result }: Readonly<{ result: ResultLike }>) {
-    const stats = consensusStats(result);
-
-    return (
-        // A grid rather than a wrapping flex row: flex sizes each cell to its
-        // own content, so the moment the strip wraps the second row's labels
-        // sit at their own arbitrary offsets and the columns stop being
-        // columns. auto-fill keeps one track width at every viewport, which is
-        // the whole point of laying this out as a table.
-        <dl className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-4 gap-y-3 border-t border-foreground/12 pt-3">
-            {stats.map((s) => (
-                <div
-                    key={s.key}
-                    title={s.title}
-                    className={cn("min-w-0", s.wide && "col-span-2")}
-                >
-                    <dt className="font-mono text-[10px] uppercase leading-none tracking-[0.14em] text-muted-foreground">
-                        {s.label}
-                    </dt>
-                    <dd
-                        className={cn(
-                            // Snug, not none: a long value ("2 errors, 1 no
-                            // key") wraps inside its own track, and leading-none
-                            // laps the two lines onto each other.
-                            "mt-1.5 font-mono text-[13px] leading-snug break-words text-foreground",
-                            s.emphatic && "font-bold",
-                        )}
-                    >
-                        {s.value}
-                    </dd>
-                </div>
-            ))}
-        </dl>
-    );
-}
 
