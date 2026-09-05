@@ -26,27 +26,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
     Field,
+    Group,
     PivotList,
     SectionHeading,
     useCopied,
 } from "./primitives";
 import { SubjectMasthead, SubjectMastheadSkeleton } from "./record";
-
-/** A flat group of related fields: a small uppercase label over hairline-
- *  separated rows. The minimal, borderless replacement for the old bento cell —
- *  the profile reads as one document instead of a grid of boxes. */
-function Group({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
-    return (
-        <div className="space-y-1">
-            <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                {label}
-            </div>
-            <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
-                {children}
-            </dl>
-        </div>
-    );
-}
 
 /** A hairline rule used to separate the identity line from the field groups. */
 export function Rule() {

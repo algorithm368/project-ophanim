@@ -1,54 +1,22 @@
 "use client";
 
 import { FileUser } from "lucide-react";
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useMemo } from "react";
 import type { CheckResult } from "@/lib/ti/types";
 import { buildIpDossier } from "@/lib/ti/ip-dossier";
 import { buildSubjectRecord } from "@/lib/ti/subject-record";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
-import { SectionHeading } from "./primitives";
+import { Field, Group, SectionHeading } from "./primitives";
 import { Rule } from "./profile";
 import { SubjectMasthead, SubjectMastheadSkeleton } from "./record";
 import { VotingCard } from "./voting";
 
-const SUBLABEL =
-    "font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase";
-
-/**
- * One label-value pair in the dossier's field grid. Deliberately not the shared
- * `GridItem` (w-28): dossier labels run much longer ("Cloud infrastructure",
- * "Known vulnerabilities", "Command and control"), so the label column here is
- * widened to keep them on one line without touching the narrower Origin/domain/
- * hash cards that still rely on GridItem's w-28.
- */
-function DossierItem({
-    label,
-    hint,
-    children,
-}: Readonly<{
-    label: string;
-    hint?: string;
-    children: ReactNode;
-}>) {
-    return (
-        <div className="flex items-baseline gap-3 py-1">
-            <dt
-                title={hint}
-                className={cn(
-                    "w-44 shrink-0 text-[13px] leading-snug text-muted-foreground",
-                    hint &&
-                        "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
-                )}
-            >
-                {label}
-            </dt>
-            <dd className="min-w-0 flex-1 text-sm font-medium text-foreground">
-                {children}
-            </dd>
-        </div>
-    );
-}
+/** Long-form values (CVE lists, allocation ranges, abuse contacts) truncate
+ *  unreadably in the aligned label→value row; past this length, stack the
+ *  value under the label instead, the same rule the domain profile's DNS
+ *  fields already follow for pivot chips. */
+const WRAP_THRESHOLD = 40;
 
 /**
  * The consolidated IP dossier: a passive profile assembled from every source
@@ -103,16 +71,21 @@ export const IpDossierCard = memo(function IpDossierCard({
                 {dossier.groups.map((g) => (
                     <div key={g.id} className="space-y-3">
                         <Rule />
-                        <div className={SUBLABEL}>{g.title}</div>
-                        <dl className="grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2">
+                        <Group label={g.title}>
                             {g.fields.map((f) => (
-                                <DossierItem key={f.label} label={f.label} hint={f.hint}>
+                                <Field
+                                    key={f.label}
+                                    label={f.label}
+                                    hint={f.hint}
+                                    wide
+                                    wrap={f.value.length > WRAP_THRESHOLD}
+                                >
                                     <span className={cn(f.mono && "font-mono text-[13px]")}>
                                         {f.value}
                                     </span>
-                                </DossierItem>
+                                </Field>
                             ))}
-                        </dl>
+                        </Group>
                     </div>
                 ))}
 

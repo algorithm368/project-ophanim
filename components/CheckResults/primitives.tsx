@@ -168,6 +168,22 @@ export function SectionHeading({
     );
 }
 
+/** A flat group of related fields: a small uppercase label over hairline-
+ *  separated rows. The minimal, borderless replacement for the old bento cell —
+ *  the profile reads as one document instead of a grid of boxes. */
+export function Group({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+    return (
+        <div className="space-y-1">
+            <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                {label}
+            </div>
+            <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
+                {children}
+            </dl>
+        </div>
+    );
+}
+
 /** One labeled datum, rendered as an aligned readout row: a fixed label column
  *  on the left, the value flowing in the column beside it. Stacks label-over-value
  *  on narrow screens. No per-field boxes or icons. */
@@ -177,6 +193,7 @@ export function Field({
     wrap = false,
     tone,
     hint,
+    wide = false,
 }: Readonly<{
     label: string;
     children: ReactNode;
@@ -188,13 +205,17 @@ export function Field({
     /** Plain-language tooltip for a jargon label (ASN, CAA, SPF, ssdeep, …).
      *  Marks the label with a dotted underline to signal it's explainable. */
     hint?: string;
+    /** Widen the label column for callers whose labels routinely run longer
+     *  than the default budget (e.g. "Known vulnerabilities", "Associated
+     *  hostnames" on the IP dossier). */
+    wide?: boolean;
 }>) {
     const labelEl = (
         <dt
             title={hint}
             className={cn(
                 "text-[13px] leading-snug text-muted-foreground",
-                !wrap && "shrink-0 sm:w-32",
+                !wrap && (wide ? "shrink-0 sm:w-44" : "shrink-0 sm:w-32"),
                 hint &&
                     "w-fit cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
             )}
