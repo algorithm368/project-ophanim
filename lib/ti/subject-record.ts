@@ -38,8 +38,10 @@ export type SubjectRecord = {
   /** Who runs the box. Undefined when `class` already carries it, so the same
    *  fact never renders on two rows. */
   hostedOn?: Claim;
-  /** What it did, as reported. */
-  reportedFor?: Claim & { also: string[] };
+  /** What the subject is charged with: counted priors, not an elected label.
+   *  Always present — rung 4 of `priorsOf` answers "No record" when nothing
+   *  else does. */
+  priors: Claim & { also: string[] };
   /**
    * Hash only: the multi-engine detection tally. Undefined for IP and domain,
    * and undefined on a hash when VirusTotal (key-gated, the only source that
@@ -650,9 +652,7 @@ export function buildSubjectRecord(r: AnyResult): SubjectRecord {
     class: klass,
     origin: originOf(r),
     hostedOn,
-    reportedFor: behaviour
-      ? { label: behaviour.type, sources: behaviour.sources, also: behaviour.also }
-      : undefined,
+    priors: priorsOf(r, behaviour, klass),
     detections: isHash(r) ? r.context?.detectionRatio : undefined,
     seen: seenRange(r.sources, isHash(r) ? r.context : undefined),
     sprite: spriteFor(r, infra, threat, flagged),

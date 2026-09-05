@@ -759,8 +759,8 @@ describe("buildSubjectRecord", () => {
       label: "Research scanner, Shodan.io",
       sources: ["scanner-id"],
     });
-    expect(rec.reportedFor?.label).toBe("brute force");
-    expect(rec.reportedFor?.sources).toEqual(expect.arrayContaining(["abuseipdb", "otx"]));
+    expect(rec.priors.label).toBe("Brute force");
+    expect(rec.priors.sources).toEqual(expect.arrayContaining(["abuseipdb", "otx"]));
     // #37's second half: isHosting is a bare infra claim with no named
     // provider, so under spriteFor's ordering it may not outrank the
     // positively identified scanner. Reverting to "any infra claim beats any
@@ -864,8 +864,16 @@ describe("buildSubjectRecord", () => {
     const rec = buildSubjectRecord(ipResult([]));
     expect(rec.class.label).toBe("Unknown type");
     expect(rec.class.sources).toEqual([]);
-    expect(rec.reportedFor).toBeUndefined();
+    expect(rec.priors).toEqual({ label: "No record", sources: [], also: [] });
     expect(rec.subject).toBe("185.220.101.42");
+  });
+
+  it("does not repeat the Tranco vouch in priors when CLASS already used it", () => {
+    const clean = domainResult([src({ id: "tranco", details: { rank: 1, vouched: true } })]);
+    clean.verdict = "clean";
+    const rec = buildSubjectRecord(clean);
+    expect(rec.class.label).toBe("Popular domain, Tranco rank 1");
+    expect(rec.priors).toEqual({ label: "No record", sources: [], also: [] });
   });
 
   it("carries the algorithm as the hash qualifier", () => {
