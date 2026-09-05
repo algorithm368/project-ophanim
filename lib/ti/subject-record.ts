@@ -31,6 +31,9 @@ export type SubjectRecord = {
   /** What it is. The threat identity when there is one, else the
    *  infrastructure identity, else the per-type classifier. */
   class: Claim;
+  /** The country the geo providers voted for. IP only: the domain pipeline
+   *  fetches no geo, and a hash has no origin by nature. */
+  origin?: Origin;
   /** Who runs the box. Undefined when `class` already carries it, so the same
    *  fact never renders on two rows. */
   hostedOn?: Claim;
@@ -522,6 +525,7 @@ export function buildSubjectRecord(r: AnyResult): SubjectRecord {
     subject: subjectOf(r),
     qualifier: isHash(r) ? HASH_ALGO_LABEL[r.algorithm] : undefined,
     class: klass,
+    origin: originOf(r),
     hostedOn,
     reportedFor: behaviour
       ? { label: behaviour.type, sources: behaviour.sources, also: behaviour.also }

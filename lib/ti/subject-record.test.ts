@@ -759,6 +759,13 @@ describe("buildSubjectRecord", () => {
     expect(buildSubjectRecord(hashResult([])).qualifier).toBe("SHA-256");
   });
 
+  it("carries the country vote on an IP, and nothing on a domain or hash", () => {
+    const rec = buildSubjectRecord(ipResult([], { country: "Germany", countryCode: "DE" }));
+    expect(rec.origin).toEqual({ label: "Germany (DE)", sources: [] });
+    expect(buildSubjectRecord(domainResult([])).origin).toBeUndefined();
+    expect(buildSubjectRecord(hashResult([])).origin).toBeUndefined();
+  });
+
   it("surfaces VirusTotal's detection ratio on a hash, and only on a hash", () => {
     const rec = buildSubjectRecord(
       hashResult([src({ id: "virustotal", requiresKey: true, score: 60 })], {
