@@ -26,7 +26,6 @@ coverage/
 # screenshots from the scripts/ helpers. They default to a temp dir; a run that
 # points SHOT_DIR here is a look at the current UI, not a record of it.
 shots/
-scripts/
 
 # sonar scanner working directory
 .scannerwork/

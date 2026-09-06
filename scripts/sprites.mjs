@@ -1,5 +1,5 @@
-// Contact sheet for the 1-bit sprite set: every body, every provider mark,
-// at 16, 32 and 64 px, with and without the flagged overlay, in both themes.
+// Contact sheet for the 1-bit sprite set: every body, at 16, 32 and 64 px,
+// with and without the flagged overlay, in both themes.
 //
 // Run with Bun, not node: it imports a TypeScript module directly.
 //   bun scripts/sprites.mjs
@@ -7,12 +7,7 @@ import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  BODY_KEYS,
-  MARK_KEYS,
-  SPRITE_SIZE,
-  spriteRects,
-} from "../lib/ti/sprite.ts";
+import { BODY_KEYS, SPRITE_SIZE, spriteRects } from "../lib/ti/sprite.ts";
 
 const OUT = process.env.SHOT_DIR || join(tmpdir(), "claude", "shots");
 mkdirSync(OUT, { recursive: true });
@@ -36,10 +31,6 @@ const specs = [];
 for (const body of BODY_KEYS) {
   specs.push([body, { body, flagged: false }]);
   specs.push([`${body} + horns`, { body, flagged: true }]);
-}
-for (const mark of MARK_KEYS) {
-  specs.push([`hosting + ${mark}`, { body: "hosting", mark, flagged: false }]);
-  specs.push([`hosting + ${mark} + horns`, { body: "hosting", mark, flagged: true }]);
 }
 
 const html = (theme) => `<!doctype html><html><head><meta charset="utf-8"><style>

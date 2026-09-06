@@ -790,7 +790,7 @@ describe("buildSubjectRecord", () => {
     expect(rec.hostedOn?.label).toBe("Amazon Web Services, eu-west-1");
     // Infra first for the picture: something physically an EC2 instance is more
     // truly an AWS box than a C2, and the C2 is the line beside it.
-    expect(rec.sprite).toEqual({ body: "hosting", mark: "aws", flagged: false });
+    expect(rec.sprite).toEqual({ body: "hosting", flagged: false });
   });
 
   it("draws the threat body, not a rack, when the only infra claim is a bare generic \"Hosting\"", () => {
@@ -832,12 +832,12 @@ describe("buildSubjectRecord", () => {
     expect(buildSubjectRecord(hashResult([])).sprite.body).toBe("file");
   });
 
-  it("draws the plain hosting body, never a named mark, for an org-regex match", () => {
+  it("draws the plain hosting body for an org-regex match", () => {
     // fromOrgRegex is an inference, never a name (see the infraClaim test of
     // the same name); the sprite side of that rule was previously untested.
     const rec = buildSubjectRecord(ipResult([], { asnOrg: "Hetzner Online GmbH" }));
     expect(rec.class.label).toBe("Hosting");
-    expect(rec.sprite).toEqual({ body: "hosting", mark: undefined, flagged: false });
+    expect(rec.sprite).toEqual({ body: "hosting", flagged: false });
   });
 
   it("does not change the picture when every key-gated source fails", () => {
