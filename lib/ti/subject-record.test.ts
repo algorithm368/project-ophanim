@@ -827,9 +827,20 @@ describe("buildSubjectRecord", () => {
   });
 
   it("falls back to the type's own body when nothing identified it", () => {
-    expect(buildSubjectRecord(ipResult([])).sprite.body).toBe("hosting");
+    // No geo at all: classifyIpLabel(undefined) is "Unknown type", so the
+    // sprite says so rather than defaulting to the hosting golem.
+    expect(buildSubjectRecord(ipResult([])).sprite.body).toBe("unknown");
     expect(buildSubjectRecord(domainResult([])).sprite.body).toBe("site");
     expect(buildSubjectRecord(hashResult([])).sprite.body).toBe("file");
+  });
+
+  it("draws the mobile, residential, or hosting body classifyIpLabel picked, when nothing else identified the IP", () => {
+    expect(buildSubjectRecord(ipResult([], { isMobile: true })).sprite.body).toBe("mobile");
+    expect(buildSubjectRecord(ipResult([], {})).sprite.body).toBe("residential");
+    // isHosting produces an infra claim (fromGeoFlags), so this reaches
+    // "hosting" through spriteFor's infra branch rather than typeBody, but
+    // the drawn body is the same either way.
+    expect(buildSubjectRecord(ipResult([], { isHosting: true })).sprite.body).toBe("hosting");
   });
 
   it("draws the plain hosting body for an org-regex match", () => {
