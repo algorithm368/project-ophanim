@@ -299,6 +299,24 @@ function CopyHashButton({ value }: Readonly<{ value: string }>) {
     );
 }
 
+/** ssdeep has no spaces to wrap at, so the browser's default word-wrap
+ *  greedily fills the first line and leaves whatever didn't fit — often a
+ *  single stray character — dangling alone on the next. ssdeep's own format
+ *  (`blocksize:hash:hash`) already has natural break points; marking them
+ *  with a `<wbr>` lets the layout wrap between chunks instead of mid-hash. */
+function breakableSsdeep(value: string): ReactNode {
+    return value.split(/([:/])/).map((part, i) =>
+        part === ":" || part === "/" ? (
+            <span key={i}>
+                {part}
+                <wbr />
+            </span>
+        ) : (
+            part
+        ),
+    );
+}
+
 /**
  * A collapsible technical section: a clickable header (label + optional count)
  * that expands its body. Collapsed by default so the card opens on the plain
@@ -734,7 +752,11 @@ export function HashProfileCard({
 
                 <RecordTable>
                     {hasIdentityFacts && (
-                        <RecordSection title="Identity">
+                        // Titled "File" rather than "Identity": the masthead above
+                        // already has an "Identity" section (Subject/Class/Priors/…),
+                        // and repeating the title back to back read as a duplicated
+                        // section rather than two distinct groupings.
+                        <RecordSection title="File">
                             {ctx?.fileName && (
                                 <RecordRow label="Name">{ctx.fileName}</RecordRow>
                             )}
@@ -785,7 +807,7 @@ export function HashProfileCard({
                                 mono
                                 hint="Fuzzy hash, matches files that are similar but not identical"
                             >
-                                {ctx.ssdeep}
+                                {breakableSsdeep(ctx.ssdeep)}
                             </RecordRow>
                         )}
                         {ctx?.magic && (
