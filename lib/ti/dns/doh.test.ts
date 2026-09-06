@@ -30,9 +30,11 @@ describe("answers", () => {
 });
 
 describe("UNFILTERED_RESOLVERS", () => {
-  it("includes the two known-good anchors", () => {
+  it("includes the known-good anchors", () => {
     expect(UNFILTERED_RESOLVERS.cloudflare).toContain("cloudflare-dns.com");
     expect(UNFILTERED_RESOLVERS.google).toContain("dns.google");
+    expect(UNFILTERED_RESOLVERS.rethinkdns).toContain("rethinkdns.com");
+    expect(UNFILTERED_RESOLVERS["dns.sb"]).toContain("dns.sb");
   });
 
   it("lists at least two https endpoints and no bare-http", () => {
