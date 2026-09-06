@@ -2,12 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { domainFcrdnsSource } from "./fcrdns";
 import { dohQuery, resolveA } from "../../dns/doh";
 
-// resolveA is mocked directly (not just dohQuery) for the same reason
-// documented in tls-cert.test.ts: it is defined in the same module as
-// dohQuery and its internal call to dohQuery is not intercepted by mocking
-// dohQuery's export alone. dohQuery itself is also mocked because
-// domainFcrdnsSource calls it directly (from a different module) for the
-// PTR/forward-resolve step.
+// resolveA is mocked directly (not just dohQuery): it is defined in the same
+// module as dohQuery, and its internal call to dohQuery is not intercepted
+// by mocking dohQuery's export alone (see rpki.test.ts for the same pattern).
+// dohQuery itself is also mocked because domainFcrdnsSource calls it
+// directly (from a different module) for the PTR/forward-resolve step.
 vi.mock("../../dns/doh", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../dns/doh")>();
   return { ...actual, resolveA: vi.fn(), dohQuery: vi.fn() };

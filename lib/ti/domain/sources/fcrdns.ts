@@ -9,8 +9,8 @@ import { verifyFcrdns } from "../../dns/fcrdns";
  * already does (PTR the IP, forward-resolve the hostname, confirm it points
  * back). Context-only, same as its IP-side counterpart: a mismatch is common
  * on legitimate shared hosting and CDN edges that never bother maintaining an
- * accurate PTR, so it is far weaker evidence than a TLS/SNI or RPKI failure
- * and does not move the score.
+ * accurate PTR, so it is far weaker evidence than an RPKI failure and does
+ * not move the score.
  */
 export const domainFcrdnsSource: TiSource = {
   meta: {

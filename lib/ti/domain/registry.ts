@@ -1,7 +1,6 @@
 import type { TiSource } from "../types";
 import { dnsSource } from "./sources/dns";
 import { dnsGeoSource } from "./sources/dns-geo";
-import { tlsCertSource } from "./sources/tls-cert";
 import { rpkiSource } from "./sources/rpki";
 import { domainFcrdnsSource } from "./sources/fcrdns";
 import { globalpingSource } from "./sources/globalping";
@@ -23,7 +22,6 @@ import { trancoSource } from "./sources/tranco";
 export const domainSources: TiSource[] = [
   dnsSource,
   dnsGeoSource,
-  tlsCertSource,
   rpkiSource,
   domainFcrdnsSource,
   globalpingSource,

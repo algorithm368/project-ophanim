@@ -10,14 +10,14 @@ const INVALID_SCORE = 60;
  * RIPEstat whether the AS actually announcing that IP's route is the one a
  * published ROA authorizes. This sits below DNS entirely — a domain can
  * resolve to a genuinely-controlled IP and still have its traffic diverted
- * by a BGP hijack, which no DNS-level check (consensus, TLS/SNI, FCrDNS) can
- * see, because the hijack reroutes packets, not names.
+ * by a BGP hijack, which no DNS-level check (consensus, FCrDNS) can see,
+ * because the hijack reroutes packets, not names.
  *
  * Weighted moderately (0.4) rather than as a hard listing on an invalid_*
  * result: RPKI deployment is still partial, so "unknown" (no ROA published)
  * is the common case and never scored, but an explicit invalid_asn or
  * invalid_length is a cryptographically-checkable fact, not a heuristic,
- * so it counts for more than the TLS/SNI mismatch's softer 0.35.
+ * so it still counts for something even alone.
  */
 export const rpkiSource: TiSource = {
   meta: {
