@@ -27,6 +27,7 @@ import {
     useCopied,
 } from "./primitives";
 import { SubjectMasthead, SubjectMastheadSkeleton } from "./record";
+import { IpConfidenceCard, VotingCard } from "./voting";
 
 /** A hairline rule used to separate the identity line from the field groups. */
 export function Rule() {
@@ -265,6 +266,19 @@ export function DomainProfileCard({
                         </p>
                     )}
                 </div>
+
+                {/* Both cards below are built from dnsGeoSource's own consensus
+                    (originResolverConsensus), not dnsSource's resolverConsensus
+                    used by the DNS Records group above — two independent DNS
+                    fetches can disagree on a GeoDNS/anycast name, and pairing
+                    IP confidence with Geo confidence off the same fetch keeps
+                    them from contradicting each other. */}
+                {ctx?.originResolverConsensus && (
+                    <IpConfidenceCard consensus={ctx.originResolverConsensus} />
+                )}
+                {result.geoResolution && (
+                    <VotingCard res={result.geoResolution} unit="resolved IP" />
+                )}
             </CardContent>
         </Card>
     );

@@ -2,7 +2,7 @@
 
 import { SignalHigh, SignalLow, SignalMedium } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Confidence, GeoResolution } from "@/lib/ti/types";
+import type { Confidence, GeoResolution, ResolverConsensus } from "@/lib/ti/types";
 import type { IconType } from "./types";
 
 /** Fixed three-letter codes so the confidence levels are equal width in mono. */
@@ -62,10 +62,13 @@ export function ConfidenceChip({ confidence }: Readonly<{ confidence: Confidence
 }
 
 /** One-line, comma-separated explanation of the geo confidence (house style:
- *  commas, no dashes). */
-export function geoConfidenceReason(res: GeoResolution): string {
+ *  commas, no dashes). `unit` names what's being counted: a plain geo vote
+ *  counts providers, the domain vote across resolved IPs counts those IPs
+ *  instead, and the sentence should say so rather than mislabel an IP as a
+ *  provider. */
+export function geoConfidenceReason(res: GeoResolution, unit = "provider"): string {
   const parts: string[] = [
-    `${res.providerCount} provider${res.providerCount === 1 ? "" : "s"}`,
+    `${res.providerCount} ${unit}${res.providerCount === 1 ? "" : "s"}`,
   ];
   if (res.country && res.country.sources.length > 1) {
     parts.push(`${res.country.sources.length} agree on country`);
@@ -95,4 +98,15 @@ export function geoConfidenceReason(res: GeoResolution): string {
     }
   }
   return parts.join(", ");
+}
+
+/** One-line explanation for the DNS-resolver ballot: how many of the queried
+ *  resolvers came back with the winning A record. */
+export function resolverConfidenceReason(consensus: ResolverConsensus): string {
+  const { respondingResolvers, agreeCount } = consensus;
+  if (respondingResolvers === 0) return "No resolver answered.";
+  if (agreeCount === respondingResolvers) {
+    return `${respondingResolvers} of ${respondingResolvers} resolvers agree on the resolved IP(s)`;
+  }
+  return `Resolvers split, ${agreeCount} of ${respondingResolvers} agree on the resolved IP(s)`;
 }

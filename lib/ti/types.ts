@@ -89,6 +89,9 @@ export interface ResolverConsensus {
   bucket: "high" | "medium" | "low";
   /** Distinct answer sets with counts, most common first. */
   variants: { ips: string[]; count: number }[];
+  /** Each queried resolver's own answer, for rendering a per-resolver ballot
+   *  (`ips: null` = timed out or errored, a non-vote rather than a dissent). */
+  perResolver: { resolver: string; ips: string[] | null }[];
 }
 
 /** Registration + DNS context for a domain (contributed by RDAP/DNS sources). */
@@ -124,6 +127,16 @@ export interface DomainContext {
   cname?: string[];
   /** Consensus over the unfiltered DoH resolver pool for the A record. */
   resolverConsensus?: ResolverConsensus;
+  /**
+   * dnsGeoSource's own, separately-fetched resolver consensus over the IP(s)
+   * it geolocated for `geoResolution` above. Deliberately a distinct field
+   * from `resolverConsensus`: that one is dnsSource's, fetched independently
+   * a moment apart, and can name a different winning IP on a GeoDNS/anycast
+   * name. Keeping them apart means the IP-confidence and Geo-confidence cards
+   * (both built from this field) always agree with each other, even when
+   * they drift from the DNS Records group's own consensus.
+   */
+  originResolverConsensus?: ResolverConsensus;
 }
 
 /** File identity + malware metadata for a hash (contributed by file sources). */

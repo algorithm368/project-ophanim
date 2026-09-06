@@ -63,6 +63,13 @@ describe("dnsGeoSource.check", () => {
     expect(f.geoResolution?.countryCode).toBe("SG");
     expect(f.geoResolution?.country?.sources).toEqual(["142.250.4.101"]);
     expect(f.summary).toContain("Singapore");
+    // IP confidence and Geo confidence must read the same consensus so the two
+    // cards can never contradict each other: it comes from this one check(),
+    // not from dnsSource's own separately-fetched resolverConsensus.
+    expect(f.domainContext?.originResolverConsensus?.consensusIps).toEqual([
+      "142.250.4.101",
+    ]);
+    expect(f.domainContext?.resolverConsensus).toBeUndefined();
   });
 
   it("reports no geoResolution when no resolver answers at all", async () => {
@@ -71,6 +78,7 @@ describe("dnsGeoSource.check", () => {
     expect(f.status).toBe("ok");
     expect(f.geoResolution).toBeUndefined();
     expect(f.summary).toContain("No consensus");
+    expect(f.domainContext?.originResolverConsensus?.respondingResolvers).toBe(0);
   });
 
   it("reports no geoResolution when every geo provider fails for the consensus IP", async () => {

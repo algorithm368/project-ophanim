@@ -1,5 +1,5 @@
 import type { GeoInput } from "../../geo/reconcile";
-import type { SourceFinding, TiSource } from "../../types";
+import type { ResolverConsensus, SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout } from "../../http";
 import { UNFILTERED_RESOLVERS, answers, dohQuery } from "../../dns/doh";
 import { ipConsensus, type ResolverVote } from "../../dns/consensus";
@@ -51,10 +51,20 @@ function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new DOMException("The operation was aborted.", "TimeoutError");
 }
 
-/** Multi-resolver A-record consensus, same mechanism dnsSource uses. Resolved
- *  independently rather than read off dnsSource's result: sources in this
- *  pipeline run in parallel and never depend on one another's output. */
-async function consensusIps(domain: string, signal: AbortSignal): Promise<string[]> {
+/**
+ * Multi-resolver A-record consensus, same mechanism dnsSource uses. Resolved
+ * independently rather than read off dnsSource's result: sources in this
+ * pipeline run in parallel and never depend on one another's output.
+ *
+ * That independence has a visible cost: dnsSource's own resolverConsensus
+ * (shown in the DNS Records group) is a *separate* live query a moment apart,
+ * and on a GeoDNS/anycast name the two can name different winning IPs. To
+ * keep this source's own "IP confidence" and "Geo confidence" cards from
+ * contradicting each other on screen, both are built from this one call's
+ * result — never from dnsSource's — so the pair is always self-consistent
+ * even when it drifts from the DNS Records group above it.
+ */
+async function resolveConsensus(domain: string, signal: AbortSignal): Promise<ResolverConsensus> {
   const votes: ResolverVote[] = await Promise.all(
     Object.entries(UNFILTERED_RESOLVERS).map(async ([resolver, url]) => {
       try {
@@ -64,7 +74,7 @@ async function consensusIps(domain: string, signal: AbortSignal): Promise<string
       }
     }),
   );
-  return ipConsensus(votes).consensusIps;
+  return ipConsensus(votes);
 }
 
 /**
@@ -86,10 +96,12 @@ export const dnsGeoSource: TiSource = {
   isEnabled: () => true,
   async check(domain, signal): Promise<SourceFinding> {
     try {
-      const ips = await consensusIps(domain, signal);
+      const consensus = await resolveConsensus(domain, signal);
       throwIfAborted(signal);
+      const domainContext = { originResolverConsensus: consensus };
+      const ips = consensus.consensusIps;
       if (ips.length === 0) {
-        return { status: "ok", summary: "No consensus A record to geolocate" };
+        return { status: "ok", summary: "No consensus A record to geolocate", domainContext };
       }
 
       const perIp = (
@@ -104,7 +116,11 @@ export const dnsGeoSource: TiSource = {
 
       const geoResolution = voteAcrossIps(perIp);
       if (!geoResolution?.country) {
-        return { status: "ok", summary: "No provider located the resolved IP(s)" };
+        return {
+          status: "ok",
+          summary: "No provider located the resolved IP(s)",
+          domainContext,
+        };
       }
 
       const city = geoResolution.city ? `, ${geoResolution.city.value}` : "";
@@ -112,6 +128,7 @@ export const dnsGeoSource: TiSource = {
         status: "ok",
         summary: `${geoResolution.country.value}${city}, from ${perIp.length} resolved IP(s)`,
         geoResolution,
+        domainContext,
       };
     } catch (err) {
       return { status: isTimeout(err) ? "timeout" : "error", error: errorMessage(err) };
