@@ -2,12 +2,17 @@ import * as tls from "node:tls";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { certNameCovers, certNames, tlsCertSource } from "./tls-cert";
-import { dohQuery } from "../../dns/doh";
+import { resolveA } from "../../dns/doh";
 
+// resolveA is imported by tls-cert.ts from a different module than it's
+// defined in, so mocking it here (rather than dohQuery, which resolveA calls
+// internally within doh.ts itself and would not be intercepted this way) is
+// what actually takes effect.
 vi.mock("../../dns/doh", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../dns/doh")>();
-  return { ...actual, dohQuery: vi.fn() };
+  return { ...actual, resolveA: vi.fn() };
 });
+const mockResolveA = vi.mocked(resolveA);
 
 class FakeSocket extends EventEmitter {
   authorized = true;
@@ -74,12 +79,12 @@ describe("certNames", () => {
 
 describe("tlsCertSource.check", () => {
   afterEach(() => {
-    vi.mocked(dohQuery).mockReset();
+    mockResolveA.mockReset();
     vi.mocked(tls.connect).mockClear();
   });
 
   it("reports no finding when the domain has no resolved IP", async () => {
-    vi.mocked(dohQuery).mockResolvedValue({ Status: 3 });
+    mockResolveA.mockResolvedValue([]);
     const f = await tlsCertSource.check("no-such.example", SIGNAL);
     expect(f.status).toBe("ok");
     expect(f.score).toBeUndefined();
@@ -87,10 +92,7 @@ describe("tlsCertSource.check", () => {
   });
 
   it("does not score a certificate that covers the domain", async () => {
-    vi.mocked(dohQuery).mockResolvedValue({
-      Status: 0,
-      Answer: [{ type: 1, data: "93.184.216.34" }],
-    });
+    mockResolveA.mockResolvedValue(["93.184.216.34"]);
     fakeSocket = new FakeSocket();
     fakeSocket.authorized = true;
     fakeSocket.cert = { subject: { CN: "example.com" }, issuer: { CN: "Some CA" } };
@@ -104,10 +106,7 @@ describe("tlsCertSource.check", () => {
   });
 
   it("scores a certificate that does not cover the domain", async () => {
-    vi.mocked(dohQuery).mockResolvedValue({
-      Status: 0,
-      Answer: [{ type: 1, data: "9.9.9.9" }],
-    });
+    mockResolveA.mockResolvedValue(["9.9.9.9"]);
     fakeSocket = new FakeSocket();
     fakeSocket.authorized = false;
     fakeSocket.cert = { subject: { CN: "totally-different.example" } };
@@ -122,10 +121,7 @@ describe("tlsCertSource.check", () => {
   });
 
   it("treats a refused connection as no TLS service, not a finding", async () => {
-    vi.mocked(dohQuery).mockResolvedValue({
-      Status: 0,
-      Answer: [{ type: 1, data: "93.184.216.34" }],
-    });
+    mockResolveA.mockResolvedValue(["93.184.216.34"]);
     fakeSocket = new FakeSocket();
     const promise = tlsCertSource.check("example.com", SIGNAL);
     await waitForConnect();
@@ -137,10 +133,7 @@ describe("tlsCertSource.check", () => {
   });
 
   it("reports timeout when the TLS handshake itself times out", async () => {
-    vi.mocked(dohQuery).mockResolvedValue({
-      Status: 0,
-      Answer: [{ type: 1, data: "93.184.216.34" }],
-    });
+    mockResolveA.mockResolvedValue(["93.184.216.34"]);
     fakeSocket = new FakeSocket();
     const promise = tlsCertSource.check("example.com", SIGNAL);
     await waitForConnect();
