@@ -3,6 +3,7 @@ import { dnsSource } from "./sources/dns";
 import { dnsGeoSource } from "./sources/dns-geo";
 import { tlsCertSource } from "./sources/tls-cert";
 import { rpkiSource } from "./sources/rpki";
+import { domainFcrdnsSource } from "./sources/fcrdns";
 import { cloudRangeSource } from "./sources/cloud-range";
 import { rdapSource } from "./sources/rdap";
 import { certSpotterSource } from "./sources/certspotter";
@@ -23,6 +24,7 @@ export const domainSources: TiSource[] = [
   dnsGeoSource,
   tlsCertSource,
   rpkiSource,
+  domainFcrdnsSource,
   cloudRangeSource,
   rdapSource,
   certSpotterSource,
