@@ -533,6 +533,7 @@ describe("originOf", () => {
       label: "Germany (DE), Berlin",
       sources: ["ip-api", "ipwhois"],
       dissent: undefined,
+      countryCode: "DE",
     });
   });
 
@@ -554,7 +555,11 @@ describe("originOf", () => {
     const claim = originOf(
       ipResult([], { country: "Australia", countryCode: "AU", city: "Brisbane" }),
     );
-    expect(claim).toEqual({ label: "Australia (AU), Brisbane", sources: [] });
+    expect(claim).toEqual({
+      label: "Australia (AU), Brisbane",
+      sources: [],
+      countryCode: "AU",
+    });
   });
 
   it("is undefined for a domain, a hash, and an IP with no geo at all", () => {
@@ -882,7 +887,7 @@ describe("buildSubjectRecord", () => {
 
   it("carries the country vote on an IP, and nothing on a domain or hash", () => {
     const rec = buildSubjectRecord(ipResult([], { country: "Germany", countryCode: "DE" }));
-    expect(rec.origin).toEqual({ label: "Germany (DE)", sources: [] });
+    expect(rec.origin).toEqual({ label: "Germany (DE)", sources: [], countryCode: "DE" });
     expect(buildSubjectRecord(domainResult([])).origin).toBeUndefined();
     expect(buildSubjectRecord(hashResult([])).origin).toBeUndefined();
   });

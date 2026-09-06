@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { flagUrl } from "@/lib/flag";
 import type { SubjectRecord } from "@/lib/ti/subject-record";
 import type { Verdict } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,7 @@ export const SubjectMasthead = memo(function SubjectMasthead({
     const seen = seenText(record.seen);
     const priors = record.priors;
     const alsoText = priors.also.length ? `, also described as ${priors.also.join(", ")}` : "";
+    const flag = flagUrl(record.origin?.countryCode);
 
     return (
         <div className="flex items-start justify-between gap-4">
@@ -68,7 +70,20 @@ export const SubjectMasthead = memo(function SubjectMasthead({
                                     : undefined
                             }
                         >
-                            {record.origin.label}
+                            <span className="inline-flex items-center gap-1.5">
+                                {flag && (
+                                    // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
+                                    <img
+                                        src={flag}
+                                        alt=""
+                                        width={20}
+                                        height={15}
+                                        loading="lazy"
+                                        className="h-3.5 w-auto shrink-0 rounded-[2px] border border-foreground/20 object-cover"
+                                    />
+                                )}
+                                {record.origin.label}
+                            </span>
                         </RecordRow>
                     )}
                     {record.hostedOn && (

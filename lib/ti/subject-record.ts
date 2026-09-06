@@ -22,6 +22,8 @@ export type Claim = { label: string; sources: string[] };
  *  the vote actually split; see the counting rule in the design doc. */
 export type Origin = Claim & {
   dissent?: { value: string; sources: string[] }[];
+  /** ISO 3166-1 alpha-2, when a provider gave one, for rendering the flag. */
+  countryCode?: string;
 };
 
 export type SubjectRecord = {
@@ -484,6 +486,7 @@ export function originOf(r: AnyResult): Origin | undefined {
       dissent: country.alternatives?.length
         ? country.alternatives.map((a) => ({ value: a.value, sources: a.sources }))
         : undefined,
+      countryCode: code,
     };
   }
   const geo = geoOf(r);
@@ -491,7 +494,7 @@ export function originOf(r: AnyResult): Origin | undefined {
   const label = [geo.countryCode ? `${geo.country} (${geo.countryCode})` : geo.country, geo.city]
     .filter(Boolean)
     .join(", ");
-  return { label, sources: [] };
+  return { label, sources: [], countryCode: geo.countryCode };
 }
 
 type ReportCategory = { name: string; count: number };
