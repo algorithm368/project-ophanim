@@ -167,7 +167,7 @@ export function SectionHeading({
  *  real, shared boundary instead of an approximation. */
 export function RecordTable({ children }: Readonly<{ children: ReactNode }>) {
     return (
-        <table className="w-full max-w-2xl table-fixed border-collapse text-sm">
+        <table className="w-full table-fixed border-collapse text-sm">
             <colgroup>
                 <col className="w-44" />
                 <col />

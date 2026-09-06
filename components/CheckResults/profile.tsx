@@ -244,7 +244,7 @@ export function DomainProfileCard({
             <CardContent className="space-y-4">
                 <SectionHeading>Subject record</SectionHeading>
 
-                <div className="max-w-2xl space-y-4">
+                <div className="space-y-4">
                     <SubjectMasthead record={record} verdict={result.verdict} />
 
                     {ctx ? (

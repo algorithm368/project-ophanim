@@ -57,7 +57,7 @@ export const IpDossierCard = memo(function IpDossierCard({
             <CardContent className="space-y-5">
                 <SectionHeading>Subject record</SectionHeading>
 
-                <div className="max-w-2xl space-y-5">
+                <div className="space-y-5">
                     <SubjectMasthead record={record} verdict={result.verdict} />
 
                     <RecordTable>
