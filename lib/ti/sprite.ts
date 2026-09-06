@@ -78,52 +78,51 @@ const BODIES: Record<BodyKey, string[]> = {
     .##############.
     .##############.
   `),
-  // A twin-antenna sprite: two short prongs at the top, the one silhouette
-  // feature none of the other bodies have (every other top is flat, a single
-  // point, or a dome). The prongs stay inside columns 4-11 at rows 0-1 so the
-  // horn zone the flagged overlay owns stays clear. Tapers to a single point
-  // at the base rather than flaring, since a mobile address is small and does
-  // not sit still the way a rack does.
+  // Two thin feelers converging to a point above the head, rather than a pair
+  // of thick prongs: bug-antenna, not bull-horns. They stay inside columns
+  // 4-11 at rows 0-1 so the horn zone the flagged overlay owns stays clear.
+  // Tapers to a point at the base rather than flaring, since a mobile address
+  // is small and does not sit still the way a rack does.
   mobile: parseGrid(`
-    ....##....##....
-    ....##....##....
-    ..####....####..
-    .##############.
-    .##############.
-    .##############.
-    ..##.#....#.##..
-    ..##.#....#.##..
-    .##..........##.
-    .##..........##.
-    ..############..
-    ...##########...
-    ....########....
-    .....######.....
-    ......####......
+    ....#......#....
+    .....#....#.....
+    ......#..#......
     .......##.......
+    ......####......
+    .....######.....
+    ....########....
+    ..############..
+    .##############.
+    ..##.#....#.##..
+    .##..........##.
+    .##..........##.
+    ..############..
+    ...##########...
+    ....########....
+    .....######.....
   `),
-  // A house: an angled roof with an overhanging eave, straight vertical
-  // walls, and a doorway notch cut into the base. The straight walls are the
-  // one body in the set that does not taper or flare at all through its
-  // torso, and the door is the only body with a gap cut into its bottom edge
-  // rather than a point, a flare, or a flat close.
+  // A house: a steep straight-sided roof, an overhanging eave (one row wider
+  // than the walls it shelters), a window, and a doorway notch cut into the
+  // base. The straight walls are the one body in the set that does not taper
+  // or flare through its torso, and the door is the only body with a gap cut
+  // into its bottom edge rather than a point, a flare, or a flat close.
   residential: parseGrid(`
+    .......##.......
     ......####......
     .....######.....
     ....########....
     ...##########...
-    ..############..
     .##############.
+    ..############..
     ..##.#....#.##..
     ..##.#....#.##..
-    .##..........##.
-    .##..........##.
-    .##..........##.
-    .##..........##.
-    .##..........##.
-    .##..........##.
-    .######..######.
-    .######..######.
+    ..##........##..
+    ..##........##..
+    ..##........##..
+    ..##........##..
+    ..##........##..
+    ..#####..#####..
+    ..#####..#####..
   `),
   // No eyes, on purpose: every other body stares back, and "unknown" is the
   // one case with nothing to stare with. Fades in from an empty top row and
