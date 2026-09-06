@@ -208,10 +208,20 @@ const fromOrgRegex: Resolver = (r) => {
 
 /** Only the hosting flag is an infrastructure claim. isProxy is a threat claim
  *  and belongs to the other ladder; mobile and residential answer "what kind of
- *  network", which is not the same question as "who runs the box". */
+ *  network", which is not the same question as "who runs the box".
+ *
+ *  isHosting is guarded the same way fromAsnTable and fromProxyFlag already
+ *  are: it is a reconciled field where a key-gated provider can outvote every
+ *  free one, and now that typeBody(r) draws a different sprite for hosting
+ *  vs. mobile/residential/unknown, an unguarded isHosting could swing the
+ *  picture on a day only a paid source answered. Before the IP fallback
+ *  bodies existed this could not happen: infra claim and typeBody(r) both
+ *  drew "hosting" regardless of which source won, so the two always agreed. */
 const fromGeoFlags: Resolver = (r) => {
   const geo = geoOf(r);
   if (!geo?.isHosting || geo.isProxy) return null;
+  const backers = geoResolutionOf(r)?.flags?.sources?.isHosting;
+  if (backers && !backedByFreeSource(r, backers)) return null;
   return { label: classifyIpLabel(geo).label, sources: ["geo flags"] };
 };
 
@@ -286,17 +296,7 @@ function fromCategory(id: string, category: string, label: string): Resolver {
  *  provider can outvote every free one in the weighted vote, so on a day only
  *  they answer, the "fact" behind Anonymizer could be a key-gated pick. That
  *  selects the anonymizer sprite body, so it moves the picture and needs the
- *  same guard. (Contrast fromGeoFlags above, which reads isHosting unguarded:
- *  under spriteFor's ordering, a bare infra claim (no named provider) no
- *  longer outranks a threat body, and when there is no threat, an infra claim
- *  and typeBody(r) both draw "hosting" for a bare IP, so the two remaining
- *  steps agree and fromGeoFlags genuinely cannot move the picture. This stops
- *  being true the day a distinct IP fallback body exists and typeBody(r) no
- *  longer returns "hosting" for every IP: at that point fromGeoFlags reaches a
- *  branch where its unguarded isHosting can pick between two different
- *  drawings, and it will need the same backedByFreeSource guard fromAsnTable
- *  and fromProxyFlag already use. That follow-up is expected; this comment is
- *  what should stop it shipping without the guard.) */
+ *  same guard. */
 const fromProxyFlag: Resolver = (r) => {
   const geo = geoOf(r);
   if (!geo?.isProxy) return null;
@@ -424,10 +424,34 @@ const THREAT_BODY: [RegExp, BodyKey][] = [
   [/tor |anonymizer|proxy|vpn/i, "anonymizer"],
 ];
 
+/** classifyIpLabel's four IP labels, mapped onto their sprite body. "Hosting /
+ *  Datacenter" and "Anonymizer" fall through to the default: spriteFor only
+ *  reaches typeBody(r) once infra and threatBody are both null, and infra
+ *  already includes fromGeoFlags (isHosting), so a genuine hosting IP would
+ *  have produced an infra claim before this ever runs. A proxy/VPN/Tor IP
+ *  works the same way through fromProxyFlag's threat claim. Both labels are
+ *  still handled here rather than assumed unreachable, since either resolver
+ *  can decline for its own reasons (an unguarded key-gated source, a missing
+ *  free backer) and leave classifyIpLabel as the only thing that answered. */
+function ipFallbackBody(r: AnyResult): BodyKey {
+  switch (classifyIpLabel(geoOf(r)).label) {
+    case "Anonymizer":
+      return "anonymizer";
+    case "Mobile network":
+      return "mobile";
+    case "Residential / Other":
+      return "residential";
+    case "Unknown type":
+      return "unknown";
+    default:
+      return "hosting";
+  }
+}
+
 function typeBody(r: AnyResult): BodyKey {
   if (isDomain(r)) return "site";
   if (isHash(r)) return "file";
-  return "hosting";
+  return ipFallbackBody(r);
 }
 
 /**

@@ -14,12 +14,24 @@
 
 export const SPRITE_SIZE = 16;
 
-export type BodyKey = "hosting" | "scanner" | "c2" | "anonymizer" | "site" | "file";
+export type BodyKey =
+  | "hosting"
+  | "mobile"
+  | "residential"
+  | "unknown"
+  | "scanner"
+  | "c2"
+  | "anonymizer"
+  | "site"
+  | "file";
 export type SpriteSpec = { body: BodyKey; flagged: boolean };
 export type Rect = { x: number; y: number; w: number };
 
 export const BODY_KEYS = [
   "hosting",
+  "mobile",
+  "residential",
+  "unknown",
   "scanner",
   "c2",
   "anonymizer",
@@ -65,6 +77,76 @@ const BODIES: Record<BodyKey, string[]> = {
     .##############.
     .##############.
     .##############.
+  `),
+  // A twin-antenna sprite: two short prongs at the top, the one silhouette
+  // feature none of the other bodies have (every other top is flat, a single
+  // point, or a dome). The prongs stay inside columns 4-11 at rows 0-1 so the
+  // horn zone the flagged overlay owns stays clear. Tapers to a single point
+  // at the base rather than flaring, since a mobile address is small and does
+  // not sit still the way a rack does.
+  mobile: parseGrid(`
+    ....##....##....
+    ....##....##....
+    ..####....####..
+    .##############.
+    .##############.
+    .##############.
+    ..##.#....#.##..
+    ..##.#....#.##..
+    .##..........##.
+    .##..........##.
+    ..############..
+    ...##########...
+    ....########....
+    .....######.....
+    ......####......
+    .......##.......
+  `),
+  // A house: an angled roof with an overhanging eave, straight vertical
+  // walls, and a doorway notch cut into the base. The straight walls are the
+  // one body in the set that does not taper or flare at all through its
+  // torso, and the door is the only body with a gap cut into its bottom edge
+  // rather than a point, a flare, or a flat close.
+  residential: parseGrid(`
+    ......####......
+    .....######.....
+    ....########....
+    ...##########...
+    ..############..
+    .##############.
+    ..##.#....#.##..
+    ..##.#....#.##..
+    .##..........##.
+    .##..........##.
+    .##..........##.
+    .##..........##.
+    .##..........##.
+    .##..........##.
+    .######..######.
+    .######..######.
+  `),
+  // No eyes, on purpose: every other body stares back, and "unknown" is the
+  // one case with nothing to stare with. Fades in from an empty top row and
+  // out to an empty bottom row rather than filling the frame edge to edge,
+  // and closes on a scalloped three-bump hem instead of a point or a flare,
+  // since an ill-defined edge is the whole point of the body.
+  unknown: parseGrid(`
+    ................
+    ......####......
+    .....######.....
+    ....########....
+    ...##########...
+    ..############..
+    .##############.
+    .##..........##.
+    .##..........##.
+    .##..........##.
+    ..############..
+    ...##########...
+    ....########....
+    ....##.##.##....
+    ....##.##.##....
+    ................
   `),
   // One eye, and only one. The first draft carved two unlit notches either
   // side of a lit centre, so the negative space made two eyes and the sprite
