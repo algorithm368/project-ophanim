@@ -12,7 +12,7 @@ export interface IpGeoVote {
 /** Below this, one IP's own provider vote is too thin to count toward where
  *  the domain is: a single non-corroborated provider should not get to swing
  *  the pin as hard as an IP three providers agreed on. */
-const QUALIFYING_CONFIDENCE: Confidence[] = ["medium", "high"];
+const QUALIFYING_CONFIDENCE: ReadonlySet<Confidence> = new Set(["medium", "high"]);
 
 function tierFor(agreement: number): Confidence {
   if (agreement === 1) return "high";
@@ -41,7 +41,7 @@ interface CountryGroup {
  */
 export function voteAcrossIps(votes: IpGeoVote[]): GeoResolution | undefined {
   const qualifying = votes.filter((v) =>
-    QUALIFYING_CONFIDENCE.includes(v.resolution.country?.confidence ?? "low"),
+    QUALIFYING_CONFIDENCE.has(v.resolution.country?.confidence ?? "low"),
   );
   if (qualifying.length === 0) return undefined;
 

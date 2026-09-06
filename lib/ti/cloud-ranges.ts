@@ -145,7 +145,7 @@ export function parseAzure(data: AzureRanges): CloudPrefix[] {
 /** The page embeds today's dated JSON link in more than one place (a script
  *  blob and the download button's href); the first match is enough. */
 export function extractAzureJsonUrl(html: string): string | undefined {
-  return html.match(/https:\/\/download\.microsoft\.com\/download\/[^"'\s]+\.json/i)?.[0];
+  return /https:\/\/download\.microsoft\.com\/download\/[^"'\s]+\.json/i.exec(html)?.[0];
 }
 
 /** Two sequential hops because the JSON has no stable URL; a failure at either

@@ -306,16 +306,19 @@ function CopyHashButton({ value }: Readonly<{ value: string }>) {
  *  (`blocksize:hash:hash`) already has natural break points; marking them
  *  with a `<wbr>` lets the layout wrap between chunks instead of mid-hash. */
 function breakableSsdeep(value: string): ReactNode {
-    return value.split(/([:/])/).map((part, i) =>
-        part === ":" || part === "/" ? (
-            <span key={i}>
+    let offset = 0;
+    return value.split(/([:/])/).map((part) => {
+        const start = offset;
+        offset += part.length;
+        return part === ":" || part === "/" ? (
+            <span key={start}>
                 {part}
                 <wbr />
             </span>
         ) : (
             part
-        ),
-    );
+        );
+    });
 }
 
 /**
