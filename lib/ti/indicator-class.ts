@@ -62,9 +62,10 @@ export function classifyHashLabel(
   hasData: boolean,
 ): IndicatorClass {
   if (ctx?.malwareFamily) {
+    const fileTypeSuffix = ctx.fileType ? ` (${ctx.fileType})` : "";
     return {
       label: ctx.malwareFamily,
-      desc: `Identified as ${ctx.malwareFamily}${ctx.fileType ? ` (${ctx.fileType})` : ""}.`,
+      desc: `Identified as ${ctx.malwareFamily}${fileTypeSuffix}.`,
     };
   }
   if (ctx?.fileType) {

@@ -1,10 +1,11 @@
 import type { Confidence, ResolverConsensus } from "../types";
 import type { VoteCell } from "../geo/votes";
+import { byCodeUnit } from "../sort";
 
 /** Order-insensitive form of an answer set, matching consensus.ts's own
  *  canonicalization so a resolver's set compares equal to the winner
  *  regardless of the order either happened to list the IPs in. */
-const canon = (ips: string[]): string => [...ips].sort().join(",");
+const canon = (ips: string[]): string => [...ips].sort(byCodeUnit).join(",");
 
 export interface ResolverBallot {
   winner: string;

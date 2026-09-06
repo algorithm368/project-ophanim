@@ -77,7 +77,7 @@ const ZONELESS = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/;
  */
 export function parseSeen(value: string | undefined): number | undefined {
   if (!value) return undefined;
-  const trimmed = value.trim().replace(/\s+UTC$/i, "");
+  const trimmed = value.trim().replace(/utc$/i, "").trimEnd();
   const normalized = ZONELESS.test(trimmed) ? `${trimmed.replace(" ", "T")}Z` : trimmed;
   const ms = Date.parse(normalized);
   if (Number.isNaN(ms)) return undefined;
