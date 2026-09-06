@@ -45,6 +45,14 @@ export const rpkiSource: TiSource = {
       }
 
       const rpkiStatus = await fetchRpkiStatus(asn, prefix, signal);
+      // null means the RIPEstat request itself failed — unlike ripeStatSource's
+      // best-effort +1 call, this source's whole point is the RPKI answer, so a
+      // failed lookup must not read as the specific, different claim "no ROA
+      // published" (issue found in review: a RIPEstat outage would otherwise
+      // silently report as ok with a fabricated result).
+      if (rpkiStatus === null) {
+        return { status: "error", error: "RIPEstat RPKI validation lookup failed" };
+      }
       const categories = rpkiCategories(rpkiStatus);
       const invalid = categories.length > 0;
 

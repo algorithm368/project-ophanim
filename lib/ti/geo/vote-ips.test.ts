@@ -86,6 +86,28 @@ describe("voteAcrossIps", () => {
     expect(disagree.city).toBeUndefined();
   });
 
+  it("does not treat a missing city as agreeing with a reported one", () => {
+    const out = voteAcrossIps([
+      vote("1.1.1.1", res("Singapore", { city: "Singapore" })),
+      // No city at all from this IP's own resolution — silence, not agreement.
+      vote("2.2.2.2", res("Singapore")),
+    ])!;
+    expect(out.country?.value).toBe("Singapore");
+    expect(out.city).toBeUndefined();
+  });
+
+  it("breaks a tied vote deterministically instead of by arrival order", () => {
+    const first = voteAcrossIps([
+      vote("1.1.1.1", res("United States", { countryCode: "US" })),
+      vote("2.2.2.2", res("Singapore", { countryCode: "SG" })),
+    ])!;
+    const reversed = voteAcrossIps([
+      vote("2.2.2.2", res("Singapore", { countryCode: "SG" })),
+      vote("1.1.1.1", res("United States", { countryCode: "US" })),
+    ])!;
+    expect(first.country?.value).toBe(reversed.country?.value);
+  });
+
   it("a code-only and a name-only vote for the same country merge instead of splitting", () => {
     const out = voteAcrossIps([
       vote("1.1.1.1", res("", { countryCode: "SG" })),

@@ -76,4 +76,14 @@ describe("ripeStatSource.check ASN selection", () => {
     expect(finding.status).toBe("ok");
     expect(mockGetJson).toHaveBeenCalledTimes(1);
   });
+
+  it("still succeeds on a failed RPKI probe — it's a best-effort +1 call", async () => {
+    mockGetJson
+      .mockResolvedValueOnce(prefixResponse(["4750"]))
+      .mockResolvedValueOnce({ ok: false, status: 503 } as Awaited<ReturnType<typeof getJson>>);
+    const finding = await ripeStatSource.check("27.254.104.1", new AbortController().signal);
+    expect(finding.status).toBe("ok");
+    expect(finding.categories).toEqual([]);
+    expect((finding.details as { rpkiStatus?: unknown })?.rpkiStatus).toBeUndefined();
+  });
 });

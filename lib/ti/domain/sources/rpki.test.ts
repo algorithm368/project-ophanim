@@ -91,4 +91,14 @@ describe("rpkiSource.check", () => {
     expect(f.status).toBe("ok");
     expect(f.score).toBeUndefined();
   });
+
+  it("reports an error rather than a fabricated 'no ROA published' when the RIPEstat validation call fails", async () => {
+    mockResolveA.mockResolvedValue(["93.184.216.34"]);
+    mockGetJson
+      .mockResolvedValueOnce(networkInfo("93.184.216.0/24", ["15133"]))
+      .mockResolvedValueOnce({ ok: false, status: 503 } as Awaited<ReturnType<typeof getJson>>);
+    const f = await rpkiSource.check("example.com", SIGNAL);
+    expect(f.status).toBe("error");
+    expect(f.summary).toBeUndefined();
+  });
 });

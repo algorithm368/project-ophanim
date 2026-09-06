@@ -1,6 +1,7 @@
 "use client";
 
 import { SignalHigh, SignalLow, SignalMedium } from "lucide-react";
+import { count } from "@/lib/text";
 import { cn } from "@/lib/utils";
 import type { Confidence, GeoResolution, ResolverConsensus } from "@/lib/ti/types";
 import type { IconType } from "./types";
@@ -103,10 +104,15 @@ export function geoConfidenceReason(res: GeoResolution, unit = "provider"): stri
 /** One-line explanation for the DNS-resolver ballot: how many of the queried
  *  resolvers came back with the winning A record. */
 export function resolverConfidenceReason(consensus: ResolverConsensus): string {
-  const { respondingResolvers, agreeCount } = consensus;
+  const { respondingResolvers, totalResolvers, agreeCount } = consensus;
   if (respondingResolvers === 0) return "No resolver answered.";
+  // Unanimous among responders is not the same claim as unanimous among every
+  // resolver queried — a lone survivor "agreeing with itself" after the rest
+  // timed out must not read as full consensus.
+  const silent = totalResolvers - respondingResolvers;
+  const silentNote = silent > 0 ? ` (${count(silent, "resolver")} did not respond)` : "";
   if (agreeCount === respondingResolvers) {
-    return `${respondingResolvers} of ${respondingResolvers} resolvers agree on the resolved IP(s)`;
+    return `${respondingResolvers} of ${respondingResolvers} resolvers agree on the resolved IP(s)${silentNote}`;
   }
-  return `Resolvers split, ${agreeCount} of ${respondingResolvers} agree on the resolved IP(s)`;
+  return `Resolvers split, ${agreeCount} of ${respondingResolvers} agree on the resolved IP(s)${silentNote}`;
 }

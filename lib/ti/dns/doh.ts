@@ -104,11 +104,19 @@ export function answers(res: DohResponse | null): string[] {
     .filter((d): d is string => Boolean(d));
 }
 
+const A_RECORD_TYPE = 1;
+
 /** The current A records for `name`, via a single Cloudflare DoH lookup.
  *  Deliberately not the multi-resolver consensus dnsSource/dnsGeoSource run:
  *  for a source that just needs *an* IP currently serving the name to probe
  *  (a TLS handshake, an FCrDNS check, an RPKI lookup), one fast lookup is
- *  enough and voting across resolvers would only add latency for no benefit. */
+ *  enough and voting across resolvers would only add latency for no benefit.
+ *
+ *  A CNAME'd name's answer set carries the CNAME record(s) alongside the
+ *  final A record(s); `answers()` alone would let a CNAME's hostname through
+ *  as if it were an IP, so this filters to type 1 before flattening. */
 export async function resolveA(name: string, signal: AbortSignal): Promise<string[]> {
-  return answers(await dohQuery(RESOLVERS.cloudflare, name, "A", signal));
+  const res = await dohQuery(RESOLVERS.cloudflare, name, "A", signal);
+  if (!res?.Answer) return answers(res);
+  return answers({ ...res, Answer: res.Answer.filter((a) => a.type === A_RECORD_TYPE) });
 }

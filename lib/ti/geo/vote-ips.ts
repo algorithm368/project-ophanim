@@ -1,5 +1,6 @@
 import type { Confidence, GeoResolution } from "../types";
 import { countryKeyIndex, countryVoteKey } from "./geokit";
+import { byCodeUnit } from "../sort";
 
 /** One resolved IP's own reconciled geo, already voted across providers
  *  (`reconcileGeoInputs`). This module votes a level up: across IPs. */
@@ -76,7 +77,13 @@ export function voteAcrossIps(votes: IpGeoVote[]): GeoResolution | undefined {
   }
   if (groups.size === 0) return undefined;
 
-  const ranked = [...groups.values()].sort((a, b) => b.ips.length - a.ips.length);
+  // Tie-broken by the group's own key, not left to arrive-order: a bare
+  // count comparator returns 0 on a tie, and Array.sort's stability then just
+  // preserves whatever order `votes` happened to arrive in — which can shift
+  // between checks of the same domain as DNS answer order rotates.
+  const ranked = [...groups.entries()]
+    .sort(([keyA, a], [keyB, b]) => b.ips.length - a.ips.length || byCodeUnit(keyA, keyB))
+    .map(([, group]) => group);
   const [winner, ...losers] = ranked;
   const agreement = winner.ips.length / qualifying.length;
   const confidence = tierFor(agreement);
@@ -94,23 +101,25 @@ export function voteAcrossIps(votes: IpGeoVote[]): GeoResolution | undefined {
 
   // City is asserted only when every IP behind the winning country also
   // agreed on the same city; a CDN split across the same country's regions
-  // should not get flattened into a single arbitrary city.
-  const winningCities = new Set(
-    qualifying
-      .filter((v) => winner.ips.includes(v.ip))
-      .map((v) => v.resolution.city?.value)
-      .filter((c): c is string => Boolean(c)),
-  );
-  const city: GeoResolution["city"] =
-    winningCities.size === 1
-      ? {
-          value: [...winningCities][0],
-          confidence,
-          score: agreement,
-          agreement,
-          sources: winner.ips,
-        }
-      : undefined;
+  // should not get flattened into a single arbitrary city. Dropping missing
+  // values before comparing would let one silent IP (no city reported at
+  // all) pass as agreement rather than break it, so the raw per-IP values —
+  // undefined included — are what unanimity is checked against.
+  const winnerCityValues = qualifying
+    .filter((v) => winner.ips.includes(v.ip))
+    .map((v) => v.resolution.city?.value);
+  const firstCity = winnerCityValues[0];
+  const unanimousCity =
+    firstCity !== undefined && winnerCityValues.every((c) => c === firstCity);
+  const city: GeoResolution["city"] = unanimousCity
+    ? {
+        value: firstCity,
+        confidence,
+        score: agreement,
+        agreement,
+        sources: winner.ips,
+      }
+    : undefined;
 
   return {
     country,
