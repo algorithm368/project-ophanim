@@ -2,6 +2,7 @@ import * as tls from "node:tls";
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout } from "../../http";
 import { resolveA } from "../../dns/doh";
+import { parseIP } from "../../../ip";
 
 const CONNECT_TIMEOUT_MS = 6000;
 
@@ -130,6 +131,19 @@ export const tlsCertSource: TiSource = {
       const ip = (await resolveA(domain, signal))[0];
       if (!ip) {
         return { status: "ok", summary: "No resolved IP to probe" };
+      }
+
+      // A domain's own authoritative DNS can answer with anything, including
+      // a private/loopback/link-local address (DNS rebinding). Refuse to dial
+      // it: this source is the only one in the pipeline that opens a raw
+      // socket to the resolved IP itself, so it is the one place an SSRF
+      // guard against internal infrastructure actually belongs.
+      const parsed = parseIP(ip);
+      if (parsed?.isPrivate || parsed?.isReserved) {
+        return {
+          status: "ok",
+          summary: `Resolved IP ${ip} is ${parsed.scopeNote ?? "non-routable"}; refusing to connect`,
+        };
       }
 
       let probe: CertProbe;

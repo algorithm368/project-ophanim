@@ -91,6 +91,23 @@ describe("tlsCertSource.check", () => {
     expect(f.summary).toContain("No resolved IP");
   });
 
+  it("refuses to connect when DNS rebinding points at a private address", async () => {
+    mockResolveA.mockResolvedValue(["127.0.0.1"]);
+    const f = await tlsCertSource.check("rebind.example", SIGNAL);
+    expect(f.status).toBe("ok");
+    expect(f.score).toBeUndefined();
+    expect(f.summary).toContain("refusing to connect");
+    expect(tls.connect).not.toHaveBeenCalled();
+  });
+
+  it("refuses to connect to a link-local / cloud-metadata address", async () => {
+    mockResolveA.mockResolvedValue(["169.254.169.254"]);
+    const f = await tlsCertSource.check("rebind.example", SIGNAL);
+    expect(f.status).toBe("ok");
+    expect(f.summary).toContain("refusing to connect");
+    expect(tls.connect).not.toHaveBeenCalled();
+  });
+
   it("does not score a certificate that covers the domain", async () => {
     mockResolveA.mockResolvedValue(["93.184.216.34"]);
     fakeSocket = new FakeSocket();
