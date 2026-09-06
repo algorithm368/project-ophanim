@@ -105,6 +105,7 @@ describe("greyNoiseSource.check — quota exhaustion", () => {
     expect(f.summary).not.toContain("(unknown)");
   });
 
+
   it("reports rate_limited when the quota is exhausted and nothing was cached", async () => {
     vi.stubEnv("GREYNOISE_API_KEY", "test-key");
     vi.mocked(getJson).mockResolvedValue({
