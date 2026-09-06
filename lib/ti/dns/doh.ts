@@ -103,3 +103,12 @@ export function answers(res: DohResponse | null): string[] {
     .map((a) => a.data?.replace(/\.$/, ""))
     .filter((d): d is string => Boolean(d));
 }
+
+/** The current A records for `name`, via a single Cloudflare DoH lookup.
+ *  Deliberately not the multi-resolver consensus dnsSource/dnsGeoSource run:
+ *  for a source that just needs *an* IP currently serving the name to probe
+ *  (a TLS handshake, an FCrDNS check, an RPKI lookup), one fast lookup is
+ *  enough and voting across resolvers would only add latency for no benefit. */
+export async function resolveA(name: string, signal: AbortSignal): Promise<string[]> {
+  return answers(await dohQuery(RESOLVERS.cloudflare, name, "A", signal));
+}

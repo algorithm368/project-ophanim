@@ -14,14 +14,20 @@ interface RpkiResponse {
   data?: { status?: string };
 }
 
-/** An "invalid" RPKI origin (the prefix is announced by an AS the ROA forbids)
- *  is a soft route-hijack signal; "valid"/"unknown" add no tag. */
+/** RIPEstat's live rpki-validation endpoint (routinator) returns one of
+ *  valid / invalid_asn / invalid_length / unknown — never the bare "invalid"
+ *  this used to check for, which meant it silently never matched a real
+ *  response. Either invalid_* is a soft route-hijack signal ("the wrong AS
+ *  is announcing this prefix", or "with too specific a mask"); "valid" and
+ *  "unknown" (no ROA at all, still most of the internet) add no tag. */
 export function rpkiCategories(status: string | undefined): string[] {
-  return status === "invalid" ? ["rpki-invalid"] : [];
+  return status?.startsWith("invalid") ? ["rpki-invalid"] : [];
 }
 
-/** Best-effort RPKI origin validation for the announcing AS + prefix. */
-async function fetchRpkiStatus(
+/** Best-effort RPKI origin validation for the announcing AS + prefix. Exported
+ *  so the domain-side RPKI source (which validates a resolved IP's route
+ *  rather than the indicator itself) can reuse the exact same call. */
+export async function fetchRpkiStatus(
   asn: string,
   prefix: string,
   signal: AbortSignal,
@@ -35,6 +41,19 @@ async function fetchRpkiStatus(
   } catch {
     return undefined;
   }
+}
+
+/** RIPEstat's network-info: the announced prefix + ASN(s) an IP falls under.
+ *  Exported for the same reason as fetchRpkiStatus above. */
+export async function fetchNetworkInfo(
+  ip: string,
+  signal: AbortSignal,
+): Promise<NetworkInfoResponse["data"] | undefined> {
+  const { ok, data } = await getJson<NetworkInfoResponse>(
+    `https://stat.ripe.net/data/network-info/data.json?resource=${ip}`,
+    signal,
+  );
+  return ok ? data?.data : undefined;
 }
 
 /** Map RIPEstat network-info into a context finding (announced prefix + ASN). */

@@ -3,8 +3,12 @@ import { ripeStatSource, ripestatFinding, rpkiCategories } from "./ripestat";
 import { getJson } from "../http";
 
 describe("rpkiCategories", () => {
-  it("tags only an invalid RPKI origin", () => {
-    expect(rpkiCategories("invalid")).toEqual(["rpki-invalid"]);
+  it("tags the real routinator invalid_* statuses", () => {
+    expect(rpkiCategories("invalid_asn")).toEqual(["rpki-invalid"]);
+    expect(rpkiCategories("invalid_length")).toEqual(["rpki-invalid"]);
+  });
+
+  it("does not tag valid or unknown (no ROA published)", () => {
     expect(rpkiCategories("valid")).toEqual([]);
     expect(rpkiCategories("unknown")).toEqual([]);
     expect(rpkiCategories(undefined)).toEqual([]);

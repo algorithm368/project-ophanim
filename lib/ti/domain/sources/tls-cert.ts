@@ -1,9 +1,8 @@
 import * as tls from "node:tls";
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout } from "../../http";
-import { RESOLVERS, answers, dohQuery } from "../../dns/doh";
+import { resolveA } from "../../dns/doh";
 
-const CF = RESOLVERS.cloudflare;
 const CONNECT_TIMEOUT_MS = 6000;
 
 /** True when `pattern` (a cert CN or SAN entry, possibly a `*.` wildcard)
@@ -104,15 +103,6 @@ export function probeCertificate(
   });
 }
 
-/** The first A record for `domain`, or undefined when it does not resolve.
- *  Deliberately a single lightweight lookup rather than the multi-resolver
- *  consensus dnsGeoSource runs: this source only needs *an* IP currently
- *  serving the name to probe, not a voted-on one. */
-async function firstResolvedIp(domain: string, signal: AbortSignal): Promise<string | undefined> {
-  const res = await dohQuery(CF, domain, "A", signal);
-  return answers(res)[0];
-}
-
 /**
  * TLS Cert Match: connects to the domain's currently-resolved IP with the
  * domain as SNI and checks whether the certificate presented actually covers
@@ -137,7 +127,7 @@ export const tlsCertSource: TiSource = {
   isEnabled: () => true,
   async check(domain, signal): Promise<SourceFinding> {
     try {
-      const ip = await firstResolvedIp(domain, signal);
+      const ip = (await resolveA(domain, signal))[0];
       if (!ip) {
         return { status: "ok", summary: "No resolved IP to probe" };
       }
