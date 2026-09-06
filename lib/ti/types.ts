@@ -188,6 +188,18 @@ export interface HashContext {
   mitreTechniques?: { id: string; name?: string; tactic?: string }[];
   /** Multi-engine detection tally, for a first-class confidence number. */
   detectionRatio?: { malicious: number; total: number };
+  /** Authenticode (or equivalent) verified the file's digital signature. */
+  signed?: boolean;
+  /** The signing publisher, when `signed` is true. */
+  signer?: string;
+  /** Set only when every sandbox that detonated the file agreed it was
+   *  harmless — never populated for a mixed or malicious verdict, so its mere
+   *  presence is itself the claim. */
+  sandboxVerdict?: { sandboxes: string[]; confidence?: number };
+  /** How many times the file itself has been submitted for analysis — a
+   *  prevalence signal distinguishing an established file from a first-time
+   *  submission with no track record yet. */
+  timesSubmitted?: number;
   /**
    * Sandbox-observed runtime artifacts, grouped for a readable "what it did"
    * readout. Each group is already deduped and capped by the source; strings are

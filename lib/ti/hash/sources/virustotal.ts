@@ -42,6 +42,7 @@ interface VtFileResponse {
       tags?: string[];
       first_submission_date?: number;
       last_analysis_date?: number;
+      times_submitted?: number;
       popular_threat_classification?: {
         suggested_threat_label?: string;
         popular_threat_name?: { value?: string }[];
@@ -53,11 +54,45 @@ interface VtFileResponse {
           imported_functions?: string[];
         }[];
       };
+      /** Authenticode parse. `verified` is a human string ("Signed",
+       *  "Unsigned", "Invalid Signature"); `signers` is a ";"-joined chain,
+       *  leaf certificate first. Present (with PE version-resource fields
+       *  like `product`/`description`) even on unsigned files, so `verified`
+       *  is the only field that actually means "has a checked signature". */
+      signature_info?: {
+        verified?: string;
+        signers?: string;
+      };
+      /** Per-sandbox detonation verdict, keyed by sandbox name. */
+      sandbox_verdicts?: Record<
+        string,
+        { category?: string; confidence?: number }
+      >;
     };
     /** Inline relationship pivots fetched via the `?relationships=` param. */
     relationships?: VtRelationships;
   };
   error?: { message?: string; code?: string };
+}
+
+/** The leaf certificate's name from VT's ";"-joined signer chain. */
+export function primarySigner(signers: string | undefined): string | undefined {
+  return signers?.split(";")[0]?.trim() || undefined;
+}
+
+/** Harmless only when every sandbox that detonated the file agrees — a single
+ *  dissenting sandbox is enough to withhold the claim entirely. */
+export function sandboxVerdictFromVt(
+  verdicts: Record<string, { category?: string; confidence?: number }> | undefined,
+): { sandboxes: string[]; confidence?: number } | undefined {
+  const entries = Object.entries(verdicts ?? {});
+  if (entries.length === 0 || !entries.every(([, v]) => v.category === "harmless")) {
+    return undefined;
+  }
+  const confidence = entries
+    .map(([, v]) => v.confidence)
+    .find((c): c is number => typeof c === "number");
+  return { sandboxes: entries.map(([name]) => name), confidence };
 }
 
 export function isoFromEpoch(seconds?: number): string | undefined {
@@ -163,6 +198,9 @@ export const virusTotalHashSource: TiSource = {
       const dlls = importedDllsFromVt(attr.pe_info?.import_list);
       const votes = attr.total_votes;
       const hasVotes = Boolean(votes && (votes.harmless || votes.malicious));
+      const signed = attr.signature_info?.verified === "Signed";
+      const signer = signed ? primarySigner(attr.signature_info?.signers) : undefined;
+      const sandboxVerdict = sandboxVerdictFromVt(attr.sandbox_verdicts);
 
       return {
         status: "ok",
@@ -196,6 +234,10 @@ export const virusTotalHashSource: TiSource = {
           // these, so they also surface in `details` (the raw disclosure).
           detectionNames: detections.length ? detections : undefined,
           detectionRatio: { malicious, total },
+          signed: signed || undefined,
+          signer,
+          sandboxVerdict,
+          timesSubmitted: attr.times_submitted,
         },
         details: {
           maliciousEngines: malicious,

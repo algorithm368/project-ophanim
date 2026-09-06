@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   importedDllsFromVt,
   isoFromEpoch,
+  primarySigner,
+  sandboxVerdictFromVt,
   vtFileScore,
   virusTotalHashSource,
 } from "./virustotal";
@@ -56,6 +58,40 @@ describe("importedDllsFromVt", () => {
       imported_functions: [String(i)],
     }));
     expect(importedDllsFromVt(many, 14)).toHaveLength(14);
+  });
+});
+
+describe("primarySigner", () => {
+  it("takes the leaf certificate off a ';'-joined signer chain", () => {
+    expect(
+      primarySigner(
+        "Wispr AI, Inc.; Microsoft ID Verified CS EOC CA 04; Microsoft Identity Verification Root Certificate Authority 2020",
+      ),
+    ).toBe("Wispr AI, Inc.");
+  });
+
+  it("returns undefined for empty or missing input", () => {
+    expect(primarySigner(undefined)).toBeUndefined();
+    expect(primarySigner("")).toBeUndefined();
+  });
+});
+
+describe("sandboxVerdictFromVt", () => {
+  it("reports harmless only when every sandbox agrees", () => {
+    expect(
+      sandboxVerdictFromVt({ Zenbox: { category: "harmless", confidence: 98 } }),
+    ).toEqual({ sandboxes: ["Zenbox"], confidence: 98 });
+  });
+
+  it("withholds the claim on any dissent, or with nothing to detonate", () => {
+    expect(
+      sandboxVerdictFromVt({
+        Zenbox: { category: "harmless" },
+        "Yomi Hunter": { category: "malicious" },
+      }),
+    ).toBeUndefined();
+    expect(sandboxVerdictFromVt(undefined)).toBeUndefined();
+    expect(sandboxVerdictFromVt({})).toBeUndefined();
   });
 });
 
@@ -114,5 +150,54 @@ describe("virusTotalHashSource.check — definitive-flag wiring (P1.1)", () => {
       new AbortController().signal,
     );
     expect(f.hashContext?.detectionRatio).toEqual({ malicious: 48, total: 71 });
+  });
+
+  it("promotes a verified signature and unanimous harmless sandbox verdict", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        data: {
+          attributes: {
+            last_analysis_stats: { undetected: 59, timeout: 6, failure: 5, "type-unsupported": 5 },
+            signature_info: { verified: "Signed", signers: "Wispr AI, Inc.; Microsoft ID Verified CS EOC CA 04" },
+            sandbox_verdicts: { Zenbox: { category: "harmless", confidence: 98 } },
+            times_submitted: 1,
+          },
+        },
+      },
+    } as GetJsonResult);
+    const f = await virusTotalHashSource.check(
+      "d".repeat(64),
+      new AbortController().signal,
+    );
+    expect(f.hashContext?.signed).toBe(true);
+    expect(f.hashContext?.signer).toBe("Wispr AI, Inc.");
+    expect(f.hashContext?.sandboxVerdict).toEqual({ sandboxes: ["Zenbox"], confidence: 98 });
+    expect(f.hashContext?.timesSubmitted).toBe(1);
+  });
+
+  it("does not claim a signature when the file is merely unsigned with PE version metadata", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "test-key");
+    vi.mocked(getJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        data: {
+          attributes: {
+            last_analysis_stats: { malicious: 58, undetected: 12, failure: 1, "type-unsupported": 4 },
+            // PE version-resource fields with no `verified` — not a checked signature.
+            signature_info: { description: "nProtect KeyCrypt Program Database DLL" },
+          },
+        },
+      },
+    } as GetJsonResult);
+    const f = await virusTotalHashSource.check(
+      "e".repeat(64),
+      new AbortController().signal,
+    );
+    expect(f.hashContext?.signed).toBeUndefined();
+    expect(f.hashContext?.signer).toBeUndefined();
   });
 });

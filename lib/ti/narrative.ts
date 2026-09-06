@@ -132,6 +132,54 @@ export function hashBehaviorSummary(
   return undefined;
 }
 
+/**
+ * Plain-language sentences explaining why a clean-verdict file reads as
+ * clean, one per positive signal actually present: a verified digital
+ * signature, a unanimous harmless sandbox detonation, a zero-malicious
+ * engine tally, and — when it applies — a prevalence caveat. Each stands as
+ * its own sentence so an analyst sees exactly which evidence backs the
+ * verdict, not a single line that blurs them together. Returns [] when
+ * nothing applies, since most clean verdicts are simply "nothing on
+ * record", a different and weaker claim than these — never invent a reason
+ * where the data has none.
+ */
+export function hashCleanSummary(ctx: HashContext | undefined): string[] {
+  const sentences: string[] = [];
+
+  if (ctx?.signed) {
+    sentences.push(
+      ctx.signer
+        ? `It carries a digital signature from ${ctx.signer} that Authenticode verified as valid.`
+        : "It carries a digital signature that Authenticode verified as valid.",
+    );
+  }
+
+  if (ctx?.sandboxVerdict) {
+    const { sandboxes, confidence } = ctx.sandboxVerdict;
+    const via = sandboxes.length ? joinList(sandboxes) : "sandbox analysis";
+    sentences.push(
+      `Detonated in ${via}, it showed no malicious behaviour${confidence ? ` (${confidence}% confidence)` : ""}.`,
+    );
+  }
+
+  const ratio = ctx?.detectionRatio;
+  if (ratio && ratio.total > 0 && ratio.malicious === 0) {
+    sentences.push(`None of the ${count(ratio.total, "engine")} that scanned it flagged anything.`);
+  }
+
+  // A single-submission file has no track record behind it yet, only this
+  // one look, so the clean signals above rest on thinner evidence than a
+  // widely-seen file would — worth saying plainly rather than leaving the
+  // reader to assume otherwise.
+  if (ctx?.timesSubmitted === 1) {
+    sentences.push(
+      "It has only been submitted once, so this reading is a first look rather than an established track record.",
+    );
+  }
+
+  return sentences;
+}
+
 /** The minimal result shape the narrative + score explanation need. */
 export type ResultLike = {
   riskScore: number;
