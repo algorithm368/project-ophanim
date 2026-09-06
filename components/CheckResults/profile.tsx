@@ -287,7 +287,7 @@ function CopyHashButton({ value }: Readonly<{ value: string }>) {
             variant="ghost"
             size="xs"
             aria-label="Copy hash"
-            className="ml-auto size-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+            className="size-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
             onClick={() => copy(value)}
         >
             {copied ? (
@@ -296,64 +296,6 @@ function CopyHashButton({ value }: Readonly<{ value: string }>) {
                 <Copy className="size-3.5" />
             )}
         </Button>
-    );
-}
-
-/** One aligned readout row: a fixed lowercase label column, the value beside it,
- *  and an optional trailing action (e.g. a copy button). Every row shares the
- *  same label width so the whole card reads as a single column. */
-function HashRow({
-    label,
-    hint,
-    mono = false,
-    narrow = false,
-    action,
-    children,
-}: Readonly<{
-    label: string;
-    hint?: string;
-    mono?: boolean;
-    /** Narrower label column (for short fingerprint labels), giving long mono
-     *  values more room before truncating. */
-    narrow?: boolean;
-    action?: ReactNode;
-    children: ReactNode;
-}>) {
-    // Fixed row height so parallel columns (Identity / Fingerprints) share the
-    // same horizontal gridlines even when only some rows carry a copy button.
-    return (
-        <div className="flex min-h-7 items-center gap-3">
-            <dt
-                title={hint}
-                className={cn(
-                    "shrink-0 text-[13px] leading-snug text-muted-foreground",
-                    narrow ? "w-14" : "w-28",
-                    hint &&
-                        "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
-                )}
-            >
-                {label}
-            </dt>
-            <dd
-                className={cn(
-                    "min-w-0 flex-1 truncate text-foreground",
-                    mono ? "font-mono text-[12px]" : "text-sm font-medium",
-                )}
-                title={mono && typeof children === "string" ? children : undefined}
-            >
-                {children}
-            </dd>
-            {action}
-        </div>
-    );
-}
-
-/** Small uppercase mono lead for a sub-section inside the identity card. */
-function SubLabel({ children }: Readonly<{ children: ReactNode }>) {
-    return (
-        <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            {children}
-        </div>
     );
 }
 
@@ -790,90 +732,73 @@ export function HashProfileCard({
                     </div>
                 )}
 
-                <Rule />
-
-                {/* Two-column dossier: identity facts left, fingerprints right. */}
-                <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                <RecordTable>
                     {hasIdentityFacts && (
-                        <div className="space-y-1">
-                            <SubLabel>Identity</SubLabel>
-                            <dl>
-                                {ctx?.fileName && (
-                                    <HashRow label="name">{ctx.fileName}</HashRow>
-                                )}
-                                {ctx?.fileType && (
-                                    <HashRow label="type">{ctx.fileType}</HashRow>
-                                )}
-                                {size && <HashRow label="size">{size}</HashRow>}
-                                {firstSeen && (
-                                    <HashRow label="first seen">{firstSeen}</HashRow>
-                                )}
-                                {lastSeen && (
-                                    <HashRow label="last seen">{lastSeen}</HashRow>
-                                )}
-                            </dl>
-                        </div>
+                        <RecordSection title="Identity">
+                            {ctx?.fileName && (
+                                <RecordRow label="Name">{ctx.fileName}</RecordRow>
+                            )}
+                            {ctx?.fileType && (
+                                <RecordRow label="Type">{ctx.fileType}</RecordRow>
+                            )}
+                            {size && <RecordRow label="Size">{size}</RecordRow>}
+                            {firstSeen && (
+                                <RecordRow label="First seen">{firstSeen}</RecordRow>
+                            )}
+                            {lastSeen && (
+                                <RecordRow label="Last seen">{lastSeen}</RecordRow>
+                            )}
+                            {/* The raw VT `tags` field is dropped: it is community/
+                                crowd-sourced and often noise (EICAR's read "ransomware,
+                                worm, backdoor, …"). Real classification comes from the
+                                category chips. */}
+                            {altNames.length > 0 && (
+                                <RecordRow label="Also known as">
+                                    {altNames.slice(0, 6).join(", ")}
+                                    {altNames.length > 6 && ` +${altNames.length - 6}`}
+                                </RecordRow>
+                            )}
+                        </RecordSection>
                     )}
 
-                    <div className="space-y-1">
-                        <SubLabel>Fingerprints</SubLabel>
-                        <dl>
-                            {digests.map((d) => (
-                                <HashRow
-                                    key={d.label}
-                                    label={d.label.toLowerCase()}
-                                    mono
-                                    narrow
-                                    action={<CopyHashButton value={d.value} />}
-                                >
+                    <RecordSection title="Fingerprints">
+                        {digests.map((d) => (
+                            <RecordRow key={d.label} label={d.label} mono>
+                                <span className="inline-flex flex-wrap items-center gap-1.5">
                                     {d.value}
-                                </HashRow>
-                            ))}
-                            {ctx?.imphash && (
-                                <HashRow
-                                    label="imphash"
-                                    mono
-                                    narrow
-                                    hint="Hash of the PE import table, clusters samples built from the same code"
-                                >
-                                    {ctx.imphash}
-                                </HashRow>
-                            )}
-                            {ctx?.ssdeep && (
-                                <HashRow
-                                    label="ssdeep"
-                                    mono
-                                    narrow
-                                    hint="Fuzzy hash, matches files that are similar but not identical"
-                                >
-                                    {ctx.ssdeep}
-                                </HashRow>
-                            )}
-                            {ctx?.magic && (
-                                <HashRow
-                                    label="magic"
-                                    mono
-                                    narrow
-                                    hint="libmagic file-type signature derived from the file's leading bytes"
-                                >
-                                    {ctx.magic}
-                                </HashRow>
-                            )}
-                        </dl>
-                    </div>
-                </div>
-
-                {/* `aka` only. The raw VT `tags` field is dropped: it is community
-                    /crowd-sourced and often noise (EICAR's read "ransomware, worm,
-                    backdoor, …"). Real classification comes from the category chips. */}
-                {altNames.length > 0 && (
-                    <dl>
-                        <HashRow label="aka">
-                            {altNames.slice(0, 6).join(", ")}
-                            {altNames.length > 6 && ` +${altNames.length - 6}`}
-                        </HashRow>
-                    </dl>
-                )}
+                                    <CopyHashButton value={d.value} />
+                                </span>
+                            </RecordRow>
+                        ))}
+                        {ctx?.imphash && (
+                            <RecordRow
+                                label="Imphash"
+                                mono
+                                hint="Hash of the PE import table, clusters samples built from the same code"
+                            >
+                                {ctx.imphash}
+                            </RecordRow>
+                        )}
+                        {ctx?.ssdeep && (
+                            <RecordRow
+                                label="ssdeep"
+                                mono
+                                hint="Fuzzy hash, matches files that are similar but not identical"
+                            >
+                                {ctx.ssdeep}
+                            </RecordRow>
+                        )}
+                        {ctx?.magic && (
+                            <RecordRow
+                                label="Magic"
+                                mono
+                                hint="libmagic file-type signature derived from the file's leading bytes"
+                            >
+                                {ctx.magic}
+                            </RecordRow>
+                        )}
+                    </RecordSection>
+                </RecordTable>
 
                 {/* Technical detail, collapsed by default so the card opens on the
                     plain summary; each section expands on click. */}
