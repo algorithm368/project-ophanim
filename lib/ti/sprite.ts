@@ -9,19 +9,13 @@
  *
  * Composition happens here, on the grid, and the conversion to rectangles
  * happens once at the end. Stacking three SVGs instead would render the same
- * picture but make "did the mark stay inside its well" untestable.
+ * picture but make "did the flag overlay stay off the body" untestable.
  */
 
 export const SPRITE_SIZE = 16;
 
-/** The mark well: rows 8 to 10, columns 5 to 10, inside the hosting body's
- *  chest, 6 wide by 3 tall. */
-const MARK_X = 5;
-const MARK_Y = 8;
-
 export type BodyKey = "hosting" | "scanner" | "c2" | "anonymizer" | "site" | "file";
-export type MarkKey = "aws" | "azure" | "gcp" | "cloudflare";
-export type SpriteSpec = { body: BodyKey; mark?: MarkKey; flagged: boolean };
+export type SpriteSpec = { body: BodyKey; flagged: boolean };
 export type Rect = { x: number; y: number; w: number };
 
 export const BODY_KEYS = [
@@ -32,13 +26,6 @@ export const BODY_KEYS = [
   "site",
   "file",
 ] as const satisfies readonly BodyKey[];
-
-export const MARK_KEYS = [
-  "aws",
-  "azure",
-  "gcp",
-  "cloudflare",
-] as const satisfies readonly MarkKey[];
 
 /** Turn indented ASCII art into rows, rejecting anything that is not 1-bit. */
 export function parseGrid(ascii: string): string[] {
@@ -55,32 +42,29 @@ export function parseGrid(ascii: string): string[] {
 }
 
 const BODIES: Record<BodyKey, string[]> = {
-  // A rack: a face in the top unit, then two identical bays below it. The
-  // repetition is the tell, since one divider bar and a pair of feet read as a
-  // kiosk. Rows 8 to 10, columns 5 to 10, are the upper bay and also the mark
-  // well; the lower bay keeps its plain bar, so a marked rack shows the mark
-  // beside an unmarked unit rather than on its own.
-  //
-  // Row 1 is six wide, not eight. Eight clears the horn zone and passes the
-  // test, but column 11 still abuts the right horn's inner end at column 12,
-  // so the composite is one run from 4 to 13 and only the left horn gets a gap.
+  // A flat-topped guardian. Anonymizer, scanner and c2 all taper from a point,
+  // so a flat top is the one silhouette cue that still reads as "a different
+  // creature" once the sprite is down to 16px. The eyes sit one pixel in from
+  // the frame rather than against it, the same gap anonymizer's eyes leave, so
+  // this reads as the same family's "peering out of the dark" rather than a
+  // face printed flush on a wall.
   hosting: parseGrid(`
-    ................
-    .....######.....
+    ....########....
+    ....########....
+    ...##########...
+    ...##########...
     ..############..
-    ..##........##..
-    ..##.##..##.##..
-    ..##.##..##.##..
-    ..##........##..
     ..############..
+    ..##.#....#.##..
+    ..##.#....#.##..
     ..##........##..
-    ..##.######.##..
     ..##........##..
-    ..############..
-    ..##........##..
-    ..##.######.##..
-    ..##........##..
-    ..############..
+    ..###......###..
+    .#####....#####.
+    .##############.
+    .##############.
+    .##############.
+    .##############.
   `),
   // One eye, and only one. The first draft carved two unlit notches either
   // side of a lit centre, so the negative space made two eyes and the sprite
@@ -147,27 +131,30 @@ const BODIES: Record<BodyKey, string[]> = {
     .##############.
     .##############.
   `),
-  // A window: landscape, with a heavy title bar, two eyes, a short mouth and
-  // one long line of content under it. Aspect is what separates it from
-  // `file`, not interior detail, because a silhouette survives downscaling and
-  // a hairline does not.
+  // A map pin: round head, one big eye, tapering to a single point. Every
+  // other body here narrows at the top and flares at the base; this one
+  // does the opposite on purpose, since a domain is an address you navigate
+  // to rather than a machine that just sits there, and the pin shape is a
+  // ready-made symbol for exactly that. The eye is one wide block rather
+  // than the two small dots the other faces use, since a lone stare reads
+  // as "a place looking back" instead of "a face."
   site: parseGrid(`
-    ................
-    ................
-    ################
-    ################
-    #..............#
-    #..##......##..#
-    #..##......##..#
-    #..............#
-    #....######....#
-    #..............#
-    #.###########..#
-    #..............#
-    ################
-    ................
-    ................
-    ................
+    ......####......
+    .....######.....
+    ....########....
+    ...##########...
+    ..############..
+    .##############.
+    .##...####...##.
+    .##...####...##.
+    .##...####...##.
+    .##..........##.
+    ..############..
+    ...##########...
+    ....########....
+    .....######.....
+    ......####......
+    .......##.......
   `),
   // A sheet with a folded corner, two eyes, and lines of content. It sits a
   // row lower than it looks like it should: the top edge at row 1 ran under
@@ -195,59 +182,15 @@ const BODIES: Record<BodyKey, string[]> = {
 };
 
 /**
- * 6x3 chest marks. Drawing each provider's real logo does not survive 16x16 at
- * one bit, and would mean reproducing trademarks. One shared body plus a
- * changing mark reads as a family automatically, and a new provider costs six
- * by three pixels rather than a whole character.
- *
- * The four differ by topology, not by detail: a chevron, two uprights, a ring,
- * a diagonal. Eighteen cells is too few for four accurate allusions, and the
- * first draft proved it, with aws and cloudflare differing in one row and so
- * being the same mark at every size the app renders. None of these is anyone's
- * trademark, which is the other reason not to chase the real logos.
- */
-export const MARKS: Record<MarkKey, string[]> = {
-  aws: parseGrid(`
-    ..##..
-    .####.
-    ##..##
-  `),
-  azure: parseGrid(`
-    ##..##
-    ##..##
-    ##..##
-  `),
-  gcp: parseGrid(`
-    .####.
-    ##..##
-    .####.
-  `),
-  cloudflare: parseGrid(`
-    ...###
-    .###..
-    ###...
-  `),
-};
-
-/**
  * Two horns over the top corners, composited onto whichever base was chosen.
  * Better than a corner warning badge on three counts: it needs no explanation,
- * it is native to the idiom being borrowed, and it produces an evil AWS rather
- * than an AWS with a sticker on it. A `.` here is transparent.
+ * it is native to the idiom being borrowed, and it produces an evil host
+ * rather than a host with a sticker on it. A `.` here is transparent.
  */
 const HORNS = parseGrid(`
   ##...........###
   .##.........##..
 `);
-
-/** Overwrite a rectangular region, used for the mark well. */
-function paintOpaque(rows: string[][], patch: string[], x0: number, y0: number): void {
-  patch.forEach((row, dy) => {
-    [...row].forEach((ch, dx) => {
-      rows[y0 + dy][x0 + dx] = ch;
-    });
-  });
-}
 
 /** Add pixels only, used for the overlay. */
 function paintOver(rows: string[][], patch: string[], x0: number, y0: number): void {
@@ -258,12 +201,9 @@ function paintOver(rows: string[][], patch: string[], x0: number, y0: number): v
   });
 }
 
-/** Base body, then the provider mark into its well, then the overlay. */
+/** Base body, then the overlay. */
 export function composeGrid(spec: SpriteSpec): string[] {
   const rows = BODIES[spec.body].map((r) => [...r]);
-  if (spec.mark && spec.body === "hosting") {
-    paintOpaque(rows, MARKS[spec.mark], MARK_X, MARK_Y);
-  }
   if (spec.flagged) paintOver(rows, HORNS, 0, 0);
   return rows.map((r) => r.join(""));
 }

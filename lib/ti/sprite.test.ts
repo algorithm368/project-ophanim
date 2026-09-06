@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   BODY_KEYS,
-  MARK_KEYS,
-  MARKS,
   SPRITE_SIZE,
   composeGrid,
   parseGrid,
@@ -43,23 +41,6 @@ describe("every drawn grid", () => {
       expect(row).toHaveLength(SPRITE_SIZE);
       expect(row).toMatch(/^[#.]+$/);
     }
-  });
-
-  it.each(MARK_KEYS)("%s composites into hosting without leaving the well", (mark) => {
-    const plain = composeGrid({ body: "hosting", flagged: false });
-    const marked = composeGrid({ body: "hosting", mark, flagged: false });
-    for (let y = 0; y < SPRITE_SIZE; y++) {
-      for (let x = 0; x < SPRITE_SIZE; x++) {
-        const inWell = y >= 8 && y <= 10 && x >= 5 && x <= 10;
-        if (!inWell) expect(marked[y][x]).toBe(plain[y][x]);
-      }
-    }
-  });
-
-  it.each(MARK_KEYS)("%s lands in the well exactly, dots and all", (mark) => {
-    const grid = composeGrid({ body: "hosting", mark, flagged: false });
-    const well = [8, 9, 10].map((y) => grid[y].slice(5, 11));
-    expect(well).toEqual(MARKS[mark]);
   });
 });
 
@@ -111,7 +92,7 @@ describe("toRects", () => {
 
 describe("spriteRects", () => {
   it("is the composition and the conversion in one call", () => {
-    const spec = { body: "hosting", mark: "aws", flagged: true } as const;
+    const spec = { body: "hosting", flagged: true } as const;
     expect(spriteRects(spec)).toEqual(toRects(composeGrid(spec)));
   });
 });

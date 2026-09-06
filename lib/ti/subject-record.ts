@@ -5,7 +5,7 @@ import { maliciousTags } from "./sources/shodan-internetdb";
 import { IDENTIFIERS, threatTypeOf } from "./threat-type";
 import type { ThreatTypeVerdict } from "./threat-type";
 import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
-import type { BodyKey, MarkKey, SpriteSpec } from "./sprite";
+import type { BodyKey, SpriteSpec } from "./sprite";
 
 /**
  * One assertion about the indicator, plus who made it.
@@ -409,14 +409,10 @@ export function lastResortClaim(r: AnyResult): Claim {
   return { label: classifyIpLabel(geo).label, sources: geo ? ["geo flags"] : [] };
 }
 
-/** Which drawn mark, if any, a provider name maps to. Anything undrawn falls
- *  through to the plain hosting body, which is the correct generic. */
-const PROVIDER_MARK: Record<string, MarkKey> = {
-  "Amazon Web Services": "aws",
-  "Microsoft Azure": "azure",
-  "Google Cloud": "gcp",
-  Cloudflare: "cloudflare",
-};
+/** Provider names specific enough to count as a *named* box, as opposed to a
+ *  bare "Hosting" inference. Only these outrank a positively identified
+ *  threat body; see the comment on spriteFor. */
+const NAMED_PROVIDERS = ["Amazon Web Services", "Microsoft Azure", "Google Cloud", "Cloudflare"];
 
 /** Which drawn body a threat claim maps to. Behaviour has no sprites in this
  *  set on purpose: it would only be reached when nothing identified the
@@ -449,11 +445,9 @@ function spriteFor(
   threat: Claim | null,
   flagged: boolean,
 ): SpriteSpec {
-  const provider = infra
-    ? Object.keys(PROVIDER_MARK).find((p) => infra.label.includes(p))
-    : undefined;
-  if (provider) {
-    return { body: "hosting", mark: PROVIDER_MARK[provider], flagged };
+  const namedProvider = infra ? NAMED_PROVIDERS.some((p) => infra.label.includes(p)) : false;
+  if (namedProvider) {
+    return { body: "hosting", flagged };
   }
   const threatBody = threat
     ? THREAT_BODY.find(([re]) => re.test(threat.label))?.[1]
