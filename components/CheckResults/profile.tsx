@@ -11,6 +11,7 @@ import {
     formatBytes,
     formatDate,
     hashBehaviorSummary,
+    hashCleanSummary,
 } from "@/lib/ti/narrative";
 import { describeDll } from "@/lib/ti/dll-dictionary";
 import { buildSubjectRecord } from "@/lib/ti/subject-record";
@@ -675,6 +676,9 @@ export function HashProfileCard({
     const isClean = result.verdict === "clean";
     const behaviorTags = isClean ? [] : (ctx?.behaviorTags ?? []);
     const behaviorSummary = isClean ? undefined : hashBehaviorSummary(ctx);
+    // Only for the clean case: why nothing here reads as a threat, built from
+    // whatever positive signals (signature, sandbox, engine tally) exist.
+    const cleanSummary = isClean ? hashCleanSummary(ctx) : [];
     const dlls = ctx?.importedDlls ?? [];
     const refs = ctx?.familyRefs ?? [];
     // Deduplicated before the noise filter below tidies the labels for display.
@@ -707,6 +711,11 @@ export function HashProfileCard({
     const hasIdentityFacts = Boolean(
         ctx?.fileName || ctx?.fileType || size || firstSeen || lastSeen,
     );
+    // Whether there is write-up text (what it does, the family blurb, why a
+    // clean file reads clean) to show prominently under the masthead.
+    const hasSummaryText = Boolean(
+        behaviorSummary || ctx?.familyDescription || cleanSummary.length > 0,
+    );
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
@@ -715,25 +724,12 @@ export function HashProfileCard({
 
                 <SubjectMasthead record={record} verdict={result.verdict} />
 
-                {/* Plain-language lead: what it does, then the family write-up. */}
-                {behaviorSummary && (
-                    <p className="text-[0.95rem] leading-relaxed text-foreground/90">
-                        {behaviorSummary}
-                    </p>
-                )}
-
                 {emptyThreat && (
                     <p className="text-sm leading-relaxed text-muted-foreground">
                         Flagged by scoring sources, but no behaviour, engine labels,
                         or imports are on record to detail what it does. The score
                         rests on limited signal, check the score breakdown and
                         sources below.
-                    </p>
-                )}
-
-                {ctx?.familyDescription && (
-                    <p className="text-sm leading-relaxed text-foreground/85">
-                        {ctx.familyDescription}
                     </p>
                 )}
 
@@ -821,6 +817,26 @@ export function HashProfileCard({
                         )}
                     </RecordSection>
                 </RecordTable>
+
+                {hasSummaryText && (
+                    <div className="space-y-2 rounded-md border border-foreground/10 bg-muted/30 p-3">
+                        {behaviorSummary && (
+                            <p className="text-sm leading-relaxed text-foreground/85">
+                                {behaviorSummary}
+                            </p>
+                        )}
+                        {cleanSummary.map((sentence) => (
+                            <p key={sentence} className="text-sm leading-relaxed text-foreground/85">
+                                {sentence}
+                            </p>
+                        ))}
+                        {ctx?.familyDescription && (
+                            <p className="text-sm leading-relaxed text-foreground/85">
+                                {ctx.familyDescription}
+                            </p>
+                        )}
+                    </div>
+                )}
 
                 {/* Technical detail, collapsed by default so the card opens on the
                     plain summary; each section expands on click. */}
