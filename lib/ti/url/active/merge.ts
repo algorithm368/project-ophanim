@@ -8,7 +8,7 @@ import type { ActiveScan } from "./types";
  *  as a disagreement. */
 const ENGINE_ORDER: ScanEngine[] = ["urlscan", "cloudflare"];
 
-export interface EngineDisagreement {
+interface EngineDisagreement {
   field: string;
   values: { engine: ScanEngine; value: string }[];
   /** Why the difference matters, when it does. */

@@ -3,8 +3,12 @@ import { ripeStatSource, ripestatFinding, rpkiCategories } from "./ripestat";
 import { getJson } from "../http";
 
 describe("rpkiCategories", () => {
-  it("tags only an invalid RPKI origin", () => {
-    expect(rpkiCategories("invalid")).toEqual(["rpki-invalid"]);
+  it("tags the real routinator invalid_* statuses", () => {
+    expect(rpkiCategories("invalid_asn")).toEqual(["rpki-invalid"]);
+    expect(rpkiCategories("invalid_length")).toEqual(["rpki-invalid"]);
+  });
+
+  it("does not tag valid or unknown (no ROA published)", () => {
     expect(rpkiCategories("valid")).toEqual([]);
     expect(rpkiCategories("unknown")).toEqual([]);
     expect(rpkiCategories(undefined)).toEqual([]);
@@ -71,5 +75,15 @@ describe("ripeStatSource.check ASN selection", () => {
     const finding = await ripeStatSource.check("27.254.104.1", new AbortController().signal);
     expect(finding.status).toBe("ok");
     expect(mockGetJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("still succeeds on a failed RPKI probe — it's a best-effort +1 call", async () => {
+    mockGetJson
+      .mockResolvedValueOnce(prefixResponse(["4750"]))
+      .mockResolvedValueOnce({ ok: false, status: 503 } as Awaited<ReturnType<typeof getJson>>);
+    const finding = await ripeStatSource.check("27.254.104.1", new AbortController().signal);
+    expect(finding.status).toBe("ok");
+    expect(finding.categories).toEqual([]);
+    expect((finding.details as { rpkiStatus?: unknown })?.rpkiStatus).toBeUndefined();
   });
 });

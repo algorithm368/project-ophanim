@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   type CloudPrefix,
+  extractAzureJsonUrl,
   inCidr,
   ipv4ToInt,
   matchPrefix,
   parseAws,
+  parseAzure,
   parseCloudflare,
   parseGcp,
 } from "@/lib/ti/cloud-ranges";
@@ -115,5 +117,46 @@ describe("provider list parsing", () => {
     expect(parseAws({})).toEqual([]);
     expect(parseGcp({ prefixes: [{ service: "x" }] })).toEqual([]);
     expect(parseCloudflare("")).toEqual([]);
+  });
+
+  it("reads Azure service tags, dropping IPv6 and empty region/service", () => {
+    expect(
+      parseAzure({
+        values: [
+          {
+            properties: {
+              region: "eastus",
+              systemService: "AzureStorage",
+              addressPrefixes: ["20.60.0.0/16", "2603:1030::/48"],
+            },
+          },
+          {
+            // The umbrella tag and region-only breakdowns carry no service.
+            properties: { region: "", systemService: "", addressPrefixes: ["4.0.0.0/8"] },
+          },
+        ],
+      }),
+    ).toEqual([
+      { cidr: "20.60.0.0/16", provider: "Microsoft Azure", region: "eastus", service: "AzureStorage" },
+      { cidr: "4.0.0.0/8", provider: "Microsoft Azure", region: undefined, service: undefined },
+    ]);
+  });
+
+  it("survives an Azure payload with no values", () => {
+    expect(parseAzure({})).toEqual([]);
+  });
+});
+
+describe("extractAzureJsonUrl", () => {
+  it("finds the dated download link in the confirmation page", () => {
+    const html =
+      '<a href="https://download.microsoft.com/download/7/1/d/71d/ServiceTags_Public_20260831.json">Download</a>';
+    expect(extractAzureJsonUrl(html)).toBe(
+      "https://download.microsoft.com/download/7/1/d/71d/ServiceTags_Public_20260831.json",
+    );
+  });
+
+  it("returns undefined when the page carries no such link", () => {
+    expect(extractAzureJsonUrl("<html>no link here</html>")).toBeUndefined();
   });
 });

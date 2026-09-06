@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Loader2, Radar } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import type { IOCType } from "@/lib/ioc";
 import { pollIntervalFor } from "@/lib/scan-poll";
 import { consensusBuckets, type ResultLike } from "@/lib/ti/narrative";
@@ -224,7 +224,6 @@ export function ScanReport({
     <Card className="sketch-shadow rounded-lg border border-foreground/12">
       <CardContent className="space-y-6">
         <SectionHeading
-          icon={Radar}
           action={
             batch && (
               <Button

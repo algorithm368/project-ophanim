@@ -7,7 +7,7 @@ const BASE = "https://api.cloudflare.com/client/v4/accounts";
 
 /** Cloudflare exposes no private tier, so an unlisted scan is the tightest it
  *  offers. Public is never used. */
-export const CF_VISIBILITY: ScanVisibility = "unlisted";
+const CF_VISIBILITY: ScanVisibility = "unlisted";
 
 type Json = Record<string, unknown>;
 

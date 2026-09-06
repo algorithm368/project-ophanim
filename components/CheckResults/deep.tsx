@@ -1,7 +1,6 @@
 "use client";
 
 import { memo, useState } from "react";
-import { FileText, Network } from "lucide-react";
 import type {
     CertificateRecord,
     CheckResult,
@@ -98,7 +97,6 @@ export function CertificatesCard({
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading
-                    icon={FileText}
                     action={
                         <span className="font-mono text-xs text-muted-foreground">
                             Cert Spotter · {certs.length} cert
@@ -173,7 +171,6 @@ export const PassiveDnsCard = memo(function PassiveDnsCard({
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
                 <SectionHeading
-                    icon={Network}
                     action={
                         <span className="font-mono text-xs text-muted-foreground">
                             {records.length}{" "}

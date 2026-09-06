@@ -9,12 +9,12 @@ import { cpeLabel } from "@/lib/cpe";
 import { relationsFor } from "@/lib/relations";
 import { count } from "@/lib/text";
 
-export type DossierField = { label: string; value: string; hint?: string; mono?: boolean };
+type DossierField = { label: string; value: string; hint?: string; mono?: boolean };
 export type DossierGroup = { id: string; title: string; fields: DossierField[] };
 export type IpDossier = { groups: DossierGroup[]; footer: string };
 
 /** Find a settled source result by its registry id. */
-export function findFinding(result: CheckResult, id: string): SourceResult | undefined {
+function findFinding(result: CheckResult, id: string): SourceResult | undefined {
   return result.sources.find((s) => s.source.id === id);
 }
 
@@ -220,9 +220,11 @@ function isoDate(s: string): string {
  * its `malicious` flag: dnsbl/blocklist-de/ipsum all gate `malicious` behind a
  * consensus threshold (>=3 zones, >=5 attacks, >=3 feeds), so a sub-threshold
  * listing (e.g. 2 DNSBL zones) previously produced no row at all even though
- * the source did report a listing. spamhaus-drop is intentionally excluded:
- * it never sets `malicious` by design (netblock-level signal) and its source
- * is not registered in lib/ti/registry.ts, so it never contributes a finding.
+ * the source did report a listing. spamhaus-drop is intentionally excluded
+ * here: it never sets `malicious` by design, because a DROP listing is a
+ * statement about the netblock rather than the address. It is registered and
+ * does return findings; lib/ti/subject-record.ts reads its
+ * "criminal-netblock" category as an identity claim.
  */
 function blocklistEvidence(result: CheckResult): string[] {
   const out: string[] = [];

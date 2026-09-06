@@ -16,7 +16,7 @@ export type LayerKind = "url" | "domain" | "ip";
  * check (a URL that addresses an IP directly has no host layer). Neither is
  * `clean`, and the distinction is the point: silence is not evidence of safety.
  */
-export type LayerStatus = "ok" | "unavailable" | "not-applicable";
+type LayerStatus = "ok" | "unavailable" | "not-applicable";
 
 /** One layer of a URL check: its own panel, its own verdict, its own age. */
 export interface UrlLayer {

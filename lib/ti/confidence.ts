@@ -11,12 +11,12 @@ export const HIGH_AT = 0.85;
 export const MEDIUM_AT = 0.65;
 
 // Worst-case dispersion: half the weight at 0, half at 100.
-export const MAX_DISPERSION = 50;
+const MAX_DISPERSION = 50;
 
 // Coverage is a ceiling, agreement moves within it. Half the ceiling is granted
 // for having asked at all; the other half has to be earned by the sources
 // saying the same thing.
-export const AGREEMENT_SHARE = 0.5;
+const AGREEMENT_SHARE = 0.5;
 
 // Where the wording of the reason line switches.
 const AGREE_AT = 0.8;
@@ -116,7 +116,7 @@ function opinions(scored: SourceResult[]): SourceResult[] {
  * measured level and turned out to be `weightedAvg / 100` restated, which scored
  * a unanimously clean 8.8.8.8 at 0.01.
  */
-export function agreementOf(scored: SourceResult[]): number {
+function agreementOf(scored: SourceResult[]): number {
   const voices = opinions(scored);
   const total = sumWeight(voices);
   if (total === 0) return 0;

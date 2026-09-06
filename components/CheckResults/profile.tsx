@@ -1,13 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import {
-    Check,
-    ChevronRight,
-    Copy,
-    FileDigit,
-    Globe,
-} from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Check, ChevronRight, Copy } from "lucide-react";
 import {
     type DomainCheckResult,
     type HashCheckResult,
@@ -17,88 +11,28 @@ import {
     formatBytes,
     formatDate,
     hashBehaviorSummary,
+    hashCleanSummary,
 } from "@/lib/ti/narrative";
 import { describeDll } from "@/lib/ti/dll-dictionary";
+import { buildSubjectRecord } from "@/lib/ti/subject-record";
 import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-    classifyDomain,
-    classifyHash,
-    domainTone,
-} from "./classify";
-import {
-    Field,
     PivotList,
+    RecordRow,
+    RecordSection,
+    RecordTable,
     SectionHeading,
     useCopied,
 } from "./primitives";
-import type { IconType } from "./types";
-
-/** A flat group of related fields: a small uppercase label over hairline-
- *  separated rows. The minimal, borderless replacement for the old bento cell —
- *  the profile reads as one document instead of a grid of boxes. */
-function Group({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
-    return (
-        <div className="space-y-1">
-            <div className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                {label}
-            </div>
-            <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
-                {children}
-            </dl>
-        </div>
-    );
-}
+import { SubjectMasthead, SubjectMastheadSkeleton } from "./record";
+import { IpConfidenceCard } from "./voting";
 
 /** A hairline rule used to separate the identity line from the field groups. */
 export function Rule() {
     return <div className="h-px bg-foreground/10" />;
-}
-
-/** Compact classification header for the domain / hash profile cards: a small
- *  tinted icon, the type label, and a one-line plain-language description. */
-function IdentityHeader({
-    icon: Icon,
-    label,
-    desc,
-    tone,
-}: Readonly<{
-    icon?: IconType;
-    label: string;
-    desc?: string;
-    tone?: string;
-}>) {
-    return (
-        <div className="flex items-start gap-3">
-            {Icon && (
-                <span
-                    className={cn(
-                        "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background",
-                        tone,
-                    )}
-                >
-                    <Icon className="size-5" />
-                </span>
-            )}
-            <div className="min-w-0">
-                <div
-                    className={cn(
-                        "text-lg font-bold leading-tight tracking-tight",
-                        tone,
-                    )}
-                >
-                    {label}
-                </div>
-                {desc && (
-                    <div className="mt-0.5 text-sm text-muted-foreground">
-                        {desc}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
 }
 
 type DomainContextOf = NonNullable<DomainCheckResult["context"]>;
@@ -127,27 +61,27 @@ function RegistrationGroup({
     const fresh = ctx.ageDays !== undefined && ctx.ageDays < 30;
 
     return (
-        <Group label="Registration">
-            {ctx.registrar && <Field label="Registrar">{ctx.registrar}</Field>}
+        <RecordSection title="Registration">
+            {ctx.registrar && <RecordRow label="Registrar">{ctx.registrar}</RecordRow>}
             {rank !== undefined && (
-                <Field label="Popularity">
+                <RecordRow label="Popularity">
                     Tranco rank {rank.toLocaleString("en-US")}
-                </Field>
+                </RecordRow>
             )}
             {created && (
-                <Field
+                <RecordRow
                     label="Registered"
                     tone={fresh ? "text-orange-600 dark:text-orange-400" : undefined}
                 >
                     {created}
                     {age ? ` · ${age} old` : ""}
-                </Field>
+                </RecordRow>
             )}
-            {expires && <Field label="Expires">{expires}</Field>}
+            {expires && <RecordRow label="Expires">{expires}</RecordRow>}
             {categories.length > 0 && (
-                <Field label="Category">{categories.slice(0, 3).join(", ")}</Field>
+                <RecordRow label="Category">{categories.slice(0, 3).join(", ")}</RecordRow>
             )}
-        </Group>
+        </RecordSection>
     );
 }
 
@@ -174,35 +108,33 @@ function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
     if (!anything) return null;
 
     return (
-        <Group label="DNS records">
+        <RecordSection title="DNS records">
             {ips.length > 0 && (
-                <Field label="Resolves to" wrap>
+                <RecordRow label="Resolves to">
                     <PivotList values={ips} />
-                </Field>
+                </RecordRow>
             )}
             {ns.length > 0 && (
-                <Field label="Nameservers" wrap>
+                <RecordRow label="Nameservers">
                     <PivotList values={ns} />
-                </Field>
+                </RecordRow>
             )}
             {reverse.length > 0 && (
-                <Field label="Reverse DNS (PTR)" wrap>
+                <RecordRow label="Reverse DNS (PTR)">
                     <PivotList values={reverse} />
-                </Field>
+                </RecordRow>
             )}
             {caa.length > 0 && (
-                <Field
+                <RecordRow
                     label="CAA"
-                    wrap
+                    mono
                     hint="Certificate Authority Authorization, which CAs may issue TLS certs for this domain"
                 >
-                    <span className="font-mono text-[12px] break-all">
-                        {caa.join(", ")}
-                    </span>
-                </Field>
+                    {caa.join(", ")}
+                </RecordRow>
             )}
             {dnssec && (
-                <Field
+                <RecordRow
                     label="DNSSEC"
                     hint="Whether the zone is DNSSEC-signed (resolver set the AD flag)"
                     tone={
@@ -212,10 +144,10 @@ function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
                     }
                 >
                     {dnssec === "signed" ? "Signed" : "Unsigned"}
-                </Field>
+                </RecordRow>
             )}
             {consensus && (
-                <Field
+                <RecordRow
                     label="Resolvers"
                     hint="Unfiltered DoH resolvers queried for the A record, and how many agree on the resolved IP. A low count suggests GeoDNS, split-horizon, or possible poisoning."
                     tone={
@@ -226,9 +158,9 @@ function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
                 >
                     {consensus.agreeCount}/{consensus.respondingResolvers}
                     {consensus.bucket === "low" ? " split" : " agree"}
-                </Field>
+                </RecordRow>
             )}
-        </Group>
+        </RecordSection>
     );
 }
 
@@ -238,31 +170,31 @@ function EmailSecurityGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
     if (mx.length === 0 && !ctx.spf && !ctx.dmarc) return null;
 
     return (
-        <Group label="Email security">
+        <RecordSection title="Email security">
             {mx.length > 0 && (
-                <Field label="Mail (MX)" wrap>
+                <RecordRow label="Mail (MX)">
                     <PivotList values={mx} />
-                </Field>
+                </RecordRow>
             )}
             {ctx.spf && (
-                <Field
+                <RecordRow
                     label="SPF"
-                    wrap
+                    mono
                     hint="Sender Policy Framework, which servers may send mail for this domain"
                 >
-                    <span className="font-mono text-[12px] break-all">{ctx.spf}</span>
-                </Field>
+                    {ctx.spf}
+                </RecordRow>
             )}
             {ctx.dmarc && (
-                <Field
+                <RecordRow
                     label="DMARC"
-                    wrap
+                    mono
                     hint="Policy for handling mail that fails SPF/DKIM authentication"
                 >
-                    <span className="font-mono text-[12px] break-all">{ctx.dmarc}</span>
-                </Field>
+                    {ctx.dmarc}
+                </RecordRow>
             )}
-        </Group>
+        </RecordSection>
     );
 }
 
@@ -283,15 +215,20 @@ export function DomainProfileCard({
      *  there is no registration/DNS context to show until the result lands. */
     streaming?: boolean;
 }>) {
-    if (streaming || !result) {
+    // Hooks run before any early return, matching IpDossierCard: SubjectMasthead
+    // is memo'd on `record`, and a fresh object every render (this card's own,
+    // not while streaming) defeated that memo.
+    const record = useMemo(
+        () => (result ? buildSubjectRecord(result) : null),
+        [result],
+    );
+
+    if (streaming || !result || !record) {
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-4">
-                    <SectionHeading icon={Globe}>Registration &amp; DNS</SectionHeading>
-                    <div className="flex items-center gap-3">
-                        <span className="sweep h-9 w-9 shrink-0 rounded-md" />
-                        <span className="sweep h-5 w-40 rounded" />
-                    </div>
+                    <SectionHeading>Subject record</SectionHeading>
+                    <SubjectMastheadSkeleton />
                     <div className="space-y-2">
                         <span className="sweep block h-3 w-full rounded" />
                         <span className="sweep block h-3 w-5/6 rounded" />
@@ -303,45 +240,40 @@ export function DomainProfileCard({
     }
 
     const ctx = result.context;
-    const resolves =
-        (ctx?.resolvedIps?.length ?? 0) > 0 || (ctx?.ipv6?.length ?? 0) > 0;
-    const type = classifyDomain(ctx, resolves);
-    const tone = domainTone(type.label);
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading
-                    icon={Globe}
-                    action={
-                        <code className="rounded-sm border border-foreground/15 bg-muted/60 px-2.5 py-1 font-mono text-xs font-semibold tracking-tight">
-                            {result.domain}
-                        </code>
-                    }
-                >
-                    Registration &amp; DNS
-                </SectionHeading>
+                <SectionHeading>Subject record</SectionHeading>
 
-                {/* Classification identity header (no icon, per design). */}
-                <IdentityHeader label={type.label} desc={type.desc} tone={tone} />
+                <div className="space-y-4">
+                    <SubjectMasthead record={record} verdict={result.verdict} />
 
-                {ctx ? (
-                    <div className="space-y-4">
-                        <Rule />
-                        <RegistrationGroup
-                            ctx={ctx}
-                            rank={
-                                result.sources.find((s) => s.source.id === "tranco")
-                                    ?.details?.rank as number | undefined
-                            }
-                        />
-                        <DnsRecordsGroup ctx={ctx} />
-                        <EmailSecurityGroup ctx={ctx} />
-                    </div>
-                ) : (
-                    <p className="text-sm text-muted-foreground">
-                        No registration or DNS context was returned for this domain.
-                    </p>
+                    {ctx ? (
+                        <RecordTable>
+                            <RegistrationGroup
+                                ctx={ctx}
+                                rank={
+                                    result.sources.find((s) => s.source.id === "tranco")
+                                        ?.details?.rank as number | undefined
+                                }
+                            />
+                            <DnsRecordsGroup ctx={ctx} />
+                            <EmailSecurityGroup ctx={ctx} />
+                        </RecordTable>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">
+                            No registration or DNS context was returned for this domain.
+                        </p>
+                    )}
+                </div>
+
+                {/* dnsGeoSource's own consensus (originResolverConsensus), not
+                    dnsSource's resolverConsensus used by the DNS Records group
+                    above — the two are independent DNS fetches and can name a
+                    different winning IP on a GeoDNS/anycast name. */}
+                {ctx?.originResolverConsensus && (
+                    <IpConfidenceCard consensus={ctx.originResolverConsensus} />
                 )}
             </CardContent>
         </Card>
@@ -356,7 +288,7 @@ function CopyHashButton({ value }: Readonly<{ value: string }>) {
             variant="ghost"
             size="xs"
             aria-label="Copy hash"
-            className="ml-auto size-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+            className="size-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
             onClick={() => copy(value)}
         >
             {copied ? (
@@ -368,83 +300,21 @@ function CopyHashButton({ value }: Readonly<{ value: string }>) {
     );
 }
 
-/** A minimal verdict marker, the one place this card carries color: filled red
- *  for a flagged file, filled neutral for a known but unflagged file, and a
- *  hollow ring for an unknown one, so the verdict reads at a glance. */
-export function StatusDot({
-    kind,
-}: Readonly<{
-    kind: "malicious" | "clean" | "known" | "unknown";
-}>) {
-    return (
-        <span
-            aria-hidden
-            className={cn(
-                "mt-[7px] size-2.5 shrink-0 rounded-full",
-                kind === "malicious" && "bg-red-500 dark:bg-red-400",
-                kind === "clean" && "bg-emerald-500 dark:bg-emerald-400",
-                kind === "known" && "bg-foreground/40",
-                kind === "unknown" && "border-[1.5px] border-muted-foreground/50",
-            )}
-        />
-    );
-}
-
-/** One aligned readout row: a fixed lowercase label column, the value beside it,
- *  and an optional trailing action (e.g. a copy button). Every row shares the
- *  same label width so the whole card reads as a single column. */
-export function HashRow({
-    label,
-    hint,
-    mono = false,
-    narrow = false,
-    action,
-    children,
-}: Readonly<{
-    label: string;
-    hint?: string;
-    mono?: boolean;
-    /** Narrower label column (for short fingerprint labels), giving long mono
-     *  values more room before truncating. */
-    narrow?: boolean;
-    action?: ReactNode;
-    children: ReactNode;
-}>) {
-    // Fixed row height so parallel columns (Identity / Fingerprints) share the
-    // same horizontal gridlines even when only some rows carry a copy button.
-    return (
-        <div className="flex min-h-7 items-center gap-3">
-            <dt
-                title={hint}
-                className={cn(
-                    "shrink-0 text-[13px] leading-snug text-muted-foreground",
-                    narrow ? "w-14" : "w-28",
-                    hint &&
-                        "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
-                )}
-            >
-                {label}
-            </dt>
-            <dd
-                className={cn(
-                    "min-w-0 flex-1 truncate text-foreground",
-                    mono ? "font-mono text-[12px]" : "text-sm font-medium",
-                )}
-                title={mono && typeof children === "string" ? children : undefined}
-            >
-                {children}
-            </dd>
-            {action}
-        </div>
-    );
-}
-
-/** Small uppercase mono lead for a sub-section inside the identity card. */
-function SubLabel({ children }: Readonly<{ children: ReactNode }>) {
-    return (
-        <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            {children}
-        </div>
+/** ssdeep has no spaces to wrap at, so the browser's default word-wrap
+ *  greedily fills the first line and leaves whatever didn't fit — often a
+ *  single stray character — dangling alone on the next. ssdeep's own format
+ *  (`blocksize:hash:hash`) already has natural break points; marking them
+ *  with a `<wbr>` lets the layout wrap between chunks instead of mid-hash. */
+function breakableSsdeep(value: string): ReactNode {
+    return value.split(/([:/])/).map((part, i) =>
+        part === ":" || part === "/" ? (
+            <span key={i}>
+                {part}
+                <wbr />
+            </span>
+        ) : (
+            part
+        ),
     );
 }
 
@@ -743,83 +613,6 @@ function refLabel(href: string): string {
     }
 }
 
-/** Substring, normalized-category pairs. Ordered so more specific tokens are
- *  listed first; substrings must not overlap (e.g. no bare "loader" that would
- *  also fire on "downloader"). */
-const CATEGORY_TOKENS: { match: string; label: string }[] = [
-    { match: "ransomware", label: "ransomware" },
-    { match: "ransom", label: "ransomware" },
-    { match: "downloader", label: "downloader" },
-    { match: "dropper", label: "dropper" },
-    { match: "backdoor", label: "backdoor" },
-    { match: "keylog", label: "keylogger" },
-    { match: "spyware", label: "spyware" },
-    { match: "adware", label: "adware" },
-    { match: "rootkit", label: "rootkit" },
-    { match: "worm", label: "worm" },
-    { match: "banker", label: "banker" },
-    { match: "stealer", label: "stealer" },
-    { match: "miner", label: "miner" },
-    { match: "inject", label: "injector" },
-    { match: "trojan", label: "trojan" },
-    { match: "botnet", label: "botnet" },
-    { match: "exploit", label: "exploit" },
-    { match: "riskware", label: "riskware" },
-    { match: "clicker", label: "clicker" },
-    { match: "hacktool", label: "hacktool" },
-];
-
-/** Summarize what a file is from its engine detection labels: the malware
- *  categories the engines keep naming, most frequent first, capped at four.
- *  Turns a wall of vendor strings into an at-a-glance read. Detection labels
- *  only, not tags, which are often joke or user labels (EICAR's are nonsense). */
-function deriveCategories(labels: string[]): string[] {
-    const haystack = labels.map((s) => s.toLowerCase());
-    const counts = new Map<string, number>();
-    for (const { match, label } of CATEGORY_TOKENS) {
-        const n = haystack.filter((s) => s.includes(match)).length;
-        if (n > 0) counts.set(label, (counts.get(label) ?? 0) + n);
-    }
-    return [...counts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4)
-        .map(([label]) => label);
-}
-
-/** `N of M flagged` engines chip, shown in the identity header. */
-function EnginesChip({ malicious, total }: Readonly<{ malicious: number; total: number }>) {
-    return (
-        <code className="ml-auto shrink-0 rounded-sm border border-foreground/15 bg-muted/60 px-2 py-0.5 font-mono text-[11px] font-semibold tracking-tight text-foreground/80">
-            {malicious} / {total} flagged
-        </code>
-    );
-}
-
-type HashKind = "malicious" | "clean" | "known" | "unknown";
-
-/**
- * How severe the hash card reads.
- *
- * The signal follows the actual verdict, not just whether a family label
- * exists: otherwise a clean file that has one (EICAR) looks malicious, and a
- * malicious file without one (a flagged script) looks benign. "unknown" is
- * reserved for a file nothing recognized at all, so an unrecognized hash and a
- * recognized-but-unflagged one stay distinguishable.
- */
-function hashKind(verdict: HashCheckResult["verdict"], known: boolean): HashKind {
-    if (verdict === "malicious" || verdict === "suspicious") return "malicious";
-    if (verdict === "clean") return "clean";
-    if (verdict === "unknown" && !known) return "unknown";
-    return "known";
-}
-
-const HASH_KIND_TONE: Record<HashKind, string> = {
-    malicious: "text-red-600 dark:text-red-400",
-    clean: "text-emerald-600 dark:text-emerald-400",
-    known: "text-foreground/80",
-    unknown: "text-foreground/80",
-};
-
 export function HashProfileCard({
     result,
     streaming = false,
@@ -829,18 +622,20 @@ export function HashProfileCard({
      *  no verdict, family, or fingerprint can be shown until the result lands. */
     streaming?: boolean;
 }>) {
-    if (streaming || !result) {
+    // Hooks run before any early return, matching IpDossierCard: SubjectMasthead
+    // is memo'd on `record`, and a fresh object every render (this card's own,
+    // not while streaming) defeated that memo.
+    const record = useMemo(
+        () => (result ? buildSubjectRecord(result) : null),
+        [result],
+    );
+
+    if (streaming || !result || !record) {
         return (
             <Card className="sketch-shadow rounded-lg border border-foreground/12">
                 <CardContent className="space-y-4">
-                    <SectionHeading icon={FileDigit}>File identity</SectionHeading>
-                    <div className="flex items-start gap-3">
-                        <span className="sweep mt-0.5 size-2.5 shrink-0 rounded-full" />
-                        <div className="min-w-0 flex-1 space-y-2">
-                            <span className="sweep inline-block h-5 w-32 rounded" />
-                            <span className="sweep block h-3 w-2/3 rounded" />
-                        </div>
-                    </div>
+                    <SectionHeading>Subject record</SectionHeading>
+                    <SubjectMastheadSkeleton />
                     <div className="space-y-2">
                         <span className="sweep block h-3 w-full rounded" />
                         <span className="sweep block h-3 w-5/6 rounded" />
@@ -851,12 +646,6 @@ export function HashProfileCard({
     }
 
     const ctx = result.context;
-    const hasData = result.sources.some(
-        (s) => s.status === "ok" && s.score !== undefined,
-    );
-    const type = classifyHash(ctx, hasData);
-    const kind = hashKind(result.verdict, Boolean(ctx));
-    const tone = HASH_KIND_TONE[kind];
 
     const size = formatBytes(ctx?.fileSize);
     const firstSeen = formatDate(ctx?.firstSeen);
@@ -887,14 +676,14 @@ export function HashProfileCard({
     const isClean = result.verdict === "clean";
     const behaviorTags = isClean ? [] : (ctx?.behaviorTags ?? []);
     const behaviorSummary = isClean ? undefined : hashBehaviorSummary(ctx);
+    // Only for the clean case: why nothing here reads as a threat, built from
+    // whatever positive signals (signature, sandbox, engine tally) exist.
+    const cleanSummary = isClean ? hashCleanSummary(ctx) : [];
     const dlls = ctx?.importedDlls ?? [];
     const refs = ctx?.familyRefs ?? [];
-    // Full set drives category derivation; the tidied set is what we display.
+    // Deduplicated before the noise filter below tidies the labels for display.
     const detectionsAll = [...new Set(ctx?.detectionNames ?? [])];
     const detections = tidyDetections(detectionsAll);
-    const ratio = ctx?.detectionRatio;
-    // A named YARA rule with a named author is a lead an analyst can follow;
-    // a detection ratio is a number to quote. They belong side by side.
     const yaraRules = [
         ...new Set(
             (result.sources.find((s) => s.source.id === "yaraify")?.details
@@ -919,71 +708,21 @@ export function HashProfileCard({
         extraTech.length === 0 &&
         dlls.length === 0 &&
         !ctx?.sandboxBehavior;
-    const categories = deriveCategories(detectionsAll);
     const hasIdentityFacts = Boolean(
         ctx?.fileName || ctx?.fileType || size || firstSeen || lastSeen,
+    );
+    // Whether there is write-up text (what it does, the family blurb, why a
+    // clean file reads clean) to show prominently under the masthead.
+    const hasSummaryText = Boolean(
+        behaviorSummary || ctx?.familyDescription || cleanSummary.length > 0,
     );
 
     return (
         <Card className="sketch-shadow rounded-lg border border-foreground/12">
             <CardContent className="space-y-4">
-                <SectionHeading
-                    icon={FileDigit}
-                    action={
-                        <code className="rounded-sm border border-foreground/15 bg-muted/60 px-2.5 py-1 font-mono text-xs font-semibold tracking-tight">
-                            {HASH_ALGO_LABEL[result.algorithm]}
-                        </code>
-                    }
-                >
-                    File identity
-                </SectionHeading>
+                <SectionHeading>Subject record</SectionHeading>
 
-                {/* Header: verdict dot, family, at-a-glance categories + tally. */}
-                <div className="flex items-start gap-3">
-                    <StatusDot kind={kind} />
-                    <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                            <span
-                                className={cn(
-                                    "text-lg font-bold uppercase leading-tight tracking-tight",
-                                    tone,
-                                )}
-                            >
-                                {type.label}
-                            </span>
-                            {ratio && (
-                                <EnginesChip
-                                    malicious={ratio.malicious}
-                                    total={ratio.total}
-                                />
-                            )}
-                        </div>
-                        {type.desc && (
-                            <div className="mt-0.5 text-sm text-muted-foreground">
-                                {type.desc}
-                            </div>
-                        )}
-                        {categories.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                {categories.map((c) => (
-                                    <span
-                                        key={c}
-                                        className="inline-flex items-center rounded-md border border-foreground/15 bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground/75"
-                                    >
-                                        {c}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Plain-language lead: what it does, then the family write-up. */}
-                {behaviorSummary && (
-                    <p className="text-[0.95rem] leading-relaxed text-foreground/90">
-                        {behaviorSummary}
-                    </p>
-                )}
+                <SubjectMasthead record={record} verdict={result.verdict} />
 
                 {emptyThreat && (
                     <p className="text-sm leading-relaxed text-muted-foreground">
@@ -991,12 +730,6 @@ export function HashProfileCard({
                         or imports are on record to detail what it does. The score
                         rests on limited signal, check the score breakdown and
                         sources below.
-                    </p>
-                )}
-
-                {ctx?.familyDescription && (
-                    <p className="text-sm leading-relaxed text-foreground/85">
-                        {ctx.familyDescription}
                     </p>
                 )}
 
@@ -1013,89 +746,96 @@ export function HashProfileCard({
                     </div>
                 )}
 
-                <Rule />
-
-                {/* Two-column dossier: identity facts left, fingerprints right. */}
-                <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                <RecordTable>
                     {hasIdentityFacts && (
-                        <div className="space-y-1">
-                            <SubLabel>Identity</SubLabel>
-                            <dl>
-                                {ctx?.fileName && (
-                                    <HashRow label="name">{ctx.fileName}</HashRow>
-                                )}
-                                {ctx?.fileType && (
-                                    <HashRow label="type">{ctx.fileType}</HashRow>
-                                )}
-                                {size && <HashRow label="size">{size}</HashRow>}
-                                {firstSeen && (
-                                    <HashRow label="first seen">{firstSeen}</HashRow>
-                                )}
-                                {lastSeen && (
-                                    <HashRow label="last seen">{lastSeen}</HashRow>
-                                )}
-                            </dl>
-                        </div>
+                        // Titled "File" rather than "Identity": the masthead above
+                        // already has an "Identity" section (Subject/Class/Priors/…),
+                        // and repeating the title back to back read as a duplicated
+                        // section rather than two distinct groupings.
+                        <RecordSection title="File">
+                            {ctx?.fileName && (
+                                <RecordRow label="Name">{ctx.fileName}</RecordRow>
+                            )}
+                            {ctx?.fileType && (
+                                <RecordRow label="Type">{ctx.fileType}</RecordRow>
+                            )}
+                            {size && <RecordRow label="Size">{size}</RecordRow>}
+                            {firstSeen && (
+                                <RecordRow label="First seen">{firstSeen}</RecordRow>
+                            )}
+                            {lastSeen && (
+                                <RecordRow label="Last seen">{lastSeen}</RecordRow>
+                            )}
+                            {/* The raw VT `tags` field is dropped: it is community/
+                                crowd-sourced and often noise (EICAR's read "ransomware,
+                                worm, backdoor, …"). Real classification comes from the
+                                category chips. */}
+                            {altNames.length > 0 && (
+                                <RecordRow label="Also known as">
+                                    {altNames.slice(0, 6).join(", ")}
+                                    {altNames.length > 6 && ` +${altNames.length - 6}`}
+                                </RecordRow>
+                            )}
+                        </RecordSection>
                     )}
 
-                    <div className="space-y-1">
-                        <SubLabel>Fingerprints</SubLabel>
-                        <dl>
-                            {digests.map((d) => (
-                                <HashRow
-                                    key={d.label}
-                                    label={d.label.toLowerCase()}
-                                    mono
-                                    narrow
-                                    action={<CopyHashButton value={d.value} />}
-                                >
+                    <RecordSection title="Fingerprints">
+                        {digests.map((d) => (
+                            <RecordRow key={d.label} label={d.label} mono>
+                                <span className="inline-flex flex-wrap items-center gap-1.5">
                                     {d.value}
-                                </HashRow>
-                            ))}
-                            {ctx?.imphash && (
-                                <HashRow
-                                    label="imphash"
-                                    mono
-                                    narrow
-                                    hint="Hash of the PE import table, clusters samples built from the same code"
-                                >
-                                    {ctx.imphash}
-                                </HashRow>
-                            )}
-                            {ctx?.ssdeep && (
-                                <HashRow
-                                    label="ssdeep"
-                                    mono
-                                    narrow
-                                    hint="Fuzzy hash, matches files that are similar but not identical"
-                                >
-                                    {ctx.ssdeep}
-                                </HashRow>
-                            )}
-                            {ctx?.magic && (
-                                <HashRow
-                                    label="magic"
-                                    mono
-                                    narrow
-                                    hint="libmagic file-type signature derived from the file's leading bytes"
-                                >
-                                    {ctx.magic}
-                                </HashRow>
-                            )}
-                        </dl>
-                    </div>
-                </div>
+                                    <CopyHashButton value={d.value} />
+                                </span>
+                            </RecordRow>
+                        ))}
+                        {ctx?.imphash && (
+                            <RecordRow
+                                label="Imphash"
+                                mono
+                                hint="Hash of the PE import table, clusters samples built from the same code"
+                            >
+                                {ctx.imphash}
+                            </RecordRow>
+                        )}
+                        {ctx?.ssdeep && (
+                            <RecordRow
+                                label="ssdeep"
+                                mono
+                                hint="Fuzzy hash, matches files that are similar but not identical"
+                            >
+                                {breakableSsdeep(ctx.ssdeep)}
+                            </RecordRow>
+                        )}
+                        {ctx?.magic && (
+                            <RecordRow
+                                label="Magic"
+                                mono
+                                hint="libmagic file-type signature derived from the file's leading bytes"
+                            >
+                                {ctx.magic}
+                            </RecordRow>
+                        )}
+                    </RecordSection>
+                </RecordTable>
 
-                {/* `aka` only. The raw VT `tags` field is dropped: it is community
-                    /crowd-sourced and often noise (EICAR's read "ransomware, worm,
-                    backdoor, …"). Real classification comes from the category chips. */}
-                {altNames.length > 0 && (
-                    <dl>
-                        <HashRow label="aka">
-                            {altNames.slice(0, 6).join(", ")}
-                            {altNames.length > 6 && ` +${altNames.length - 6}`}
-                        </HashRow>
-                    </dl>
+                {hasSummaryText && (
+                    <div className="space-y-2 rounded-md border border-foreground/10 bg-muted/30 p-3">
+                        {behaviorSummary && (
+                            <p className="text-sm leading-relaxed text-foreground/85">
+                                {behaviorSummary}
+                            </p>
+                        )}
+                        {cleanSummary.map((sentence) => (
+                            <p key={sentence} className="text-sm leading-relaxed text-foreground/85">
+                                {sentence}
+                            </p>
+                        ))}
+                        {ctx?.familyDescription && (
+                            <p className="text-sm leading-relaxed text-foreground/85">
+                                {ctx.familyDescription}
+                            </p>
+                        )}
+                    </div>
                 )}
 
                 {/* Technical detail, collapsed by default so the card opens on the

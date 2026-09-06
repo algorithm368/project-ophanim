@@ -18,6 +18,11 @@ describe("ipConsensus", () => {
     expect(c.respondingResolvers).toBe(3);
     expect(c.confidence).toBe(1);
     expect(c.bucket).toBe("high");
+    expect(c.perResolver).toEqual([
+      vote("cloudflare", ["1.2.3.4"]),
+      vote("google", ["1.2.3.4"]),
+      vote("adguard", ["1.2.3.4"]),
+    ]);
   });
 
   it("is order-insensitive when comparing answer sets", () => {
@@ -86,6 +91,7 @@ describe("ipConsensus", () => {
     expect(c.consensusIps).toEqual([]);
     expect(c.confidence).toBe(1);
     expect(c.bucket).toBe("high");
+    expect(c.perResolver).toEqual([vote("cloudflare", null), vote("google", null)]);
   });
 
   it("breaks ties deterministically by smallest canonical set", () => {

@@ -16,7 +16,7 @@ export function hostFromUrl(url: string): string | undefined {
 
 /** Longest URL accepted as an indicator. Beyond this it is a payload, not an
  *  address, and every downstream cache key and API would carry the weight. */
-export const MAX_URL_LENGTH = 2048;
+const MAX_URL_LENGTH = 2048;
 
 /** A URL parsed into the parts the pipeline needs, plus one canonical string. */
 export interface ParsedUrl {

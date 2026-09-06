@@ -32,6 +32,7 @@ export function ipConsensus(votes: ResolverVote[]): ResolverConsensus {
       confidence: 1,
       bucket: "high",
       variants: [],
+      perResolver: votes,
     };
   }
 
@@ -65,5 +66,6 @@ export function ipConsensus(votes: ResolverVote[]): ResolverConsensus {
     confidence,
     bucket,
     variants,
+    perResolver: votes,
   };
 }

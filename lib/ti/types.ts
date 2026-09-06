@@ -89,6 +89,9 @@ export interface ResolverConsensus {
   bucket: "high" | "medium" | "low";
   /** Distinct answer sets with counts, most common first. */
   variants: { ips: string[]; count: number }[];
+  /** Each queried resolver's own answer, for rendering a per-resolver ballot
+   *  (`ips: null` = timed out or errored, a non-vote rather than a dissent). */
+  perResolver: { resolver: string; ips: string[] | null }[];
 }
 
 /** Registration + DNS context for a domain (contributed by RDAP/DNS sources). */
@@ -124,6 +127,16 @@ export interface DomainContext {
   cname?: string[];
   /** Consensus over the unfiltered DoH resolver pool for the A record. */
   resolverConsensus?: ResolverConsensus;
+  /**
+   * dnsGeoSource's own, separately-fetched resolver consensus over the IP(s)
+   * it geolocated for `geoResolution` above. Deliberately a distinct field
+   * from `resolverConsensus`: that one is dnsSource's, fetched independently
+   * a moment apart, and can name a different winning IP on a GeoDNS/anycast
+   * name. Keeping them apart means the IP-confidence and Geo-confidence cards
+   * (both built from this field) always agree with each other, even when
+   * they drift from the DNS Records group's own consensus.
+   */
+  originResolverConsensus?: ResolverConsensus;
 }
 
 /** File identity + malware metadata for a hash (contributed by file sources). */
@@ -175,6 +188,18 @@ export interface HashContext {
   mitreTechniques?: { id: string; name?: string; tactic?: string }[];
   /** Multi-engine detection tally, for a first-class confidence number. */
   detectionRatio?: { malicious: number; total: number };
+  /** Authenticode (or equivalent) verified the file's digital signature. */
+  signed?: boolean;
+  /** The signing publisher, when `signed` is true. */
+  signer?: string;
+  /** Set only when every sandbox that detonated the file agreed it was
+   *  harmless — never populated for a mixed or malicious verdict, so its mere
+   *  presence is itself the claim. */
+  sandboxVerdict?: { sandboxes: string[]; confidence?: number };
+  /** How many times the file itself has been submitted for analysis — a
+   *  prevalence signal distinguishing an established file from a first-time
+   *  submission with no track record yet. */
+  timesSubmitted?: number;
   /**
    * Sandbox-observed runtime artifacts, grouped for a readable "what it did"
    * readout. Each group is already deduped and capped by the source; strings are
@@ -241,7 +266,7 @@ export interface ResolvedField<T> {
   alternatives?: { value: T; sources: string[] }[];
 }
 
-export interface GeoFlags {
+interface GeoFlags {
   isHosting: boolean;
   isProxy: boolean;
   isMobile: boolean;
@@ -317,6 +342,14 @@ export interface SourceFinding {
   raw?: unknown;
   /** Geo/ASN context (contributed by context sources like ip-api). */
   geo?: GeoContext;
+  /**
+   * Multi-provider reconciled geo, already voted. Distinct from `geo`: a
+   * plain context source contributes one provider's raw fields for the
+   * assemble step to reconcile, while a source that sets this (domain geo)
+   * has already done its own voting internally and hands over the finished
+   * result.
+   */
+  geoResolution?: GeoResolution;
   /** Registration/DNS context (contributed by RDAP/DNS sources). */
   domainContext?: DomainContext;
   /** File identity/malware context (contributed by file-hash sources). */
@@ -432,6 +465,8 @@ export interface DomainCheckResult {
   riskScore: number;
   verdict: Verdict;
   context?: DomainContext;
+  /** Where the domain's resolved IP(s) are, voted across consensus A records. */
+  geoResolution?: GeoResolution;
   /** TLS certificates from certificate transparency (crt.sh). */
   certificates?: CertificateRecord[];
   /** Subdomains discovered (certificate SANs, etc.). */

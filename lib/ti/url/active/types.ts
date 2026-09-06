@@ -13,7 +13,7 @@ export type ScanVisibility = "private" | "unlisted";
  * is already spent, so a poll that times out must keep the uuid and say so,
  * never report an error that invites the analyst to submit again.
  */
-export type ScanStatus = "running" | "done" | "error";
+type ScanStatus = "running" | "done" | "error";
 
 /** What one scanned URL turned into. */
 export interface ActiveScan {

@@ -12,12 +12,12 @@ export const MAX_SIGNAL_WEIGHT = 0.6;
 export const CONSENSUS_WEIGHT = 0.4;
 
 // Hard-listing floors and the gate that admits them.
-export const MALICIOUS_FLOOR = 75; // one high-weight definitive listing
-export const QUORUM_FLOOR = 50; // two or more weak listings agreeing
-export const FLOOR_MIN_WEIGHT = 0.7; // authoritative enough to pin alone
+const MALICIOUS_FLOOR = 75; // one high-weight definitive listing
+const QUORUM_FLOOR = 50; // two or more weak listings agreeing
+const FLOOR_MIN_WEIGHT = 0.7; // authoritative enough to pin alone
 
 // How close to a cutoff still counts as borderline.
-export const BORDERLINE_BAND = 5;
+const BORDERLINE_BAND = 5;
 
 const CUTOFFS = [LOW_AT, SUSPICIOUS_AT, MALICIOUS_AT];
 
@@ -27,7 +27,7 @@ const CUTOFFS = [LOW_AT, SUSPICIOUS_AT, MALICIOUS_AT];
 // nine live indicators, no amount of dissent could pull such a result below
 // "suspicious". That is defensible for "suspicious", which means look at this;
 // it is not defensible for "malicious", which is a claim.
-export const MALICIOUS_MIN_SOURCES = 2;
+const MALICIOUS_MIN_SOURCES = 2;
 
 /**
  * The top band asks for corroboration; the others do not.
@@ -73,7 +73,7 @@ function emptyBreakdown(): ScoreBreakdown {
 // authoritative listing. One is not enough: any single feed can be wrong, and a
 // compromised major site must stay reportable. Two independent vouches being
 // wrong at once is the case worth deferring to.
-export const VOUCH_QUORUM = 2;
+const VOUCH_QUORUM = 2;
 
 function computeFloor(results: SourceResult[]): {
   floor: number;

@@ -2,28 +2,31 @@
 
 import { Fragment } from "react";
 import { Asterisk, Check, Circle, Star } from "lucide-react";
-import type { GeoResolution } from "@/lib/ti/types";
-import {
-    buildVoteTable,
-    providerLabel,
-    type VoteCell,
-    type VoteColumn,
-} from "@/lib/ti/geo/votes";
-import { ConfidenceLevel, geoConfidenceReason } from "./confidence";
+import type { Confidence, GeoResolution, ResolverConsensus } from "@/lib/ti/types";
+import { buildVoteTable, providerLabel, type VoteCell } from "@/lib/ti/geo/votes";
+import { buildResolverBallot } from "@/lib/ti/dns/ballot";
+import { ConfidenceLevel, geoConfidenceReason, resolverConfidenceReason } from "./confidence";
 
 /** Compact resolved-value reference: the field label, the consensus value, and
  *  that field's confidence. Renders three grid cells so the columns line up
- *  across every row. The "answer" the source votes below support. */
-function ResolvedRow({ field }: Readonly<{ field: VoteColumn }>) {
+ *  across every row. The "answer" the source votes below support. Takes just
+ *  the three fields it reads rather than the full VoteColumn, so a caller
+ *  with a single ad hoc field (the resolver ballot) doesn't have to fake the
+ *  rest of that shape. */
+function ResolvedRow({
+    label,
+    winner,
+    confidence,
+}: Readonly<{ label: string; winner: string; confidence: Confidence }>) {
     return (
         <>
             <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-                {field.label}
+                {label}
             </span>
             <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
-                {field.winner}
+                {winner}
             </span>
-            <ConfidenceLevel confidence={field.confidence} />
+            <ConfidenceLevel confidence={confidence} />
         </>
     );
 }
@@ -66,8 +69,13 @@ function VoteMark({ cell }: Readonly<{ cell: VoteCell | undefined }>) {
 
 /** Geo-confidence section: a plain header, the resolved values, then a ballot per
  *  TI source showing how each one voted. Minimal, document-style, no masthead or
- *  gauge. No-op when nothing resolved. */
-export function VotingCard({ res }: Readonly<{ res: GeoResolution }>) {
+ *  gauge. No-op when nothing resolved. `unit` names the voter for the reason
+ *  line: a plain IP's geo is a vote across providers, a domain's is a vote
+ *  across its own resolved IPs. */
+export function VotingCard({
+    res,
+    unit,
+}: Readonly<{ res: GeoResolution; unit?: string }>) {
     const table = buildVoteTable(res);
     if (!table) return null;
     const confidence = res.overall?.confidence ?? "low";
@@ -91,14 +99,19 @@ export function VotingCard({ res }: Readonly<{ res: GeoResolution }>) {
             </div>
 
             <p className="text-[13px] leading-snug text-muted-foreground">
-                {geoConfidenceReason(res)}
+                {geoConfidenceReason(res, unit)}
             </p>
 
             {/* Resolved consensus values, the answer the votes support. One field
                 per row, with label / value / confidence in aligned columns. */}
             <div className="grid grid-cols-[auto_minmax(0,auto)_auto] items-baseline justify-start gap-x-2.5 gap-y-2">
                 {table.fields.map((f) => (
-                    <ResolvedRow key={f.key} field={f} />
+                    <ResolvedRow
+                        key={f.key}
+                        label={f.label}
+                        winner={f.winner}
+                        confidence={f.confidence}
+                    />
                 ))}
             </div>
 
@@ -142,6 +155,56 @@ export function VotingCard({ res }: Readonly<{ res: GeoResolution }>) {
                     allocation authority, RIPEstat ASN
                 </p>
             )}
+        </section>
+    );
+}
+
+/** IP-confidence section: which DNS resolver agrees on the resolved IP(s), the
+ *  question upstream of "where is it" (Geo confidence, above). Same layout as
+ *  VotingCard's single-field case, but the ballot is one row per resolver
+ *  rather than per geo provider. No-op when no resolver answered. */
+export function IpConfidenceCard({
+    consensus,
+}: Readonly<{ consensus: ResolverConsensus }>) {
+    const ballot = buildResolverBallot(consensus);
+    if (!ballot) return null;
+
+    return (
+        <section className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-foreground/10 pb-3">
+                <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.12em] text-foreground">
+                    IP confidence
+                </span>
+                <ConfidenceLevel confidence={ballot.confidence} />
+            </div>
+
+            <p className="text-[13px] leading-snug text-muted-foreground">
+                {resolverConfidenceReason(consensus)}
+            </p>
+
+            <div className="grid grid-cols-[auto_minmax(0,auto)_auto] items-baseline justify-start gap-x-2.5 gap-y-2">
+                <ResolvedRow
+                    label="Resolves to"
+                    winner={ballot.winner}
+                    confidence={ballot.confidence}
+                />
+            </div>
+
+            <div className="border-t border-foreground/10 pt-3">
+                <div className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Resolver votes
+                </div>
+                <div className="grid grid-cols-[auto_auto] items-center gap-x-5 gap-y-2.5 text-[12px]">
+                    {consensus.perResolver.map(({ resolver }) => (
+                        <Fragment key={resolver}>
+                            <span className="font-mono text-[12px] text-foreground/65">
+                                {resolver}
+                            </span>
+                            <VoteMark cell={ballot.cells[resolver]} />
+                        </Fragment>
+                    ))}
+                </div>
+            </div>
         </section>
     );
 }

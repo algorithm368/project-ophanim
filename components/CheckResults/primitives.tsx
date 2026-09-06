@@ -9,7 +9,6 @@ import {
 import { Check, Copy, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import type { IconType } from "./types";
 
 /**
  * Lets nested result fields launch a fresh check for a related indicator,
@@ -143,11 +142,9 @@ export function CopyableSummary({ text }: Readonly<{ text: string }>) {
 }
 
 export function SectionHeading({
-    icon: Icon,
     children,
     action,
 }: Readonly<{
-    icon: IconType;
     children: ReactNode;
     /** Optional right-aligned content (e.g. the indicator chip) shown on the
      *  same row as the title, above the shared divider. */
@@ -155,132 +152,104 @@ export function SectionHeading({
 }>) {
     return (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-foreground/10 pb-3">
-            <h2 className="flex items-center gap-2.5">
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-foreground/15 bg-background text-foreground/65">
-                    <Icon className="size-4" />
-                </span>
-                <span className="font-mono text-[13px] font-semibold tracking-[0.12em] text-foreground uppercase">
-                    {children}
-                </span>
+            <h2 className="font-mono text-[13px] font-semibold tracking-[0.12em] text-foreground uppercase">
+                {children}
             </h2>
             {action}
         </div>
     );
 }
 
-/** One labeled datum, rendered as an aligned readout row: a fixed label column
- *  on the left, the value flowing in the column beside it. Stacks label-over-value
- *  on narrow screens. Grouped under a <FieldGroup> for a scannable, report-style
- *  layout — no per-field boxes or icons. */
-export function Field({
+/** The subject record's body: a strict two-column ledger rather than a stack
+ *  of flex rows, so every section's label column lines up with every other's
+ *  regardless of content length — the thing ad hoc width classes kept fighting.
+ *  A fixed `<colgroup>` under `table-fixed` is what makes the label column a
+ *  real, shared boundary instead of an approximation. */
+export function RecordTable({ children }: Readonly<{ children: ReactNode }>) {
+    return (
+        <table className="w-full table-fixed border-collapse text-sm">
+            <colgroup>
+                <col className="w-44" />
+                <col />
+            </colgroup>
+            <tbody className="[&>tr:first-child>td]:pt-0">{children}</tbody>
+        </table>
+    );
+}
+
+/** A section title spanning both columns, then its rows: renders as a fragment
+ *  so a table can hold several sections without nesting `<table>`s inside
+ *  `<table>`s. */
+export function RecordSection({
+    title,
+    children,
+}: Readonly<{ title: string; children: ReactNode }>) {
+    return (
+        <>
+            <tr>
+                <td
+                    colSpan={2}
+                    className="border-b border-foreground/10 pt-4 pb-1.5 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase"
+                >
+                    {title}
+                </td>
+            </tr>
+            {children}
+        </>
+    );
+}
+
+/** One row of the ledger: a label cell and a value cell, wrapping in place
+ *  rather than truncating — the fixed column width means a long CVE list or
+ *  allocation range grows the row's height instead of losing its tail. */
+export function RecordRow({
     label,
     children,
-    wrap = false,
-    tone,
+    note,
     hint,
+    tone,
+    mono,
 }: Readonly<{
     label: string;
     children: ReactNode;
-    /** Allow multi-line / wrapping content (e.g. pivot chips, long DNS records)
-     *  instead of truncating the value to a single line. */
-    wrap?: boolean;
-    /** Color class (e.g. "text-red-600 …") to tint a risk-relevant value. */
-    tone?: string;
+    /** Small provenance/detail line under the value (sources that backed a
+     *  masthead field, a dissenting geo vote, …). */
+    note?: string;
     /** Plain-language tooltip for a jargon label (ASN, CAA, SPF, ssdeep, …).
      *  Marks the label with a dotted underline to signal it's explainable. */
     hint?: string;
+    /** Color class (e.g. "text-red-600 …") to tint a risk-relevant value. */
+    tone?: string;
+    /** Render the value in monospace (addresses, hashes, raw record text). */
+    mono?: boolean;
 }>) {
-    const labelEl = (
-        <dt
-            title={hint}
-            className={cn(
-                "text-[13px] leading-snug text-muted-foreground",
-                !wrap && "shrink-0 sm:w-32",
-                hint &&
-                    "w-fit cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
-            )}
-        >
-            {label}
-        </dt>
-    );
-
-    // Long / chip values (`wrap`) stack under the label and take the full cell
-    // width, so they never truncate inside a narrow bento cell. Short scalar
-    // values keep the aligned label→value columns.
-    if (wrap) {
-        return (
-            <div className="py-1.5">
-                {labelEl}
-                <dd
-                    className={cn(
-                        "mt-1 min-w-0 text-sm font-medium",
-                        tone ?? "text-foreground",
-                    )}
-                >
-                    {children}
-                </dd>
-            </div>
-        );
-    }
-
     return (
-        <div className="flex flex-col gap-x-3 gap-y-0.5 py-1.5 sm:flex-row sm:items-baseline">
-            {labelEl}
-            <dd
+        <tr className="border-b border-foreground/[0.06] last:border-b-0">
+            <td
+                title={hint}
                 className={cn(
-                    "min-w-0 flex-1 truncate text-sm font-medium",
+                    "py-1.5 pr-3 align-baseline font-mono text-[11px] text-muted-foreground",
+                    hint &&
+                        "w-fit cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
+                )}
+            >
+                {label}
+            </td>
+            <td
+                className={cn(
+                    "py-1.5 align-baseline break-words text-sm",
+                    mono && "font-mono text-[13px]",
                     tone ?? "text-foreground",
                 )}
             >
                 {children}
-            </dd>
-        </div>
+                {note && (
+                    <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                        {note}
+                    </div>
+                )}
+            </td>
+        </tr>
     );
 }
 
-/** A bordered "bento" cell with an uppercase section label — the building block
- *  of the report's left-to-right grid. Pass `span` to make a cell occupy the
- *  full grid width (for groups with long values that shouldn't be cramped). */
-export function BentoCell({
-    label,
-    children,
-    span = false,
-}: Readonly<{
-    label: string;
-    children: ReactNode;
-    span?: boolean;
-}>) {
-    return (
-        <div
-            className={cn(
-                "rounded-xl border border-foreground/10 bg-muted/30 p-3.5",
-                span && "sm:col-span-2",
-            )}
-        >
-            <div className="mb-2 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                {label}
-            </div>
-            {children}
-        </div>
-    );
-}
-
-/** A labeled sub-section of related fields, rendered as a bento cell of aligned
- *  <Field> rows separated by hairlines. Pass `span` for full-width groups. */
-export function FieldGroup({
-    label,
-    children,
-    span = false,
-}: Readonly<{
-    label: string;
-    children: ReactNode;
-    span?: boolean;
-}>) {
-    return (
-        <BentoCell label={label} span={span}>
-            <dl className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
-                {children}
-            </dl>
-        </BentoCell>
-    );
-}

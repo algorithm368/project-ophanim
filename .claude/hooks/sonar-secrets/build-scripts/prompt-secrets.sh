@@ -1,6 +1,5 @@
 #!/bin/bash
-# Secret scanning on prompt submit. Same reasoning as pretool-secrets.sh: skip
-# quietly when the CLI is missing or not logged in rather than blocking.
-command -v sonar &> /dev/null || exit 0
-sonar auth status &> /dev/null || exit 0
+if ! command -v sonar &> /dev/null; then
+  exit 0
+fi
 sonar hook claude-prompt-submit

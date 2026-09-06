@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Loader2, Radar } from "lucide-react";
+import { ArrowUpRight, Loader2 } from "lucide-react";
 import type { IOCType } from "@/lib/ioc";
 import { modeHref } from "@/lib/route-mode";
 import { mergeScans } from "@/lib/ti/url/active/merge";
@@ -85,7 +85,7 @@ export function ActiveScanCard({
   return (
     <Card className="sketch-shadow rounded-lg border border-foreground/12">
       <CardContent className="space-y-3">
-        <SectionHeading icon={Radar}>Active scan</SectionHeading>
+        <SectionHeading>Active scan</SectionHeading>
 
         <p className="text-sm text-foreground/75">
           Everything above is passive, it reports what other people already

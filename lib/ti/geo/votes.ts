@@ -1,7 +1,7 @@
 import type { Confidence, GeoResolution, ResolvedField } from "../types";
 import { authorityFor, type GeoField } from "./weights";
 
-export type VoteStatus = "win" | "dissent" | "absent" | "scatter";
+type VoteStatus = "win" | "dissent" | "absent" | "scatter";
 
 export interface VoteCell {
   status: VoteStatus;

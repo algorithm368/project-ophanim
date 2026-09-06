@@ -14,27 +14,57 @@ interface RpkiResponse {
   data?: { status?: string };
 }
 
-/** An "invalid" RPKI origin (the prefix is announced by an AS the ROA forbids)
- *  is a soft route-hijack signal; "valid"/"unknown" add no tag. */
+/** RIPEstat's live rpki-validation endpoint (routinator) returns one of
+ *  valid / invalid_asn / invalid_length / unknown — never the bare "invalid"
+ *  this used to check for, which meant it silently never matched a real
+ *  response. Either invalid_* is a soft route-hijack signal ("the wrong AS
+ *  is announcing this prefix", or "with too specific a mask"); "valid" and
+ *  "unknown" (no ROA at all, still most of the internet) add no tag. */
 export function rpkiCategories(status: string | undefined): string[] {
-  return status === "invalid" ? ["rpki-invalid"] : [];
+  return status?.startsWith("invalid") ? ["rpki-invalid"] : [];
 }
 
-/** Best-effort RPKI origin validation for the announcing AS + prefix. */
-async function fetchRpkiStatus(
+/**
+ * RPKI origin validation for the announcing AS + prefix. Exported so the
+ * domain-side RPKI source (which validates a resolved IP's route rather than
+ * the indicator itself) can reuse the exact same call.
+ *
+ * `undefined` and `null` are not the same fact: `undefined` means RIPEstat
+ * answered and published no status (the common "no ROA" case); `null` means
+ * the request itself failed (a timeout, a non-2xx, a thrown error) and there
+ * is no answer to read at all. Collapsing the two would let an outage read
+ * as "no ROA published", a specific claim about routing state the failed
+ * request never actually established. `ripeStatSource` below treats them
+ * alike deliberately (RPKI is a best-effort +1 call there); the domain-side
+ * `rpkiSource` does not, and needs the distinction to avoid asserting it.
+ */
+export async function fetchRpkiStatus(
   asn: string,
   prefix: string,
   signal: AbortSignal,
-): Promise<string | undefined> {
+): Promise<string | null | undefined> {
   try {
     const { ok, data } = await getJson<RpkiResponse>(
       `https://stat.ripe.net/data/rpki-validation/data.json?resource=AS${asn}&prefix=${encodeURIComponent(prefix)}`,
       signal,
     );
-    return ok ? data?.data?.status : undefined;
+    return ok ? data?.data?.status : null;
   } catch {
-    return undefined;
+    return null;
   }
+}
+
+/** RIPEstat's network-info: the announced prefix + ASN(s) an IP falls under.
+ *  Exported for the same reason as fetchRpkiStatus above. */
+export async function fetchNetworkInfo(
+  ip: string,
+  signal: AbortSignal,
+): Promise<NetworkInfoResponse["data"] | undefined> {
+  const { ok, data } = await getJson<NetworkInfoResponse>(
+    `https://stat.ripe.net/data/network-info/data.json?resource=${ip}`,
+    signal,
+  );
+  return ok ? data?.data : undefined;
 }
 
 /** Map RIPEstat network-info into a context finding (announced prefix + ASN). */
@@ -88,8 +118,12 @@ export const ripeStatSource: TiSource = {
       // +1 best-effort call: validate the prefix's RPKI origin for the AS.
       const asn = (data.data?.asns ?? []).find(Boolean);
       const prefix = data.data?.prefix;
+      // A failed RPKI probe is a lost bonus, not a finding of its own — this
+      // whole check() has already succeeded on the network-info half, so
+      // null (request failed) is folded into undefined (no signal) rather
+      // than propagated as this source's own error.
       const rpkiStatus =
-        asn && prefix ? await fetchRpkiStatus(asn, prefix, signal) : undefined;
+        asn && prefix ? (await fetchRpkiStatus(asn, prefix, signal)) ?? undefined : undefined;
 
       return {
         ...finding,

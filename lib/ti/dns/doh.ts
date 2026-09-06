@@ -1,6 +1,6 @@
 import { getJson } from "../http";
 
-export interface DohAnswer {
+interface DohAnswer {
   name?: string;
   type?: number;
   data?: string;
@@ -37,8 +37,9 @@ export const RESOLVERS: Record<string, string> = {
  * Unfiltered JSON-DoH resolvers for A-record consensus. These do NOT run a
  * malicious-domain blocklist, so disagreement here means GeoDNS / CDN rotation
  * / split-horizon / poisoning, not "a security resolver refused to answer."
- * Membership is verified server-side (must return valid application/dns-json
- * and not hang); endpoints that fail verification are dropped with a note.
+ * Membership is verified server-side (must return valid application/dns-json,
+ * not hang, and not sinkhole a live malware-test domain); endpoints that fail
+ * verification are dropped with a note.
  *
  * Verified 2026-07-06 (server-side probe, GET ?name=…&type=A):
  * - cloudflare, google, adguard(unfiltered): return application/dns-json.
@@ -46,11 +47,30 @@ export const RESOLVERS: Record<string, string> = {
  *   hangs to timeout.
  * - quad9 unsecured (9.9.9.10:5053): dropped — JSON endpoint hangs, same as the
  *   secured :5053 note above.
+ *
+ * Verified 2026-09-06 (same probe, plus resolving internetbadguys.com — a live
+ * malware-test domain most security resolvers sinkhole — to confirm each
+ * candidate is genuinely unfiltered rather than just JSON-capable):
+ * - rethinkdns (basic.rethinkdns.com), dns.sb (doh.dns.sb): both return
+ *   application/dns-json, resolve internetbadguys.com to its real IP (not
+ *   sinkholed), respond in well under a second, and return Status 3 for a
+ *   name that does not exist.
+ * - tiarap.org (doh.tiarap.org): dropped — returns application/dns-json and
+ *   is fast, but sinkholes internetbadguys.com to 0.0.0.0. It filters, so it
+ *   would read a blocked malicious domain as "GeoDNS disagreement," exactly
+ *   the failure mode this pool exists to avoid.
+ * - dns.nextdns.io (bare anycast, no profile id): resolved
+ *   internetbadguys.com untouched in this probe, but NextDNS's whole product
+ *   is configurable filtering — trusting an unauthenticated default profile
+ *   to stay unfiltered indefinitely is a weaker guarantee than the other four
+ *   resolvers here provide by design. Left out.
  */
 export const UNFILTERED_RESOLVERS: Record<string, string> = {
   cloudflare: "https://cloudflare-dns.com/dns-query",
   google: "https://dns.google/resolve",
   adguard: "https://dns-unfiltered.adguard.com/resolve",
+  rethinkdns: "https://basic.rethinkdns.com/dns-query",
+  "dns.sb": "https://doh.dns.sb/dns-query",
 };
 
 /** Query one resolver. `dnssec: true` sets the DO bit so the AD flag is meaningful. */
@@ -82,4 +102,21 @@ export function answers(res: DohResponse | null): string[] {
     .filter((a) => !DNSSEC_META_TYPES.has(a.type ?? 0))
     .map((a) => a.data?.replace(/\.$/, ""))
     .filter((d): d is string => Boolean(d));
+}
+
+const A_RECORD_TYPE = 1;
+
+/** The current A records for `name`, via a single Cloudflare DoH lookup.
+ *  Deliberately not the multi-resolver consensus dnsSource/dnsGeoSource run:
+ *  for a source that just needs *an* IP currently serving the name to probe
+ *  (a TLS handshake, an FCrDNS check, an RPKI lookup), one fast lookup is
+ *  enough and voting across resolvers would only add latency for no benefit.
+ *
+ *  A CNAME'd name's answer set carries the CNAME record(s) alongside the
+ *  final A record(s); `answers()` alone would let a CNAME's hostname through
+ *  as if it were an IP, so this filters to type 1 before flattening. */
+export async function resolveA(name: string, signal: AbortSignal): Promise<string[]> {
+  const res = await dohQuery(RESOLVERS.cloudflare, name, "A", signal);
+  if (!res?.Answer) return answers(res);
+  return answers({ ...res, Answer: res.Answer.filter((a) => a.type === A_RECORD_TYPE) });
 }

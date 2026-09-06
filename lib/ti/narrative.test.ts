@@ -6,6 +6,7 @@ import {
   buildNarrative,
   consensusBuckets,
   hashBehaviorSummary,
+  hashCleanSummary,
   type ResultLike,
   threatSentences,
 } from "./narrative";
@@ -101,6 +102,73 @@ describe("hashBehaviorSummary", () => {
         ],
       }),
     ).toBe("When run, it adds Run key to start application and executes dropped EXE.");
+  });
+});
+
+describe("hashCleanSummary", () => {
+  it("returns [] when no positive signal is present", () => {
+    expect(hashCleanSummary(undefined)).toEqual([]);
+    expect(hashCleanSummary({})).toEqual([]);
+    // A record with nothing to report is not evidence of anything.
+    expect(hashCleanSummary({ detectionRatio: { malicious: 0, total: 0 } })).toEqual([]);
+  });
+
+  it("names the signer when the file is signed", () => {
+    expect(hashCleanSummary({ signed: true, signer: "Wispr AI, Inc." })).toEqual([
+      "It carries a digital signature from Wispr AI, Inc. that Authenticode verified as valid.",
+    ]);
+  });
+
+  it("falls back to a bare signed claim with no signer name", () => {
+    expect(hashCleanSummary({ signed: true })).toEqual([
+      "It carries a digital signature that Authenticode verified as valid.",
+    ]);
+  });
+
+  it("reports a unanimous harmless sandbox verdict, with confidence when given", () => {
+    expect(
+      hashCleanSummary({ sandboxVerdict: { sandboxes: ["Zenbox"], confidence: 98 } }),
+    ).toEqual(["Detonated in Zenbox, it showed no malicious behaviour (98% confidence)."]);
+    expect(hashCleanSummary({ sandboxVerdict: { sandboxes: ["Zenbox"] } })).toEqual([
+      "Detonated in Zenbox, it showed no malicious behaviour.",
+    ]);
+  });
+
+  it("keeps a genuine 0% confidence rather than treating it as missing", () => {
+    expect(
+      hashCleanSummary({ sandboxVerdict: { sandboxes: ["Zenbox"], confidence: 0 } }),
+    ).toEqual(["Detonated in Zenbox, it showed no malicious behaviour (0% confidence)."]);
+  });
+
+  it("reports a zero-malicious engine tally, but not when the tally is empty", () => {
+    expect(hashCleanSummary({ detectionRatio: { malicious: 0, total: 65 } })).toEqual([
+      "None of the 65 engines that scanned it flagged anything.",
+    ]);
+    expect(hashCleanSummary({ detectionRatio: { malicious: 1, total: 65 } })).toEqual([]);
+  });
+
+  it("adds a first-look caveat for a single-submission file", () => {
+    expect(hashCleanSummary({ timesSubmitted: 1 })).toEqual([
+      "It has only been submitted once, so this reading is a first look rather than an established track record.",
+    ]);
+    expect(hashCleanSummary({ timesSubmitted: 2 })).toEqual([]);
+  });
+
+  it("returns one sentence per available signal, in a fixed order", () => {
+    expect(
+      hashCleanSummary({
+        signed: true,
+        signer: "Wispr AI, Inc.",
+        sandboxVerdict: { sandboxes: ["Zenbox"], confidence: 98 },
+        detectionRatio: { malicious: 0, total: 65 },
+        timesSubmitted: 1,
+      }),
+    ).toEqual([
+      "It carries a digital signature from Wispr AI, Inc. that Authenticode verified as valid.",
+      "Detonated in Zenbox, it showed no malicious behaviour (98% confidence).",
+      "None of the 65 engines that scanned it flagged anything.",
+      "It has only been submitted once, so this reading is a first look rather than an established track record.",
+    ]);
   });
 });
 

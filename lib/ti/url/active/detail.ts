@@ -12,7 +12,7 @@
  *  truth, so a capped list never reads as the whole set. */
 export const MAX_LISTED = 40;
 
-export interface ScanCookie {
+interface ScanCookie {
   name: string;
   domain?: string;
   secure?: boolean;
@@ -27,7 +27,7 @@ export interface ScanRedirect {
   status?: number;
 }
 
-export interface ScanCertificate {
+interface ScanCertificate {
   subject?: string;
   issuer?: string;
   validFrom?: string;

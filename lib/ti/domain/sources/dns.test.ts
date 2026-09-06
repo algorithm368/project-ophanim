@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { dnsSource } from "./dns";
-import { dohQuery } from "../../dns/doh";
+import { dohQuery, UNFILTERED_RESOLVERS } from "../../dns/doh";
+
+const UNFILTERED_COUNT = Object.keys(UNFILTERED_RESOLVERS).length;
 
 vi.mock("../../dns/doh", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../dns/doh")>();
@@ -57,7 +59,7 @@ describe("dnsSource.check — resolver consensus", () => {
     const f = await dnsSource.check("example.com", new AbortController().signal);
     const c = f.domainContext?.resolverConsensus;
     expect(c?.bucket).toBe("high");
-    expect(c?.respondingResolvers).toBe(3);
+    expect(c?.respondingResolvers).toBe(UNFILTERED_COUNT);
     expect(f.domainContext?.resolvedIps).toEqual(["93.184.216.34"]);
   });
 
@@ -73,8 +75,8 @@ describe("dnsSource.check — resolver consensus", () => {
     const f = await dnsSource.check("example.com", new AbortController().signal);
     const c = f.domainContext?.resolverConsensus;
     expect(c?.bucket).toBe("high");
-    expect(c?.respondingResolvers).toBe(2);
-    expect(c?.totalResolvers).toBe(3);
+    expect(c?.respondingResolvers).toBe(UNFILTERED_COUNT - 1);
+    expect(c?.totalResolvers).toBe(UNFILTERED_COUNT);
     expect(c?.respondingResolvers).toBeLessThan(c?.totalResolvers ?? 0);
   });
 });

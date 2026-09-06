@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { answers, UNFILTERED_RESOLVERS, type DohResponse } from "./doh";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { answers, resolveA, UNFILTERED_RESOLVERS, type DohResponse } from "./doh";
+import { getJson } from "../http";
+
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
 
 describe("answers", () => {
   it("returns the answer data values, trailing dot stripped", () => {
@@ -29,10 +35,45 @@ describe("answers", () => {
   });
 });
 
+describe("resolveA", () => {
+  afterEach(() => {
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("filters out a CNAME record riding along with the final A record", async () => {
+    vi.mocked(getJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        Answer: [
+          { name: "www.example.com", type: 5, data: "example.com." },
+          { name: "example.com", type: 1, data: "93.184.216.34" },
+        ],
+      },
+    } as Awaited<ReturnType<typeof getJson>>);
+
+    expect(await resolveA("www.example.com", new AbortController().signal)).toEqual([
+      "93.184.216.34",
+    ]);
+  });
+
+  it("returns [] rather than a hostname when only a CNAME answers", async () => {
+    vi.mocked(getJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { Answer: [{ name: "www.example.com", type: 5, data: "example.com." }] },
+    } as Awaited<ReturnType<typeof getJson>>);
+
+    expect(await resolveA("www.example.com", new AbortController().signal)).toEqual([]);
+  });
+});
+
 describe("UNFILTERED_RESOLVERS", () => {
-  it("includes the two known-good anchors", () => {
+  it("includes the known-good anchors", () => {
     expect(UNFILTERED_RESOLVERS.cloudflare).toContain("cloudflare-dns.com");
     expect(UNFILTERED_RESOLVERS.google).toContain("dns.google");
+    expect(UNFILTERED_RESOLVERS.rethinkdns).toContain("rethinkdns.com");
+    expect(UNFILTERED_RESOLVERS["dns.sb"]).toContain("dns.sb");
   });
 
   it("lists at least two https endpoints and no bare-http", () => {
