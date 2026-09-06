@@ -317,6 +317,14 @@ export interface SourceFinding {
   raw?: unknown;
   /** Geo/ASN context (contributed by context sources like ip-api). */
   geo?: GeoContext;
+  /**
+   * Multi-provider reconciled geo, already voted. Distinct from `geo`: a
+   * plain context source contributes one provider's raw fields for the
+   * assemble step to reconcile, while a source that sets this (domain geo)
+   * has already done its own voting internally and hands over the finished
+   * result.
+   */
+  geoResolution?: GeoResolution;
   /** Registration/DNS context (contributed by RDAP/DNS sources). */
   domainContext?: DomainContext;
   /** File identity/malware context (contributed by file-hash sources). */
@@ -432,6 +440,8 @@ export interface DomainCheckResult {
   riskScore: number;
   verdict: Verdict;
   context?: DomainContext;
+  /** Where the domain's resolved IP(s) are, voted across consensus A records. */
+  geoResolution?: GeoResolution;
   /** TLS certificates from certificate transparency (crt.sh). */
   certificates?: CertificateRecord[];
   /** Subdomains discovered (certificate SANs, etc.). */

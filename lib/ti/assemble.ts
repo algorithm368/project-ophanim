@@ -69,6 +69,12 @@ export function assembleDomainResult(
 ): DomainCheckResult {
   const { riskScore, verdict, breakdown } = aggregateRisk(results);
   const context = mergeDomainContext(results);
+  // dnsGeoSource has already voted across resolved IPs and hands over the
+  // finished GeoResolution; unlike the IP path there is nothing left to
+  // reconcile across `results` here.
+  const geoResolution = results.find(
+    (r) => r.status === "ok" && r.geoResolution,
+  )?.geoResolution;
   const stats = computeStats(results);
   // A name that returns NXDOMAIN doesn't exist in DNS, so every blocklist's
   // "not listed" is vacuous — "clean" would read as vetted-good. Rate it
@@ -84,6 +90,7 @@ export function assembleDomainResult(
     riskScore,
     verdict: finalVerdict,
     context,
+    geoResolution,
     certificates: collectCertificates(results),
     subdomains: collectSubdomains(results),
     passiveDns: collectPassiveDns(results),

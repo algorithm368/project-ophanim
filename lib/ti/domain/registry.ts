@@ -1,5 +1,6 @@
 import type { TiSource } from "../types";
 import { dnsSource } from "./sources/dns";
+import { dnsGeoSource } from "./sources/dns-geo";
 import { cloudRangeSource } from "./sources/cloud-range";
 import { rdapSource } from "./sources/rdap";
 import { certSpotterSource } from "./sources/certspotter";
@@ -17,6 +18,7 @@ import { trancoSource } from "./sources/tranco";
 /** All registered domain TI sources, in display order. */
 export const domainSources: TiSource[] = [
   dnsSource,
+  dnsGeoSource,
   cloudRangeSource,
   rdapSource,
   certSpotterSource,

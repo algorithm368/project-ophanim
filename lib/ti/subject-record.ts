@@ -133,7 +133,8 @@ function firstClaim(resolvers: Resolver[], r: AnyResult): Claim | null {
 
 const isDomain = (r: AnyResult): r is DomainCheckResult => "domain" in r;
 const geoOf = (r: AnyResult) => ("ip" in r ? r.geo : undefined);
-const geoResolutionOf = (r: AnyResult) => ("ip" in r ? r.geoResolution : undefined);
+const geoResolutionOf = (r: AnyResult) =>
+  "ip" in r || isDomain(r) ? r.geoResolution : undefined;
 const str = (v: unknown): string | undefined =>
   typeof v === "string" && v ? v : undefined;
 const strArr = (v: unknown): string[] =>
@@ -464,12 +465,14 @@ function spriteFor(
 }
 
 /**
- * The country the geo providers voted for, IP only. Reads the reconciled vote
- * (`geoResolution.country`) when one exists, falling back to a single
- * provider's raw `geo.country` when the caller never reconciled. Domains
- * carry no geo at all today (the domain pipeline fetches none), and a hash
- * has no origin by nature, so `geoOf`/`geoResolutionOf` returning undefined
- * for both already makes this undefined for them too.
+ * The country the geo providers voted for. Reads the reconciled vote
+ * (`geoResolution.country`) when one exists, falling back to a single IP
+ * provider's raw `geo.country` when the caller never reconciled. On a
+ * domain, the reconciled vote is dnsGeoSource's cross-IP vote (see
+ * lib/ti/geo/vote-ips.ts) rather than a per-provider one, but it is the same
+ * `GeoResolution` shape, so everything below reads it identically. A hash has
+ * no origin by nature; `geoResolutionOf`/`geoOf` returning undefined for it
+ * already makes this undefined too.
  */
 export function originOf(r: AnyResult): Origin | undefined {
   const resolution = geoResolutionOf(r);

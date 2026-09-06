@@ -56,6 +56,7 @@ Works out of the box, **no API key required**:
 | Source        | What it provides                                  |
 | ------------- | ------------------------------------------------- |
 | DNS Records   | A/AAAA/MX/NS/TXT/SOA/CNAME/CAA, SPF/DMARC, PTR, DNSSEC, multi-resolver agreement (Cloudflare + Google DoH) |
+| Domain Geo    | Geolocates the DNS resolvers' consensus A record(s), voted across IPs |
 | RDAP / WHOIS  | Registration date, registrar, age, status         |
 | Spamhaus DBL  | Domain block list (spam/phish/malware/botnet)     |
 | SURBL         | Domain reputation block list                      |
