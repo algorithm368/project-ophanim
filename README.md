@@ -57,6 +57,10 @@ Works out of the box, **no API key required**:
 | ------------- | ------------------------------------------------- |
 | DNS Records   | A/AAAA/MX/NS/TXT/SOA/CNAME/CAA, SPF/DMARC, PTR, DNSSEC, multi-resolver agreement (Cloudflare + Google DoH) |
 | Domain Geo    | Geolocates the DNS resolvers' consensus A record(s), voted across IPs |
+| TLS Cert Match | Connects to the resolved IP with the domain as SNI; flags a certificate that doesn't actually cover it |
+| RPKI Origin Validation | Checks the resolved IP's announced BGP route against RIPEstat's RPKI validity |
+| Reverse DNS (FCrDNS) | Forward-confirms the resolved IP's PTR record, same check the IP pipeline runs |
+| Globalping    | Resolves the domain from real probes on six continents; surfaces regional splits for a human to read |
 | RDAP / WHOIS  | Registration date, registrar, age, status         |
 | Spamhaus DBL  | Domain block list (spam/phish/malware/botnet)     |
 | SURBL         | Domain reputation block list                      |
