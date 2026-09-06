@@ -158,7 +158,7 @@ export function hashCleanSummary(ctx: HashContext | undefined): string[] {
     const { sandboxes, confidence } = ctx.sandboxVerdict;
     const via = sandboxes.length ? joinList(sandboxes) : "sandbox analysis";
     sentences.push(
-      `Detonated in ${via}, it showed no malicious behaviour${confidence ? ` (${confidence}% confidence)` : ""}.`,
+      `Detonated in ${via}, it showed no malicious behaviour${confidence !== undefined ? ` (${confidence}% confidence)` : ""}.`,
     );
   }
 

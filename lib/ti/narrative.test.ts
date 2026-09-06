@@ -134,6 +134,12 @@ describe("hashCleanSummary", () => {
     ]);
   });
 
+  it("keeps a genuine 0% confidence rather than treating it as missing", () => {
+    expect(
+      hashCleanSummary({ sandboxVerdict: { sandboxes: ["Zenbox"], confidence: 0 } }),
+    ).toEqual(["Detonated in Zenbox, it showed no malicious behaviour (0% confidence)."]);
+  });
+
   it("reports a zero-malicious engine tally, but not when the tally is empty", () => {
     expect(hashCleanSummary({ detectionRatio: { malicious: 0, total: 65 } })).toEqual([
       "None of the 65 engines that scanned it flagged anything.",
