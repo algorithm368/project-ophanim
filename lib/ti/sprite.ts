@@ -54,69 +54,70 @@ export function parseGrid(ascii: string): string[] {
 }
 
 const BODIES: Record<BodyKey, string[]> = {
-  // A flat-topped guardian. Anonymizer, scanner and c2 all taper from a point,
-  // so a flat top is the one silhouette cue that still reads as "a different
-  // creature" once the sprite is down to 16px. The eyes sit one pixel in from
-  // the frame rather than against it, the same gap anonymizer's eyes leave, so
-  // this reads as the same family's "peering out of the dark" rather than a
-  // face printed flush on a wall.
+  // A tall dome rather than a flat-topped block: the taper runs three rows
+  // deep before the shoulders flare, so hosting reads as a robed guardian
+  // instead of a crate with a face. The eyes are two single-pixel dots
+  // floating inside the visor, not notches cut into its border, so they read
+  // as "a face behind glass" rather than a grille.
   hosting: parseGrid(`
-    ....########....
+    .....######.....
     ....########....
     ...##########...
     ...##########...
-    ..############..
-    ..############..
-    ..##.#....#.##..
-    ..##.#....#.##..
-    ..##........##..
-    ..##........##..
+    ...##########...
     ..###......###..
-    .#####....#####.
+    ..##........##..
+    ..##..#..#..##..
+    ..##........##..
+    ..##........##..
+    ..##........##..
+    .####......####.
     .##############.
     .##############.
     .##############.
-    .##############.
+    ..############..
   `),
-  // Two thin feelers converging to a point above the head, rather than a pair
-  // of thick prongs: bug-antenna, not bull-horns. They stay inside columns
-  // 4-11 at rows 0-1 so the horn zone the flagged overlay owns stays clear.
-  // Tapers to a point at the base rather than flaring, since a mobile address
-  // is small and does not sit still the way a rack does.
+  // Bat-like ear flaps rather than thin converging feelers: the first draft's
+  // antenna read as a stray hair once the sprite was this small, and a pair of
+  // solid ears silhouettes even at 16px. The ears flare wide at row 2, one row
+  // later than the antenna they replace, so the horn zone at rows 0-1 stays
+  // clear of them. Tapers to a sharper point at the base than any other body,
+  // since a mobile address is the least anchored of the set.
   mobile: parseGrid(`
     ....#......#....
-    .....#....#.....
-    ......#..#......
-    .......##.......
-    ......####......
-    .....######.....
-    ....########....
+    ....##....##....
+    ..###.####.###..
     ..############..
-    .##############.
-    ..##.#....#.##..
+    ...##########...
+    ..############..
     .##..........##.
     .##..........##.
-    ..############..
+    .##...#..#...##.
+    .##..........##.
+    .###........###.
+    ..###......###..
     ...##########...
     ....########....
     .....######.....
+    ......####......
   `),
-  // A house: a steep straight-sided roof, an overhanging eave (one row wider
-  // than the walls it shelters), a window, and a doorway notch cut into the
-  // base. The straight walls are the one body in the set that does not taper
-  // or flare through its torso, and the door is the only body with a gap cut
-  // into its bottom edge rather than a point, a flare, or a flat close.
+  // A house: a steep straight-sided roof, an eave held wide for a full row
+  // before the walls begin (rather than stepping straight into them), a
+  // window, and a doorway notch cut into the base. The straight walls are the
+  // one body in the set that does not taper or flare through its torso, and
+  // the door is the only body with a gap cut into its bottom edge rather than
+  // a point, a flare, or a flat close.
   residential: parseGrid(`
     .......##.......
     ......####......
     .....######.....
     ....########....
     ...##########...
-    .##############.
     ..############..
-    ..##.#....#.##..
-    ..##.#....#.##..
+    .#####....#####.
+    ...##......##...
     ..##........##..
+    ..##..#..#..##..
     ..##........##..
     ..##........##..
     ..##........##..
@@ -124,13 +125,12 @@ const BODIES: Record<BodyKey, string[]> = {
     ..#####..#####..
     ..#####..#####..
   `),
-  // No eyes, on purpose: every other body stares back, and "unknown" is the
-  // one case with nothing to stare with. Fades in from an empty top row and
-  // out to an empty bottom row rather than filling the frame edge to edge,
-  // and closes on a scalloped three-bump hem instead of a point or a flare,
-  // since an ill-defined edge is the whole point of the body.
+  // Used to go faceless on purpose, but a blank visor read as "unfinished"
+  // more often than "unknown" once it sat next to seven bodies that all
+  // stare back. Two dots now, same as the rest, and the ambiguity lives in
+  // the scalloped hem instead: a three-bump close rather than a point or a
+  // flare, since an ill-defined edge is still the whole point of the body.
   unknown: parseGrid(`
-    ................
     ......####......
     .....######.....
     ....########....
@@ -138,87 +138,90 @@ const BODIES: Record<BodyKey, string[]> = {
     ..############..
     .##############.
     .##..........##.
-    .##..........##.
+    .##...#..#...##.
     .##..........##.
     ..############..
     ...##########...
+    ...##########...
     ....########....
     ....##.##.##....
-    ....##.##.##....
+    ................
     ................
   `),
-  // One eye, and only one. The first draft carved two unlit notches either
-  // side of a lit centre, so the negative space made two eyes and the sprite
-  // read as an insect. The aperture here is a single connected ring around one
-  // pupil, which cannot be read as a pair. The antenna stays centred so the
-  // horns land either side of it rather than on top of it.
+  // No antenna stub: the aperture is the whole story here. It nests a lit
+  // pupil inside a white ring inside the dark iris, three layers deep, which
+  // is the one place in the set that goes that far for a single detail.
   scanner: parseGrid(`
     ................
     .......##.......
-    .......##.......
     ....########....
-    ..############..
-    .##############.
-    .####......####.
-    .##...####...##.
-    .##...####...##.
-    .####......####.
-    .##############.
-    ..############..
-    ....########....
-    ...##......##...
-    ..##........##..
-    ................
-  `),
-  // A transmitting mast: a spine through a cross-arm, broadcast waves either
-  // side, and a braced lattice splaying out to the feet. No face, because the
-  // two aerials of the first draft read as a car's wing mirrors.
-  c2: parseGrid(`
-    ................
-    .......##.......
     ...##########...
-    .......##.......
-    ..##...##...##..
-    .##....##....##.
-    .##....##....##.
-    ..##...##...##..
-    ....########....
-    ....##....##....
-    ....########....
-    ....##....##....
-    ...##......##...
+    ..####....####..
+    ..##........##..
+    ..##..####..##..
+    ..##..##.#..##..
+    ..##..####..##..
+    ..############..
+    ...##########...
+    .....######.....
+    ................
+    ................
+    ................
+    ................
+  `),
+  // A walker, not a mast: the first draft's transmitting antenna read as
+  // furniture once it sat next to eight bodies that all have a face. Ears
+  // poke out at row 2, one row later than the antenna they replace, so the
+  // horn zone at rows 0-1 stays clear of them. Ears either side of a nested
+  // eye, planted on two legs braced wide, so c2 reads as something that came
+  // here under its own power rather than hardware bolted to a rack.
+  c2: parseGrid(`
+    ......####......
+    .....######.....
+    .##..........##.
+    ..############..
+    ..##........##..
+    .##...####...##.
+    .##...##.#...##.
+    .##...####...##.
+    ..############..
+    .....##..##.....
+    .....#....#.....
+    ....#......#....
     ...##......##...
     ..##........##..
-    .###........###.
+    .##..........##.
+    ##............##
   `),
-  // A peaked hood over a void, with two lit eyes floating in it. The peak is
-  // load-bearing: the first draft's dome plus a horizontal face band read as a
-  // windscreen, and the whole sprite read as a car.
+  // A peaked hood over a void, with no eyes: the first draft floated two lit
+  // dots in the dark same as every other body, and the void stopped reading
+  // as empty. A closed, bracket-shaped mouth low in the hood reads as
+  // "nothing to see" without going all the way back to unknown's blank stare.
   anonymizer: parseGrid(`
-    ................
     .......##.......
     ......####......
     .....######.....
-    .....######.....
-    ....###..###....
+    ....########....
     ....##....##....
     ...##......##...
-    ...##.#..#.##...
-    ...##.#..#.##...
+    ...##......##...
     ..##........##..
-    ..##........##..
-    ..###......###..
+    ..##..#..#..##..
+    ..##..####..##..
+    .###........###.
     .#####....#####.
     .##############.
     .##############.
+    ................
+    ................
   `),
-  // A map pin: round head, one big eye, tapering to a single point. Every
-  // other body here narrows at the top and flares at the base; this one
-  // does the opposite on purpose, since a domain is an address you navigate
-  // to rather than a machine that just sits there, and the pin shape is a
-  // ready-made symbol for exactly that. The eye is one wide block rather
-  // than the two small dots the other faces use, since a lone stare reads
-  // as "a place looking back" instead of "a face."
+  // A map pin: round head, tapering to a single point. Every other body here
+  // narrows at the top and flares at the base; this one does the opposite on
+  // purpose, since a domain is an address you navigate to rather than a
+  // machine that just sits there, and the pin shape is a ready-made symbol
+  // for exactly that. The eyes are the same two dots the rest of the set
+  // uses now, held one row tall so the visor band above them keeps its
+  // width, rather than the wide single band this body used to carve out.
   site: parseGrid(`
     ......####......
     .....######.....
@@ -226,22 +229,21 @@ const BODIES: Record<BodyKey, string[]> = {
     ...##########...
     ..############..
     .##############.
-    .##...####...##.
-    .##...####...##.
-    .##...####...##.
+    .##..........##.
+    .##...#..#...##.
     .##..........##.
     ..############..
     ...##########...
-    ....########....
+    ...##########...
+    ...##########...
     .....######.....
     ......####......
     .......##.......
   `),
-  // A sheet with a folded corner, two eyes, and lines of content. It sits a
-  // row lower than it looks like it should: the top edge at row 1 ran under
-  // the horns' inner ends, and moving the whole sheet down was the only fix
-  // that left the dog-ear intact. Narrowing row 1 instead chamfers the
-  // top-left, and then the sheet reads as cut at both corners.
+  // A sheet with a folded corner, two eyes, and lines of content. The right
+  // eye carries the same dog-ear bite as the sheet's own corner, one pixel
+  // deep, so the fold reads as this body's signature rather than a one-off
+  // detail of the silhouette.
   file: parseGrid(`
     ................
     ................
@@ -249,7 +251,7 @@ const BODIES: Record<BodyKey, string[]> = {
     ..###########...
     ..##......####..
     ..##........##..
-    ..##.##..##.##..
+    ..##.##..#..##..
     ..##.##..##.##..
     ..##........##..
     ..##.######.##..
