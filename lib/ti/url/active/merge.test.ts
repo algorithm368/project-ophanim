@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { attribution, mergeScans } from "@/lib/ti/url/active/merge";
+import {
+  attribution,
+  mergeScans,
+  mergeTargets,
+} from "@/lib/ti/url/active/merge";
 import type { ScanCapability } from "@/lib/ti/url/active/capability";
 import type { ScanDetail } from "@/lib/ti/url/active/detail";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
@@ -230,5 +234,190 @@ describe("mergeScans capability", () => {
       scan({ engine: "cloudflare", detail: detail(), capability: cap({ error: "DOM fetch timed out" }) }),
     ]);
     expect(merged.capability.error).toBe("DOM unavailable, HTTP 404");
+  });
+});
+
+describe("mergedDetail request count", () => {
+  // The merged reading seeded `requestCount: 0` alongside the other required
+  // fields, and a seeded zero can never be replaced: `isEmptyValue(0)` is
+  // false, so the first-non-empty guard read the slot as already filled and
+  // discarded every engine's real count. Nothing rendered it, so the zero was
+  // invisible until the network section started showing it.
+  it("keeps the count an engine reported", () => {
+    const [merged] = mergeScans([
+      scan({ engine: "urlscan", detail: detail({ requestCount: 41 }) }),
+    ]);
+    expect(merged.detail.requestCount).toBe(41);
+  });
+
+  it("falls back to zero when no engine reported one", () => {
+    const [merged] = mergeScans([
+      scan({ engine: "urlscan", detail: detail({ requestCount: 0 }) }),
+    ]);
+    expect(merged.detail.requestCount).toBe(0);
+  });
+});
+
+describe("mergeTargets", () => {
+  const httpScan = (over: Partial<ActiveScan> = {}) =>
+    scan({ engine: "urlscan", target: "http://8.8.8.8/", ...over });
+  const httpsScan = (over: Partial<ActiveScan> = {}) =>
+    scan({ engine: "urlscan", target: "https://8.8.8.8/", ...over });
+
+  it("names every scanned URL", () => {
+    const merged = mergeTargets([
+      httpScan({ detail: detail() }),
+      httpsScan({ detail: detail() }),
+    ]);
+    expect(merged.targets).toEqual(["http://8.8.8.8/", "https://8.8.8.8/"]);
+  });
+
+  it("folds fields only one URL reported", () => {
+    const merged = mergeTargets([
+      httpScan({ detail: detail({ server: "nginx" }) }),
+      httpsScan({ detail: detail({ tlsIssuer: "WR2" }) }),
+    ]);
+    expect(merged.detail.server).toBe("nginx");
+    expect(merged.detail.tlsIssuer).toBe("WR2");
+  });
+
+  it("reports a field the two URLs answered differently on", () => {
+    const merged = mergeTargets([
+      httpScan({ detail: detail({ ip: "8.8.8.8" }) }),
+      httpsScan({ detail: detail({ ip: "8.8.4.4" }) }),
+    ]);
+    expect(merged.targetDifferences).toEqual([
+      {
+        field: "Serving IP",
+        values: [
+          { target: "http://8.8.8.8/", value: "8.8.8.8" },
+          { target: "https://8.8.8.8/", value: "8.8.4.4" },
+        ],
+      },
+    ]);
+  });
+
+  // The case the screenshot showed: both ports land on the same host, one just
+  // takes an extra hop getting there.
+  it("reports a differing hop count", () => {
+    const merged = mergeTargets([
+      httpScan({
+        detail: detail({
+          redirects: [
+            { from: "a", to: "b" },
+            { from: "b", to: "c" },
+          ],
+        }),
+      }),
+      httpsScan({ detail: detail({ redirects: [{ from: "a", to: "c" }] }) }),
+    ]);
+    expect(
+      merged.targetDifferences.find((d) => d.field === "Redirect hops")?.values,
+    ).toEqual([
+      { target: "http://8.8.8.8/", value: "2" },
+      { target: "https://8.8.8.8/", value: "1" },
+    ]);
+  });
+
+  it("says nothing differs when both URLs answered the same", () => {
+    const same = detail({ finalUrl: "https://dns.google/", title: "DNS" });
+    const merged = mergeTargets([
+      httpScan({ detail: same }),
+      httpsScan({ detail: same }),
+    ]);
+    expect(merged.targetDifferences).toEqual([]);
+    expect(merged.separateSites).toBe(false);
+  });
+
+  // An extra hop to the same destination is one site answering on two ports,
+  // which is the ordinary case and must not carry a warning.
+  it("does not call an extra hop to the same page separate sites", () => {
+    const merged = mergeTargets([
+      httpScan({
+        detail: detail({
+          finalUrl: "https://dns.google/",
+          title: "DNS",
+          redirects: [
+            { from: "a", to: "b" },
+            { from: "b", to: "c" },
+          ],
+        }),
+      }),
+      httpsScan({
+        detail: detail({ finalUrl: "https://dns.google/", title: "DNS" }),
+      }),
+    ]);
+    expect(merged.separateSites).toBe(false);
+  });
+
+  it("calls two different destinations separate sites", () => {
+    const merged = mergeTargets([
+      httpScan({ detail: detail({ finalUrl: "http://8.8.8.8/setup" }) }),
+      httpsScan({ detail: detail({ finalUrl: "https://dns.google/" }) }),
+    ]);
+    expect(merged.separateSites).toBe(true);
+  });
+
+  it("calls two different titles on one host separate sites", () => {
+    const merged = mergeTargets([
+      httpScan({
+        detail: detail({ finalUrl: "https://x.test/", title: "Router login" }),
+      }),
+      httpsScan({
+        detail: detail({ finalUrl: "https://x.test/", title: "Welcome" }),
+      }),
+    ]);
+    expect(merged.separateSites).toBe(true);
+  });
+
+  // A reading with neither host nor title cannot answer the question, and
+  // counting it as a match would suppress a warning on the pair that can.
+  it("ignores a URL that reported neither destination nor title", () => {
+    const merged = mergeTargets([
+      httpScan({ detail: detail() }),
+      httpsScan({ detail: detail({ finalUrl: "https://dns.google/" }) }),
+    ]);
+    expect(merged.separateSites).toBe(false);
+  });
+
+  it("keeps engine conflicts attached to the URL they were about", () => {
+    const merged = mergeTargets([
+      httpScan({ engine: "urlscan", detail: detail({ ip: "1.1.1.1" }) }),
+      httpScan({ engine: "cloudflare", detail: detail({ ip: "2.2.2.2" }) }),
+      httpsScan({ engine: "urlscan", detail: detail({ ip: "1.1.1.1" }) }),
+    ]);
+    expect(merged.disagreements).toHaveLength(1);
+    expect(merged.disagreements[0].field).toBe("Serving IP");
+  });
+
+  it("sees a password field either URL rendered", () => {
+    const cap = (over: Partial<ScanCapability>): ScanCapability => ({
+      passwordField: false,
+      forms: [],
+      downloadLinks: [],
+      ...over,
+    });
+    const merged = mergeTargets([
+      httpScan({ detail: detail(), capability: cap({}) }),
+      httpsScan({ detail: detail(), capability: cap({ passwordField: true }) }),
+    ]);
+    expect(merged.capability.passwordField).toBe(true);
+  });
+
+  it("names an engine that never finished", () => {
+    const merged = mergeTargets([
+      httpScan({ detail: detail() }),
+      httpsScan({ engine: "cloudflare", status: "running" }),
+    ]);
+    expect(merged.incomplete).toEqual([
+      { engine: "cloudflare", status: "running" },
+    ]);
+  });
+
+  it("holds no targets when nothing was scanned", () => {
+    const merged = mergeTargets([]);
+    expect(merged.targets).toEqual([]);
+    expect(merged.engines).toEqual([]);
+    expect(merged.separateSites).toBe(false);
   });
 });

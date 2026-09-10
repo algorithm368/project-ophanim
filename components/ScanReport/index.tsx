@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IOCType } from "@/lib/ioc";
 import { pollIntervalFor } from "@/lib/scan-poll";
+import { count } from "@/lib/text";
 import { checkUrlFor } from "@/lib/ti/endpoints";
 import {
   subjectTargetFor,
   type SubjectKind,
 } from "@/lib/ti/subject-target";
-import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
-import { mergeScans } from "@/lib/ti/url/active/merge";
+import { mergeTargets, type MergedIndicator } from "@/lib/ti/url/active/merge";
+import { redFlagsFor, type RedFlag } from "@/lib/ti/url/active/red-flags";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
 import type { CheckResult, DomainCheckResult } from "@/lib/ti/types";
@@ -17,10 +18,25 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/CheckResults/primitives";
+import { SectionNav, type NavItem } from "@/components/CheckResults/section-nav";
 import { IpDossierCard } from "@/components/CheckResults/dossier";
 import { DomainProfileCard } from "@/components/CheckResults/profile";
 import { ActiveModeButton, ArmedPanel } from "./active-mode";
-import { TargetReport } from "./target";
+import { ScanAnswer } from "./answer";
+import { ScanCapture } from "./capture";
+import { ScanSearchBar } from "./search";
+import {
+  DomSection,
+  NetworkSection,
+  PageSection,
+  RequestSection,
+} from "./sections/trip";
+import {
+  CertificateSection,
+  IdentitySection,
+  TraceSection,
+  VerdictSection,
+} from "./sections/record";
 
 type SubjectState =
   | { status: "loading" }
@@ -37,6 +53,22 @@ type SubjectState =
 // as the platform allows, holding the card on "checking the sources"
 // indefinitely.
 const SUBJECT_TIMEOUT_MS = 60_000;
+
+/** The teardown's sections, in the order the scanner met them, then the passive
+ *  record. The ids are what `redFlagsFor` links to and what the rail scrolls
+ *  to, so the three lists are one list. */
+const SECTIONS: NavItem[] = [
+  { id: "capture", label: "Capture" },
+  { id: "request", label: "Request" },
+  { id: "page", label: "Page" },
+  { id: "network", label: "Network" },
+  { id: "dom", label: "DOM" },
+  { id: "identity", label: "Identity" },
+  { id: "certs", label: "Certs" },
+  { id: "verdicts", label: "Verdicts" },
+  { id: "trace", label: "Trace" },
+  { id: "subject", label: "Subject" },
+];
 
 /**
  * The subject's identity, one card, exactly what /check renders for whatever
@@ -77,14 +109,189 @@ function IdentityCard({
   return <DomainProfileCard result={null} streaming />;
 }
 
+/** How far along a running batch is, as a bar and a count. */
+function ScanProgress({ batch }: Readonly<{ batch: ActiveScanBatch }>) {
+  const total = batch.scans.length;
+  const done = batch.scans.filter((s) => s.status !== "running").length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  return (
+    <div className="space-y-2">
+      <div
+        role="progressbar"
+        aria-label="Scan targets completed"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        className="h-0.5 w-full overflow-hidden rounded-full bg-border"
+      >
+        <div
+          className="h-full bg-foreground/70 transition-[width] duration-200 ease-linear"
+          style={{ width: `${Math.max(pct, 2)}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between font-mono text-xs tabular-nums text-muted-foreground">
+        <span>
+          {done} / {total} targets
+        </span>
+        <span>about thirty seconds</span>
+      </div>
+      <div className="flex flex-wrap gap-1" aria-hidden>
+        {batch.scans.map((s) => (
+          <span
+            key={`${s.target}-${s.engine}`}
+            title={s.target}
+            className={cn(
+              "size-1.5 rounded-full",
+              s.status === "done" && "bg-emerald-600 dark:bg-emerald-400",
+              s.status === "error" && "bg-amber-500",
+              s.status === "running" && "animate-pulse bg-foreground/30",
+            )}
+          />
+        ))}
+      </div>
+      <p className="text-xs text-foreground/60">
+        Sections fill in as each engine finishes, and leaving this page does not
+        cancel it.
+      </p>
+    </div>
+  );
+}
+
+/** The one line above the teardown that is about the submission rather than
+ *  about the page: how much was sent, what path was scanned, and what earlier
+ *  readings said. A phishing site changes fast, so "scanned before, and it said
+ *  something different then" is evidence in its own right. */
+function SubmissionLine({
+  targets,
+  context,
+  previous,
+}: Readonly<{
+  targets: string[];
+  context?: string;
+  previous?: { at: string; malicious: boolean }[];
+}>) {
+  const parts = [
+    `${count(targets.length, "URL")} sent`,
+    context ? `scanned path ${context}` : undefined,
+    previous?.length
+      ? `scanned before: ${previous
+          .map(
+            (p) =>
+              `${new Date(p.at).toLocaleDateString()} → ${p.malicious ? "malicious" : "not flagged"}`,
+          )
+          .join(" · ")}`
+      : undefined,
+  ].filter(Boolean);
+  return <p className="text-xs text-foreground/55">{parts.join(" · ")}</p>;
+}
+
+/** The page before anything has been scanned: what would be visited, and the
+ *  one control that spends the quota. */
+function NotScannedPanel({
+  targets,
+  running,
+  confirming,
+  message,
+  onArm,
+  onCancel,
+  onEngage,
+}: Readonly<{
+  targets: string[];
+  running: boolean;
+  confirming: boolean;
+  message: string | null;
+  onArm: () => void;
+  onCancel: () => void;
+  onEngage: () => void;
+}>) {
+  return (
+    <Card className="sketch-shadow rounded-lg border border-foreground/12">
+      <CardContent className="space-y-5">
+        <SectionHeading>Active scan</SectionHeading>
+        <p className="text-xs text-foreground/55">
+          Not scanned yet. Everything on /check is passive, this page is the one
+          thing that reaches out and touches the indicator.
+        </p>
+        {message && <p className="text-sm text-orange-500">{message}</p>}
+        {confirming ? (
+          <ArmedPanel
+            targets={targets}
+            submitting={running}
+            onEngage={onEngage}
+            onCancel={onCancel}
+          />
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-foreground/75">
+              An active scan visits{" "}
+              {targets.length === 1 ? "this address" : "these addresses"} now and
+              reports what {targets.length === 1 ? "it serves" : "they serve"}.
+            </p>
+            <ActiveModeButton disabled={running} onClick={onArm} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Every section of the teardown, in the order the scanner met them. Split out
+ *  so `ScanReport` itself stays a state container rather than also being the
+ *  document. */
+function Teardown({
+  merged,
+  batch,
+  flags,
+  now,
+}: Readonly<{
+  merged: MergedIndicator;
+  batch: ActiveScanBatch;
+  flags: RedFlag[];
+  now: number;
+}>) {
+  const scans = batch.scans;
+  return (
+    <>
+      <ScanAnswer merged={merged} batch={batch} flags={flags} now={now} />
+
+      {/* Both phases: the rail draws the left column's edge, and a rail that
+          appears only once the scan lands slides the whole content column
+          sideways when it does. */}
+      <SectionNav items={SECTIONS} />
+
+      <section id="capture" className="scroll-mt-20">
+        <ScanCapture merged={merged} scans={scans} />
+      </section>
+      <RequestSection merged={merged} scans={scans} batch={batch} />
+      <PageSection merged={merged} scans={scans} />
+      <NetworkSection merged={merged} scans={scans} />
+      <DomSection merged={merged} scans={scans} />
+      <IdentitySection merged={merged} scans={scans} />
+      <CertificateSection merged={merged} scans={scans} />
+      <VerdictSection merged={merged} scans={scans} />
+      <TraceSection merged={merged} scans={scans} />
+    </>
+  );
+}
+
 /**
- * The active scan as a page, rather than as a card inside a triage result.
+ * The active scan as a page.
  *
- * The scan is the subject here: the answer and the picture come first, the
- * evidence sits beneath, and everything nobody collected is named rather than
- * left as an empty section. The passive reading is fetched in parallel and only
- * ever appears as one attributed line, because this page is the teardown and
- * /check is the triage.
+ * A teardown, not a triage: the point of coming here is to read everything the
+ * scanner collected, so nothing is behind a disclosure triangle and the
+ * sections run in the order the scan happened rather than in the order the two
+ * APIs happen to return things.
+ *
+ * The reading is folded across every URL that was submitted. A bare IP is sent
+ * on both ports, and rendering that as two near-identical teardowns meant two
+ * paragraphs that matched almost word for word. What the URLs answered
+ * differently on is printed beside the folded value instead, which is the part
+ * worth reading.
+ *
+ * The passive record comes last. It is context for a page that is about the
+ * visit, and it used to occupy the whole first screen of a page whose own
+ * subject was below it.
  */
 export function ScanReport({
   indicator,
@@ -120,6 +327,11 @@ export function ScanReport({
       context: target.context,
     };
   });
+
+  // Read once per render rather than per component, so every "how long ago"
+  // on the page agrees with every other and none of them disagrees with the
+  // markup the server sent.
+  const [now, setNow] = useState(() => Date.now());
 
   const targets = scanTargetsFor(indicator, kind);
   const pending = batch?.scans.some((s) => s.status === "running") ?? false;
@@ -179,7 +391,10 @@ export function ScanReport({
       timer = setTimeout(() => {
         if (cancelled) return;
         void poll().finally(() => {
-          if (!cancelled) tick();
+          if (!cancelled) {
+            setNow(Date.now());
+            tick();
+          }
         });
       }, pollIntervalFor(Date.now() - startedAt));
     }
@@ -207,6 +422,7 @@ export function ScanReport({
         return;
       }
       setBatch(data as ActiveScanBatch);
+      setNow(Date.now());
     } catch {
       setMessage("The scan could not be started.");
     } finally {
@@ -214,156 +430,67 @@ export function ScanReport({
     }
   }
 
-  const merged = batch ? mergeScans(batch.scans) : [];
-  const enginesUsed = [...new Set(batch?.scans.map((s) => s.engine) ?? [])];
-  const visibilities = [
-    ...new Set(batch?.scans.map((s) => s.visibility).filter(Boolean) ?? []),
-  ];
-  const scanTotal = batch?.scans.length ?? 0;
-  const scanDone =
-    batch?.scans.filter((s) => s.status !== "running").length ?? 0;
-  const scanPct = scanTotal > 0 ? Math.round((scanDone / scanTotal) * 100) : 0;
+  const merged = useMemo(
+    () => (batch ? mergeTargets(batch.scans) : null),
+    [batch],
+  );
+  const flags = useMemo(
+    () => (merged ? redFlagsFor(merged, now) : []),
+    [merged, now],
+  );
 
   return (
     <div className="space-y-5">
-      <IdentityCard subject={subject} loadingKind={target?.subjectKind ?? "domain"} />
+      <ScanSearchBar indicator={indicator} />
 
-      <Card className="sketch-shadow rounded-lg border border-foreground/12">
-        <CardContent className="space-y-5">
-          <SectionHeading
-            action={
-              batch && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  disabled={running || pending}
-                  onClick={() => void submit(true)}
-                >
-                  {running ? "Submitting" : "Rescan"}
-                </Button>
-              )
-            }
-          >
-            Active scan
-          </SectionHeading>
-
-          <div className="space-y-1">
-            {subject.status === "ready" && subject.context && (
-              <p className="text-xs text-foreground/55">
-                Scanned path:{" "}
-                <span className="font-mono text-foreground">
-                  {subject.context}
-                </span>
-              </p>
-            )}
-            {batch ? (
-              <p className="text-xs text-foreground/55">
-                {targets.length === 1 ? "1 URL sent" : `${targets.length} URLs sent`}
-                {enginesUsed.length
-                  ? ` · ${enginesUsed.map((e) => ENGINE_NAME[e]).join(" + ")}`
-                  : ""}
-                {` · ${new Date(batch.submittedAt).toLocaleString()}`}
-                {visibilities.length ? ` · ${visibilities.join(", ")}` : ""}
-              </p>
-            ) : (
-              <p className="text-xs text-foreground/55">
-                Not scanned yet. Everything on /check is passive, this page is the
-                one thing that reaches out and touches the indicator.
-              </p>
-            )}
-
-            {/* A phishing site changes fast, so an earlier reading is evidence in
-                its own right rather than trivia. */}
-            {batch?.previous?.length ? (
-              <p className="text-xs text-foreground/55">
-                Scanned before:{" "}
-                {batch.previous
-                  .map(
-                    (p) =>
-                      `${new Date(p.at).toLocaleDateString()} → ${p.malicious ? "malicious" : "not flagged"}`,
-                  )
-                  .join(" · ")}
-              </p>
-            ) : null}
+      {batch && merged ? (
+        <>
+          {/* A rescan spends quota, so it stays a deliberate button rather than
+              something a reload does. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <SubmissionLine
+              targets={targets}
+              context={subject.status === "ready" ? subject.context : undefined}
+              previous={batch.previous}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={running || pending}
+              onClick={() => void submit(true)}
+            >
+              {running ? "Submitting" : "Rescan"}
+            </Button>
           </div>
 
           {message && <p className="text-sm text-orange-500">{message}</p>}
+          {pending && <ScanProgress batch={batch} />}
 
-          {!batch && !confirming && (
-            <div className="space-y-3">
-              <p className="text-sm text-foreground/75">
-                An active scan visits{" "}
-                {targets.length === 1 ? "this address" : "these addresses"} now and
-                reports what {targets.length === 1 ? "it serves" : "they serve"}.
-              </p>
-              <ActiveModeButton
-                disabled={running}
-                onClick={() => setConfirming(true)}
-              />
-            </div>
-          )}
-
-          {confirming && (
-            <ArmedPanel
-              targets={targets}
-              submitting={running}
-              onEngage={() => void submit(false)}
-              onCancel={() => setConfirming(false)}
-            />
-          )}
-
-          {pending && (
-            <div className="space-y-2">
-              <div
-                role="progressbar"
-                aria-label="Scan targets completed"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={scanPct}
-                className="h-0.5 w-full overflow-hidden rounded-full bg-border"
-              >
-                <div
-                  className="h-full bg-foreground/70 transition-[width] duration-200 ease-linear"
-                  style={{ width: `${Math.max(scanPct, 2)}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between font-mono text-xs tabular-nums text-muted-foreground">
-                <span>
-                  {scanDone} / {scanTotal} targets
-                </span>
-                <span>about thirty seconds</span>
-              </div>
-              <div className="flex flex-wrap gap-1" aria-hidden>
-                {(batch?.scans ?? []).map((s) => (
-                  <span
-                    key={`${s.target}-${s.engine}`}
-                    title={s.target}
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      s.status === "done" && "bg-emerald-600 dark:bg-emerald-400",
-                      s.status === "error" && "bg-amber-500",
-                      s.status === "running" && "animate-pulse bg-foreground/30",
-                    )}
-                  />
-                ))}
-              </div>
-              <p className="text-xs text-foreground/60">
-                Sections fill in as each engine finishes, and leaving this page
-                does not cancel it.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {merged.map((m) => (
-        <TargetReport
-          key={m.target}
-          merged={m}
-          scans={batch?.scans.filter((s) => s.target === m.target) ?? []}
+          <Teardown merged={merged} batch={batch} flags={flags} now={now} />
+        </>
+      ) : (
+        <NotScannedPanel
+          targets={targets}
+          running={running}
+          confirming={confirming}
+          message={message}
+          onArm={() => setConfirming(true)}
+          onCancel={() => setConfirming(false)}
+          onEngage={() => void submit(false)}
         />
-      ))}
+      )}
+
+      {/* Last, and unlabelled: the dossier and profile cards head themselves,
+          and an outer title above them printed "subject record" twice. It is
+          context for a page about the visit, which is why it is down here at
+          all rather than occupying the first screen as it used to. */}
+      <section id="subject" className="scroll-mt-20">
+        <IdentityCard
+          subject={subject}
+          loadingKind={target?.subjectKind ?? "domain"}
+        />
+      </section>
     </div>
   );
 }

@@ -125,9 +125,10 @@ const box = () =>
   });
 
 /** The shell's stand-in for the search box: a placeholder bar, not a real
- *  input, so it has no label to find it by. Only the lookup shape has one. */
+ *  input, so it has no label to find it by. Both modes lead with one, since
+ *  the scan page grew a search box of its own. */
 const hasSearchPlaceholder = () =>
-  page.locator("main > div > .sweep.h-12").isVisible().catch(() => false);
+  page.locator("main .sweep.h-12").first().isVisible().catch(() => false);
 
 const link = page.getByRole("link", { name: /active/i }).first();
 await link.click();
@@ -151,8 +152,8 @@ console.log(
 );
 console.log(
   hasSearchBox
-    ? "  ✗ loading shell is showing a search box the scan page does not have"
-    : "  ✓ loading shell has no search box (scan shape)",
+    ? "  ✓ loading shell stands in for the scan page's search box"
+    : "  ✗ loading shell is missing the search box the scan page leads with",
 );
 
 await page.waitForTimeout(6000);

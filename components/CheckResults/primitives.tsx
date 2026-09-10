@@ -107,36 +107,54 @@ export function useCopied(): [boolean, (value: string) => Promise<void>] {
     return [copied, copy];
 }
 
-export function CopyableSummary({ text }: Readonly<{ text: string }>) {
+/**
+ * A button that puts `text` on the clipboard, whether or not the page is
+ * showing that text.
+ *
+ * Separate from `CopyableSummary` because the scan page needs exactly that
+ * split: it prints only the judgement, since every fact the full paragraph
+ * recites is already a row of its own, but what gets pasted into a ticket has
+ * to read without the table beside it. One button either way, so the copied
+ * state does not get a second implementation.
+ */
+export function CopyButton({
+    text,
+    label = "Copy summary",
+}: Readonly<{ text: string; label?: string }>) {
     const [copied, copy] = useCopied();
+    return (
+        <div className="-ml-1.5 flex flex-wrap items-center gap-1">
+            <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                aria-label={label}
+                className="gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                onClick={() => copy(text)}
+            >
+                {copied ? (
+                    <>
+                        <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                        Copied
+                    </>
+                ) : (
+                    <>
+                        <Copy className="size-3.5" />
+                        {label}
+                    </>
+                )}
+            </Button>
+        </div>
+    );
+}
 
+export function CopyableSummary({ text }: Readonly<{ text: string }>) {
     return (
         <div className="space-y-1.5">
             <p className="font-sans text-[0.95rem] leading-relaxed text-foreground/85">
                 {text}
             </p>
-            <div className="-ml-1.5 flex flex-wrap items-center gap-1">
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    aria-label="Copy summary"
-                    className="gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-                    onClick={() => copy(text)}
-                >
-                    {copied ? (
-                        <>
-                            <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                            Copied
-                        </>
-                    ) : (
-                        <>
-                            <Copy className="size-3.5" />
-                            Copy summary
-                        </>
-                    )}
-                </Button>
-            </div>
+            <CopyButton text={text} />
         </div>
     );
 }

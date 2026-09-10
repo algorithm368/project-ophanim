@@ -1067,3 +1067,21 @@ export function buildScanNarrative(merged: MergedScan): string[] {
     ...scanVerdicts(merged),
   ];
 }
+
+/**
+ * The one sentence of the paragraph that is a reading rather than a restatement.
+ *
+ * The scan page prints every fact the narrative recites as its own attributed
+ * row, so printing the paragraph beside them says the domain's age twice and
+ * the certificate's twice more. What survives that de-duplication is the
+ * judgement: whether anyone flagged it, and what a nobody-flagged-it actually
+ * means. The copy button still carries the whole paragraph, because text pasted
+ * into a ticket has to stand on its own without the table beside it.
+ *
+ * The disagreement and unfinished-engine sentences `scanVerdicts` adds are rows
+ * too, in the verdicts and trace sections, which is why only the first is kept.
+ */
+export function scanJudgement(merged: MergedScan): string | undefined {
+  if (merged.engines.length === 0) return undefined;
+  return scanVerdicts(merged)[0];
+}

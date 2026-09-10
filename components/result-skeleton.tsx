@@ -27,15 +27,12 @@ import { modeRouteFor } from "@/lib/route-mode";
  * lookup shape entirely, growing a search box that then vanished. Derived from
  * the pathname, both renders are the same render.
  *
- * The two shapes it stands in for hold different amounts of chrome:
- *
- * - `passive` stands in for `<Checker>` on `/check/[ioc]`, which brings its own
- *   page container and leads with a search box.
- * - `active` stands in for `<ScanReport>` on `/scan/[indicator]`, where the
- *   page's own `<main>` is the container and there is no search box at all.
- *
- * Getting that wrong is visible: a lookup shell inside the scan page's `<main>`
- * is doubly padded, so the fallback sits inset from the report that replaces it.
+ * Both modes lead with a search box, so both shells stand one in. What still
+ * differs is the container: `/check/[ioc]` gives `<Checker>` a bare `<main>`
+ * and lets it bring its own page container, while `/scan/[indicator]` puts the
+ * container on the `<main>` itself. Getting that wrong is visible, and was: a
+ * lookup shell inside the scan page's `<main>` is doubly padded, so the
+ * fallback sits inset from the report that replaces it.
  */
 export function ResultSkeleton() {
   const route = modeRouteFor(usePathname());
@@ -47,10 +44,9 @@ export function ResultSkeleton() {
 
   return (
     <div className={lookup ? "mx-auto w-full max-w-5xl px-4 py-6" : undefined}>
-      {/* Search box, which only the lookup shell has. */}
-      {lookup && <div className="sweep h-12 w-full rounded-lg" />}
+      <div className="sweep h-12 w-full rounded-lg" />
 
-      <div className={lookup ? "mt-5" : undefined}>
+      <div className="mt-5">
         <div className="rounded-lg border border-foreground/12 p-4">
           {indicator ? (
             <p className="font-mono text-lg break-all text-foreground">

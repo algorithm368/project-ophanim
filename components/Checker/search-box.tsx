@@ -119,6 +119,10 @@ export function DetectionHint({
  * over once a result is on screen so the box stays in reach without pushing the
  * verdict off it. One component rather than two near-copies, which is what they
  * were, and what let them drift a class at a time.
+ *
+ * The scan page uses it too, in its compact form, which is why the wording is a
+ * prop: an analyst on `/scan` cannot scan a hash, and offering one in the
+ * placeholder would teach the wrong thing.
  */
 export function SearchBox({
   compact,
@@ -129,6 +133,9 @@ export function SearchBox({
   onQueryChange,
   onClear,
   onSubmit,
+  label = "IOC to check",
+  placeholder = "IP, domain, or file hash",
+  action = "Check",
 }: Readonly<{
   compact: boolean;
   query: string;
@@ -138,6 +145,11 @@ export function SearchBox({
   onQueryChange: (value: string) => void;
   onClear: () => void;
   onSubmit: () => void;
+  /** Accessible name of the input. */
+  label?: string;
+  placeholder?: string;
+  /** Accessible name of the submit button. */
+  action?: string;
 }>) {
   const height = compact ? "h-10" : "h-11";
   return (
@@ -163,8 +175,8 @@ export function SearchBox({
           autoCorrect="off"
           autoComplete="off"
           spellCheck={false}
-          aria-label="IOC to check"
-          placeholder="IP, domain, or file hash"
+          aria-label={label}
+          placeholder={placeholder}
           className={cn(
             height,
             "rounded-none border-0 bg-transparent pl-9 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
@@ -184,7 +196,7 @@ export function SearchBox({
       </div>
       <Button
         type="submit"
-        aria-label="Check"
+        aria-label={action}
         disabled={!canSubmit}
         className={cn(
           height,
