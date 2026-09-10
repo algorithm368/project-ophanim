@@ -1,5 +1,11 @@
 import { Redis } from "@upstash/redis";
-import type { CheckResult, DomainCheckResult, HashCheckResult } from "./types";
+import type { IOCType } from "@/lib/ioc";
+import type {
+  AnyCheckResult,
+  CheckResult,
+  DomainCheckResult,
+  HashCheckResult,
+} from "./types";
 import type { UrlCheckResult } from "./url/types";
 import type { ActiveScanBatch } from "./url/active/types";
 
@@ -249,4 +255,25 @@ export function setCachedHashResult(
   result: HashCheckResult,
 ): Promise<void> {
   return setCached(HASH_KEY_PREFIX, hash, result);
+}
+
+/**
+ * The cached passive result for an indicator of any kind, keyed the way that
+ * kind's route keys it.
+ *
+ * Two pages need this dispatch, `/check/[ioc]` for the permalink it renders and
+ * `/scan/[indicator]` for its subject's identity record, and a private copy in
+ * either is a copy that can be given a new kind without the other learning
+ * about it. The one it was already missing is `url`: the earlier inline ladder
+ * fell through to the IP prefix for a url indicator, so a url permalink read a
+ * key the url route never writes and missed every time.
+ */
+export function getCachedResultFor(
+  kind: IOCType,
+  indicator: string,
+): Promise<AnyCheckResult | UrlCheckResult | null> {
+  if (kind === "domain") return getCachedDomainResult(indicator);
+  if (kind === "hash") return getCachedHashResult(indicator);
+  if (kind === "url") return getCachedUrlResult(indicator);
+  return getCachedResult(indicator);
 }

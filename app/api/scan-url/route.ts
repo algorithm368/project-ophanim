@@ -8,6 +8,10 @@ import {
   submitCloudflareScan,
 } from "@/lib/ti/url/active/cloudflare";
 import { rememberBatch } from "@/lib/ti/url/active/scan-history";
+import {
+  readScanCredentials,
+  SCAN_MISSING_KEY,
+} from "@/lib/ti/url/active/credentials";
 import { urlIndicatorProblem } from "@/lib/ti/url/validate";
 import type { ActiveScan, ActiveScanBatch } from "@/lib/ti/url/active/types";
 import { requireSession } from "@/lib/require-session";
@@ -22,27 +26,6 @@ export const maxDuration = 30;
 /** Submission is fast (it only queues), polling is one round trip. Neither
  *  waits for the scan itself, which takes roughly 30 seconds on the provider. */
 const REQUEST_TIMEOUT_MS = 20000;
-
-const MISSING_KEY = {
-  error:
-    "Active scanning needs urlscan.io or Cloudflare credentials. Set URLSCAN_API_KEY, or CLOUDFLARE_API_TOKEN with CLOUDFLARE_ACCOUNT_ID.",
-  keyEnv: "URLSCAN_API_KEY",
-};
-
-/** Each engine is gated on its own credentials, so one configured engine still
- *  produces a scan and the other is simply absent rather than fatal. */
-function readCredentials() {
-  const urlscanKey = process.env.URLSCAN_API_KEY;
-  const cfToken = process.env.CLOUDFLARE_API_TOKEN;
-  const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID;
-  return {
-    urlscanKey,
-    cfToken,
-    cfAccount,
-    cfReady: Boolean(cfToken && cfAccount),
-    any: Boolean(urlscanKey) || Boolean(cfToken && cfAccount),
-  };
-}
 
 function badRequest(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
@@ -73,8 +56,8 @@ function readIndicator(
  * again.
  */
 async function submitScanRoute(request: NextRequest): Promise<Response> {
-  const creds = readCredentials();
-  if (!creds.any) return Response.json(MISSING_KEY, { status: 503 });
+  const creds = readScanCredentials();
+  if (!creds.any) return Response.json(SCAN_MISSING_KEY, { status: 503 });
 
   let body: Record<string, unknown>;
   try {
@@ -151,8 +134,8 @@ async function submitScanRoute(request: NextRequest): Promise<Response> {
  * is "not yet".
  */
 async function pollScanRoute(request: NextRequest): Promise<Response> {
-  const creds = readCredentials();
-  if (!creds.any) return Response.json(MISSING_KEY, { status: 503 });
+  const creds = readScanCredentials();
+  if (!creds.any) return Response.json(SCAN_MISSING_KEY, { status: 503 });
 
   const raw = request.nextUrl.searchParams.get("indicator");
   const read = readIndicator(raw);
