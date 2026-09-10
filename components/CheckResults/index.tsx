@@ -13,7 +13,7 @@ import type { IOCType } from "@/lib/ioc";
 import type { PartialLookup } from "@/lib/ti/partial";
 import { PivotContext } from "./primitives";
 import { LayerStack } from "./layers";
-import { ActiveScanCard } from "./active-scan";
+import { ActiveScanCard, type KnownScan } from "./active-scan";
 import { VerdictHero } from "./verdict";
 import { PendingHero } from "./pending";
 import { SourceBreakdown } from "./sources";
@@ -73,12 +73,14 @@ function Results({
     indicator,
     onRefresh,
     research,
+    known,
 }: Readonly<{
     result: CheckResult | null;
     partial: PartialLookup | null;
     indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
+    known?: KnownScan;
 }>) {
     const streaming = result === null;
     return (
@@ -107,7 +109,7 @@ function Results({
             <Section id="scan">
                 {/* Takes an indicator, not a result: it reports whether a scan
                     already exists, which does not depend on this lookup. */}
-                <ActiveScanCard indicator={indicator} kind="ip" />
+                <ActiveScanCard indicator={indicator} kind="ip" known={known} />
             </Section>
             <Section id="sources">
                 <SourceBreakdown
@@ -127,12 +129,14 @@ function DomainResults({
     indicator,
     onRefresh,
     research,
+    known,
 }: Readonly<{
     result: DomainCheckResult | null;
     partial: PartialLookup | null;
     indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
+    known?: KnownScan;
 }>) {
     const streaming = result === null;
     return (
@@ -165,7 +169,7 @@ function DomainResults({
             <Section id="scan">
                 {/* Takes an indicator, not a result: it reports whether a scan
                     already exists, which does not depend on this lookup. */}
-                <ActiveScanCard indicator={indicator} kind="domain" />
+                <ActiveScanCard indicator={indicator} kind="domain" known={known} />
             </Section>
             <Section id="sources">
                 <SourceBreakdown
@@ -197,11 +201,13 @@ function UrlResults({
     indicator,
     onRefresh,
     research,
+    known,
 }: Readonly<{
     result: UrlCheckResult | null;
     indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
+    known?: KnownScan;
 }>) {
     const streaming = result === null;
     const LAYER_TITLE = {
@@ -227,7 +233,7 @@ function UrlResults({
             <Section id="scan">
                 {/* Takes an indicator, not a result: it reports whether a scan
                     already exists, which does not depend on this lookup. */}
-                <ActiveScanCard indicator={indicator} kind="url" />
+                <ActiveScanCard indicator={indicator} kind="url" known={known} />
             </Section>
             <Section id="sources">
                 {/* `result.layers` doesn't exist while streaming; render
@@ -313,6 +319,7 @@ export default function CheckResults({
     onRefresh,
     onPivot,
     research,
+    known,
 }: Readonly<{
     result: AnyCheckResult | UrlCheckResult | null;
     /** Set while the panel is still answering; null once `result` arrives. */
@@ -326,6 +333,9 @@ export default function CheckResults({
     onPivot?: (value: string) => void;
     /** Progressive live-research state, fetched in parallel with the main check. */
     research: ResearchStreamState;
+    /** Whether this indicator has been actively scanned, when a server render
+     *  already answered it. Absent on a lookup typed into the landing page. */
+    known?: KnownScan;
 }>) {
     // A URL result is checked first: it is the most specific shape, and the
     // other guards would not recognize it. The guards still run when a result
@@ -340,7 +350,7 @@ export default function CheckResults({
     else if (isDomainResult(result)) shape = "domain";
     else shape = "ip";
 
-    const common = { partial, indicator, onRefresh, research };
+    const common = { partial, indicator, onRefresh, research, known };
     let body: React.ReactNode;
     if (shape === "url") {
         body = <UrlResults result={result as UrlCheckResult | null} {...common} />;

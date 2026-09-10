@@ -1,3 +1,8 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+import { modeRouteFor } from "@/lib/route-mode";
+
 /**
  * The inert shell a route shows before its cached result has been read.
  *
@@ -12,23 +17,34 @@
  * this shell past where the real content lands and then jump left when the
  * content mounted, which is the shift it was meant to prevent.
  *
- * The two callers hold different amounts of chrome, so `variant` says which
- * shape to stand in for rather than guessing:
+ * **It reads the path rather than taking props, and that is what stops it
+ * shifting.** Each of these routes shows this shell twice in a row, first as
+ * `loading.tsx` while the server is still thinking, then as the page's own
+ * Suspense fallback while Redis is read. `loading.tsx` accepts no params, so
+ * anything passed in could only ever be given to the second of the two, and the
+ * pair drifted exactly that way: the shell went from a grey bar to the
+ * indicator's text mid-navigation, and the scan route was left standing in the
+ * lookup shape entirely, growing a search box that then vanished. Derived from
+ * the pathname, both renders are the same render.
  *
- * - `lookup` stands in for `<Checker>` on `/check/[ioc]`, which brings its own
+ * The two shapes it stands in for hold different amounts of chrome:
+ *
+ * - `passive` stands in for `<Checker>` on `/check/[ioc]`, which brings its own
  *   page container and leads with a search box.
- * - `scan` stands in for `<ScanReport>` on `/scan/[indicator]`, where the
+ * - `active` stands in for `<ScanReport>` on `/scan/[indicator]`, where the
  *   page's own `<main>` is the container and there is no search box at all.
  *
- * Getting this wrong is visible: a `lookup` skeleton inside the scan page's
- * `<main>` is doubly padded, so the fallback sits inset from the report that
- * replaces it.
+ * Getting that wrong is visible: a lookup shell inside the scan page's `<main>`
+ * is doubly padded, so the fallback sits inset from the report that replaces it.
  */
-export function ResultSkeleton({
-  indicator,
-  variant = "lookup",
-}: Readonly<{ indicator?: string; variant?: "lookup" | "scan" }>) {
-  const lookup = variant === "lookup";
+export function ResultSkeleton() {
+  const route = modeRouteFor(usePathname());
+  // Neither mode means this is mounted somewhere it was not designed for; the
+  // lookup shape is the one with a container of its own, so it is the safe
+  // guess.
+  const lookup = route?.mode !== "active";
+  const indicator = route?.indicator;
+
   return (
     <div className={lookup ? "mx-auto w-full max-w-5xl px-4 py-6" : undefined}>
       {/* Search box, which only the lookup shell has. */}
@@ -41,7 +57,10 @@ export function ResultSkeleton({
               {indicator}
             </p>
           ) : (
-            <div className="sweep h-6 w-56 rounded" />
+            // h-7, not h-6: `font-mono text-lg` is a 1.75rem line box, and a
+            // placeholder four pixels short of it moves the card when the name
+            // arrives.
+            <div className="sweep h-7 w-56 rounded" />
           )}
           <div className="sweep mt-3 h-1.5 w-full rounded-full" />
           <div className="sweep mt-4 h-3 w-11/12 rounded" />

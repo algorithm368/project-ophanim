@@ -195,7 +195,7 @@ lib/ti/domain/{registry,check}.ts         Domain source list + orchestrator
 lib/ti/hash/{registry,check}.ts           Hash source list + orchestrator
 app/api/{check,check-domain,check-hash}/  Route handlers (built from the factory)
 app/check/[ioc]/                          Unified result page + permalink
-components/Checker.tsx                     UI (single auto-detecting input)
+components/Checker/                        UI (single auto-detecting input)
 ```
 
 Every source implements the same `TiSource` interface. To add one: drop an
