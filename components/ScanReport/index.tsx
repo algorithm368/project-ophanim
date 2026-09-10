@@ -1,159 +1,375 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IOCType } from "@/lib/ioc";
 import { pollIntervalFor } from "@/lib/scan-poll";
-import { consensusBuckets, type ResultLike } from "@/lib/ti/narrative";
-import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
-import { mergeScans } from "@/lib/ti/url/active/merge";
+import { count } from "@/lib/text";
+import { checkUrlFor } from "@/lib/ti/endpoints";
+import {
+  subjectTargetFor,
+  type SubjectKind,
+} from "@/lib/ti/subject-target";
+import { mergeTargets, type MergedIndicator } from "@/lib/ti/url/active/merge";
+import { redFlagsFor, type RedFlag } from "@/lib/ti/url/active/red-flags";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
+import type { CheckResult, DomainCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/CheckResults/primitives";
+import { SectionNav, type NavItem } from "@/components/CheckResults/section-nav";
+import { IpDossierCard } from "@/components/CheckResults/dossier";
+import { DomainProfileCard } from "@/components/CheckResults/profile";
 import { ActiveModeButton, ArmedPanel } from "./active-mode";
-import { TargetReport } from "./target";
+import { ScanAnswer } from "./answer";
+import { ScanCapture } from "./capture";
+import { ScanSearchBar } from "./search";
+import {
+  DomSection,
+  NetworkSection,
+  PageSection,
+  RequestSection,
+} from "./sections/trip";
+import {
+  CertificateSection,
+  IdentitySection,
+  TraceSection,
+  VerdictSection,
+} from "./sections/record";
 
-/** Which passive route answers for this kind of indicator. */
-const PASSIVE_ROUTE: Record<string, { path: string; param: string }> = {
-  ip: { path: "/api/check", param: "ip" },
-  domain: { path: "/api/check-domain", param: "domain" },
-  url: { path: "/api/check-url", param: "url" },
-};
-
-type PassiveState =
+type SubjectState =
   | { status: "loading" }
-  | { status: "ready"; result: ResultLike }
+  | {
+      status: "ready";
+      subjectKind: SubjectKind;
+      result: CheckResult | DomainCheckResult;
+      context?: string;
+    }
   | { status: "failed" };
 
-// Headroom over the slowest passive route's worst case: /api/check-url runs
-// its three layers serially (~50s, until #47), the others top out near 15s.
-// Without this the fetch has no AbortSignal and will wait as long as the
-// platform allows, holding the card on "checking the sources" indefinitely.
-const PASSIVE_TIMEOUT_MS = 60_000;
+// Headroom over the slowest identity route's worst case: the others top out
+// near 15s. Without this the fetch has no AbortSignal and will wait as long
+// as the platform allows, holding the card on "checking the sources"
+// indefinitely.
+const SUBJECT_TIMEOUT_MS = 60_000;
+
+/** The teardown's sections, in the order the scanner met them, then the passive
+ *  record. The ids are what `redFlagsFor` links to and what the rail scrolls
+ *  to, so the three lists are one list. */
+const SECTIONS: NavItem[] = [
+  { id: "capture", label: "Capture" },
+  { id: "request", label: "Request" },
+  { id: "page", label: "Page" },
+  { id: "network", label: "Network" },
+  { id: "dom", label: "DOM" },
+  { id: "identity", label: "Identity" },
+  { id: "certs", label: "Certs" },
+  { id: "verdicts", label: "Verdicts" },
+  { id: "trace", label: "Trace" },
+  { id: "subject", label: "Subject" },
+];
 
 /**
- * The passive TI line, fetched separately from the scan.
+ * The subject's identity, one card, exactly what /check renders for whatever
+ * this indicator's host actually is. A url's subject is its host, not the
+ * URL itself, so a scanned path/query is named separately by the caller
+ * rather than folded into this record.
  *
- * A slow fan-out must never delay the scan result, and a failed one must never
- * render as "0 flagged", which reads as a clean bill. It says the lookup failed
- * instead.
+ * An if/else ladder rather than chained ternaries: `no-nested-ternary` is an
+ * error in this project, not a warning. Pulled out of `ScanReport` itself so
+ * that component's cognitive complexity stays under the enforced limit.
  */
-function PassiveLine({
-  state,
-  indicator,
-}: Readonly<{ state: PassiveState; indicator: string }>) {
-  if (state.status === "loading") {
+function IdentityCard({
+  subject,
+  loadingKind,
+}: Readonly<{ subject: SubjectState; loadingKind: SubjectKind }>) {
+  if (subject.status === "failed") {
     return (
-      <div className="flex flex-wrap items-baseline gap-x-3 text-sm">
-        <span className="w-28 shrink-0 text-[13px] text-muted-foreground">
-          Passive TI
-        </span>
-        <span className="flex items-center gap-1.5 text-foreground/60">
-          <Loader2 className="size-3 animate-spin" />
-          checking the sources
-        </span>
-      </div>
+      <p className="text-sm text-foreground/60">
+        The identity lookup failed, so nothing is known here, which is not the
+        same as nothing being found.
+      </p>
     );
   }
-  if (state.status === "failed") {
+  if (subject.status === "ready" && subject.subjectKind === "ip") {
     return (
-      <div className="flex flex-wrap items-baseline gap-x-3 text-sm">
-        <span className="w-28 shrink-0 text-[13px] text-muted-foreground">
-          Passive TI
-        </span>
-        <span className="text-foreground/60">
-          the lookup failed, so nothing is known here, which is not the same as
-          nothing being found
-        </span>
-      </div>
+      <IpDossierCard result={subject.result as CheckResult} streaming={false} />
     );
   }
+  if (subject.status === "ready") {
+    return (
+      <DomainProfileCard
+        result={subject.result as DomainCheckResult}
+        streaming={false}
+      />
+    );
+  }
+  if (loadingKind === "ip") return <IpDossierCard result={null} streaming />;
+  return <DomainProfileCard result={null} streaming />;
+}
 
-  const buckets = consensusBuckets(state.result);
+/** How far along a running batch is, as a bar and a count. */
+function ScanProgress({ batch }: Readonly<{ batch: ActiveScanBatch }>) {
+  const total = batch.scans.length;
+  const done = batch.scans.filter((s) => s.status !== "running").length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 text-sm">
-      <span className="w-28 shrink-0 text-[13px] text-muted-foreground">
-        Passive TI
-      </span>
-      <span
-        className={
-          buckets.flagged > 0
-            ? "text-amber-600 dark:text-amber-400"
-            : "text-foreground/75"
-        }
+    <div className="space-y-2">
+      <div
+        role="progressbar"
+        aria-label="Scan targets completed"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        className="h-0.5 w-full overflow-hidden rounded-full bg-border"
       >
-        {state.result.verdict.toUpperCase()}
-        {"  "}
-        {buckets.flagged} of {buckets.total} sources flagged it
-      </span>
-      <Link
-        href={`/check/${encodeURIComponent(indicator)}`}
-        className="inline-flex items-center gap-1 text-xs text-foreground/60 underline underline-offset-2 hover:text-foreground"
-      >
-        full breakdown
-        <ExternalLink className="size-3" />
-      </Link>
+        <div
+          className="h-full bg-foreground/70 transition-[width] duration-200 ease-linear"
+          style={{ width: `${Math.max(pct, 2)}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between font-mono text-xs tabular-nums text-muted-foreground">
+        <span>
+          {done} / {total} targets
+        </span>
+        <span>about thirty seconds</span>
+      </div>
+      <div className="flex flex-wrap gap-1" aria-hidden>
+        {batch.scans.map((s) => (
+          <span
+            key={`${s.target}-${s.engine}`}
+            title={s.target}
+            className={cn(
+              "size-1.5 rounded-full",
+              s.status === "done" && "bg-emerald-600 dark:bg-emerald-400",
+              s.status === "error" && "bg-amber-500",
+              s.status === "running" && "animate-pulse bg-foreground/30",
+            )}
+          />
+        ))}
+      </div>
+      <p className="text-xs text-foreground/60">
+        Sections fill in as each engine finishes, and leaving this page does not
+        cancel it.
+      </p>
     </div>
   );
 }
 
+/** The one line above the teardown that is about the submission rather than
+ *  about the page: how much was sent, what path was scanned, and what earlier
+ *  readings said. A phishing site changes fast, so "scanned before, and it said
+ *  something different then" is evidence in its own right. */
+function SubmissionLine({
+  targets,
+  context,
+  previous,
+}: Readonly<{
+  targets: string[];
+  context?: string;
+  previous?: { at: string; malicious: boolean }[];
+}>) {
+  const parts = [
+    `${count(targets.length, "URL")} sent`,
+    context ? `scanned path ${context}` : undefined,
+    previous?.length
+      ? `scanned before: ${previous
+          .map(
+            (p) =>
+              `${new Date(p.at).toLocaleDateString()} → ${p.malicious ? "malicious" : "not flagged"}`,
+          )
+          .join(" · ")}`
+      : undefined,
+  ].filter(Boolean);
+  return <p className="text-xs text-foreground/55">{parts.join(" · ")}</p>;
+}
+
+/** The page before anything has been scanned: what would be visited, and the
+ *  one control that spends the quota. */
+function NotScannedPanel({
+  targets,
+  running,
+  confirming,
+  message,
+  onArm,
+  onCancel,
+  onEngage,
+}: Readonly<{
+  targets: string[];
+  running: boolean;
+  confirming: boolean;
+  message: string | null;
+  onArm: () => void;
+  onCancel: () => void;
+  onEngage: () => void;
+}>) {
+  return (
+    <Card className="sketch-shadow rounded-lg border border-foreground/12">
+      <CardContent className="space-y-5">
+        <SectionHeading>Active scan</SectionHeading>
+        <p className="text-xs text-foreground/55">
+          Not scanned yet. Everything on /check is passive, this page is the one
+          thing that reaches out and touches the indicator.
+        </p>
+        {message && <p className="text-sm text-orange-500">{message}</p>}
+        {confirming ? (
+          <ArmedPanel
+            targets={targets}
+            submitting={running}
+            onEngage={onEngage}
+            onCancel={onCancel}
+          />
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-foreground/75">
+              An active scan visits{" "}
+              {targets.length === 1 ? "this address" : "these addresses"} now and
+              reports what {targets.length === 1 ? "it serves" : "they serve"}.
+            </p>
+            <ActiveModeButton disabled={running} onClick={onArm} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Every section of the teardown, in the order the scanner met them. Split out
+ *  so `ScanReport` itself stays a state container rather than also being the
+ *  document. */
+function Teardown({
+  merged,
+  batch,
+  flags,
+  now,
+}: Readonly<{
+  merged: MergedIndicator;
+  batch: ActiveScanBatch;
+  flags: RedFlag[];
+  now: number;
+}>) {
+  const scans = batch.scans;
+  return (
+    <>
+      <ScanAnswer merged={merged} batch={batch} flags={flags} now={now} />
+
+      {/* Both phases: the rail draws the left column's edge, and a rail that
+          appears only once the scan lands slides the whole content column
+          sideways when it does. */}
+      <SectionNav items={SECTIONS} />
+
+      <section id="capture" className="scroll-mt-20">
+        <ScanCapture merged={merged} scans={scans} />
+      </section>
+      <RequestSection merged={merged} scans={scans} batch={batch} />
+      <PageSection merged={merged} scans={scans} />
+      <NetworkSection merged={merged} scans={scans} />
+      <DomSection merged={merged} scans={scans} />
+      <IdentitySection merged={merged} scans={scans} />
+      <CertificateSection merged={merged} scans={scans} />
+      <VerdictSection merged={merged} scans={scans} />
+      <TraceSection merged={merged} scans={scans} />
+    </>
+  );
+}
+
 /**
- * The active scan as a page, rather than as a card inside a triage result.
+ * The active scan as a page.
  *
- * The scan is the subject here: the answer and the picture come first, the
- * evidence sits beneath, and everything nobody collected is named rather than
- * left as an empty section. The passive reading is fetched in parallel and only
- * ever appears as one attributed line, because this page is the teardown and
- * /check is the triage.
+ * A teardown, not a triage: the point of coming here is to read everything the
+ * scanner collected, so nothing is behind a disclosure triangle and the
+ * sections run in the order the scan happened rather than in the order the two
+ * APIs happen to return things.
+ *
+ * The reading is folded across every URL that was submitted. A bare IP is sent
+ * on both ports, and rendering that as two near-identical teardowns meant two
+ * paragraphs that matched almost word for word. What the URLs answered
+ * differently on is printed beside the folded value instead, which is the part
+ * worth reading.
+ *
+ * The passive record comes last. It is context for a page that is about the
+ * visit, and it used to occupy the whole first screen of a page whose own
+ * subject was below it.
  */
 export function ScanReport({
   indicator,
   kind,
   initialBatch,
+  initialSubject,
 }: Readonly<{
   indicator: string;
   kind: IOCType;
   initialBatch: ActiveScanBatch | null;
+  /** The subject's cached identity record, read server-side. When present the
+   *  card is on screen in the first paint and no lookup is made at all. */
+  initialSubject: CheckResult | DomainCheckResult | null;
 }>) {
   const [batch, setBatch] = useState<ActiveScanBatch | null>(initialBatch);
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  // Whether a passive route exists for this kind is known at render time, so it
-  // is the initial state rather than something an effect discovers.
-  const [passive, setPassive] = useState<PassiveState>(() =>
-    PASSIVE_ROUTE[kind] ? { status: "loading" } : { status: "failed" },
+  // Computed synchronously, not just inside the fetch effect, so the initial
+  // state and the loading skeleton can both match the resolved kind's shape
+  // instead of guessing domain.
+  const target = useMemo(
+    () => subjectTargetFor(indicator, kind),
+    [indicator, kind],
   );
+  const [subject, setSubject] = useState<SubjectState>(() => {
+    if (!target) return { status: "failed" };
+    if (!initialSubject) return { status: "loading" };
+    return {
+      status: "ready",
+      subjectKind: target.subjectKind,
+      result: initialSubject,
+      context: target.context,
+    };
+  });
+
+  // Read once per render rather than per component, so every "how long ago"
+  // on the page agrees with every other and none of them disagrees with the
+  // markup the server sent.
+  const [now, setNow] = useState(() => Date.now());
 
   const targets = scanTargetsFor(indicator, kind);
   const pending = batch?.scans.some((s) => s.status === "running") ?? false;
 
-  // The passive summary is its own request, in parallel with everything else.
+  // The subject's identity record — the same passive lookup /check renders,
+  // for whatever this indicator's host actually is.
+  //
+  // Only on a server-side cache miss. The page reads the same record out of
+  // Redis before it renders, so the common case costs no request at all; this
+  // is the cold path, where the fan-out has to be run and paid for once so the
+  // next visit hits.
   useEffect(() => {
-    const route = PASSIVE_ROUTE[kind];
-    if (!route) return;
+    if (!target || initialSubject) return;
     let cancelled = false;
     void (async () => {
       try {
         const res = await fetch(
-          `${route.path}?${route.param}=${encodeURIComponent(indicator)}`,
-          { signal: AbortSignal.timeout(PASSIVE_TIMEOUT_MS) },
+          checkUrlFor(target.subjectKind, target.subject),
+          { signal: AbortSignal.timeout(SUBJECT_TIMEOUT_MS) },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const result = (await res.json()) as ResultLike;
-        if (!cancelled) setPassive({ status: "ready", result });
+        const result = (await res.json()) as CheckResult | DomainCheckResult;
+        if (!cancelled) {
+          setSubject({
+            status: "ready",
+            subjectKind: target.subjectKind,
+            result,
+            context: target.context,
+          });
+        }
       } catch {
-        if (!cancelled) setPassive({ status: "failed" });
+        if (!cancelled) setSubject({ status: "failed" });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [indicator, kind]);
+  }, [target, initialSubject]);
 
   const poll = useCallback(async () => {
     const res = await fetch(
@@ -175,7 +391,10 @@ export function ScanReport({
       timer = setTimeout(() => {
         if (cancelled) return;
         void poll().finally(() => {
-          if (!cancelled) tick();
+          if (!cancelled) {
+            setNow(Date.now());
+            tick();
+          }
         });
       }, pollIntervalFor(Date.now() - startedAt));
     }
@@ -203,6 +422,7 @@ export function ScanReport({
         return;
       }
       setBatch(data as ActiveScanBatch);
+      setNow(Date.now());
     } catch {
       setMessage("The scan could not be started.");
     } finally {
@@ -210,146 +430,67 @@ export function ScanReport({
     }
   }
 
-  const merged = batch ? mergeScans(batch.scans) : [];
-  const enginesUsed = [...new Set(batch?.scans.map((s) => s.engine) ?? [])];
-  const visibilities = [
-    ...new Set(batch?.scans.map((s) => s.visibility).filter(Boolean) ?? []),
-  ];
-  const scanTotal = batch?.scans.length ?? 0;
-  const scanDone =
-    batch?.scans.filter((s) => s.status !== "running").length ?? 0;
-  const scanPct = scanTotal > 0 ? Math.round((scanDone / scanTotal) * 100) : 0;
+  const merged = useMemo(
+    () => (batch ? mergeTargets(batch.scans) : null),
+    [batch],
+  );
+  const flags = useMemo(
+    () => (merged ? redFlagsFor(merged, now) : []),
+    [merged, now],
+  );
 
   return (
-    <Card className="sketch-shadow rounded-lg border border-foreground/12">
-      <CardContent className="space-y-6">
-        <SectionHeading
-          action={
-            batch && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={running || pending}
-                onClick={() => void submit(true)}
-              >
-                {running ? "Submitting" : "Rescan"}
-              </Button>
-            )
-          }
-        >
-          Active scan
-        </SectionHeading>
+    <div className="space-y-5">
+      <ScanSearchBar indicator={indicator} />
 
-        <div className="space-y-1">
-          <h1 className="font-mono text-lg break-all">{indicator}</h1>
-          {batch ? (
-            <p className="text-xs text-foreground/55">
-              {targets.length === 1 ? "1 URL sent" : `${targets.length} URLs sent`}
-              {enginesUsed.length
-                ? ` · ${enginesUsed.map((e) => ENGINE_NAME[e]).join(" + ")}`
-                : ""}
-              {` · ${new Date(batch.submittedAt).toLocaleString()}`}
-              {visibilities.length ? ` · ${visibilities.join(", ")}` : ""}
-            </p>
-          ) : (
-            <p className="text-xs text-foreground/55">
-              Not scanned yet. Everything on /check is passive, this page is the
-              one thing that reaches out and touches the indicator.
-            </p>
-          )}
-
-          {/* A phishing site changes fast, so an earlier reading is evidence in
-              its own right rather than trivia. */}
-          {batch?.previous?.length ? (
-            <p className="text-xs text-foreground/55">
-              Scanned before:{" "}
-              {batch.previous
-                .map(
-                  (p) =>
-                    `${new Date(p.at).toLocaleDateString()} → ${p.malicious ? "malicious" : "not flagged"}`,
-                )
-                .join(" · ")}
-            </p>
-          ) : null}
-        </div>
-
-        {message && <p className="text-sm text-orange-500">{message}</p>}
-
-        {!batch && !confirming && (
-          <div className="space-y-3">
-            <p className="text-sm text-foreground/75">
-              An active scan visits{" "}
-              {targets.length === 1 ? "this address" : "these addresses"} now and
-              reports what {targets.length === 1 ? "it serves" : "they serve"}.
-            </p>
-            <ActiveModeButton
-              disabled={running}
-              onClick={() => setConfirming(true)}
+      {batch && merged ? (
+        <>
+          {/* A rescan spends quota, so it stays a deliberate button rather than
+              something a reload does. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <SubmissionLine
+              targets={targets}
+              context={subject.status === "ready" ? subject.context : undefined}
+              previous={batch.previous}
             />
-          </div>
-        )}
-
-        {confirming && (
-          <ArmedPanel
-            targets={targets}
-            submitting={running}
-            onEngage={() => void submit(false)}
-            onCancel={() => setConfirming(false)}
-          />
-        )}
-
-        {pending && (
-          <div className="space-y-2">
-            <div
-              role="progressbar"
-              aria-label="Scan targets completed"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={scanPct}
-              className="h-0.5 w-full overflow-hidden rounded-full bg-border"
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={running || pending}
+              onClick={() => void submit(true)}
             >
-              <div
-                className="h-full bg-foreground/70 transition-[width] duration-200 ease-linear"
-                style={{ width: `${Math.max(scanPct, 2)}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between font-mono text-xs tabular-nums text-muted-foreground">
-              <span>
-                {scanDone} / {scanTotal} targets
-              </span>
-              <span>about thirty seconds</span>
-            </div>
-            <div className="flex flex-wrap gap-1" aria-hidden>
-              {(batch?.scans ?? []).map((s) => (
-                <span
-                  key={`${s.target}-${s.engine}`}
-                  title={s.target}
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    s.status === "done" && "bg-emerald-600 dark:bg-emerald-400",
-                    s.status === "error" && "bg-amber-500",
-                    s.status === "running" && "animate-pulse bg-foreground/30",
-                  )}
-                />
-              ))}
-            </div>
-            <p className="text-xs text-foreground/60">
-              Sections fill in as each engine finishes, and leaving this page
-              does not cancel it.
-            </p>
+              {running ? "Submitting" : "Rescan"}
+            </Button>
           </div>
-        )}
 
-        {merged.map((m) => (
-          <TargetReport
-            key={m.target}
-            merged={m}
-            scans={batch?.scans.filter((s) => s.target === m.target) ?? []}
-            passive={<PassiveLine state={passive} indicator={indicator} />}
-          />
-        ))}
-      </CardContent>
-    </Card>
+          {message && <p className="text-sm text-orange-500">{message}</p>}
+          {pending && <ScanProgress batch={batch} />}
+
+          <Teardown merged={merged} batch={batch} flags={flags} now={now} />
+        </>
+      ) : (
+        <NotScannedPanel
+          targets={targets}
+          running={running}
+          confirming={confirming}
+          message={message}
+          onArm={() => setConfirming(true)}
+          onCancel={() => setConfirming(false)}
+          onEngage={() => void submit(false)}
+        />
+      )}
+
+      {/* Last, and unlabelled: the dossier and profile cards head themselves,
+          and an outer title above them printed "subject record" twice. It is
+          context for a page about the visit, which is why it is down here at
+          all rather than occupying the first screen as it used to. */}
+      <section id="subject" className="scroll-mt-20">
+        <IdentityCard
+          subject={subject}
+          loadingKind={target?.subjectKind ?? "domain"}
+        />
+      </section>
+    </div>
   );
 }

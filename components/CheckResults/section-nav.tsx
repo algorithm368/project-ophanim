@@ -8,14 +8,20 @@ import {
 } from "react";
 import {
     BadgeCheck,
+    Camera,
     Circle,
+    Code2,
     Download,
     Fingerprint,
+    Gavel,
     Globe,
     Link2,
     ListChecks,
+    MonitorPlay,
     Network,
+    Send,
     Telescope,
+    Waypoints,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { pickActiveId } from "./use-scroll-spy";
@@ -26,8 +32,11 @@ const NAV_OFFSET = 88;
 
 type IconType = ComponentType<{ className?: string }>;
 
-/** One glyph per section id. The item's label is the accessible name/tooltip. */
+/** One glyph per section id, across both readings. The item's label is the
+ *  accessible name/tooltip, so a section with no glyph here still works; it
+ *  just falls back to a bare circle. */
 const ICONS: Record<string, IconType> = {
+    // The passive result page.
     origin: Globe,
     dossier: Fingerprint,
     certs: BadgeCheck,
@@ -36,6 +45,16 @@ const ICONS: Record<string, IconType> = {
     dist: Download,
     research: Telescope,
     sources: ListChecks,
+    // The active scan page, in the order the scanner met them.
+    capture: Camera,
+    request: Send,
+    page: MonitorPlay,
+    network: Waypoints,
+    dom: Code2,
+    identity: Fingerprint,
+    verdicts: Gavel,
+    trace: ListChecks,
+    subject: Globe,
 };
 
 function jumpTo(e: MouseEvent<HTMLAnchorElement>, id: string) {

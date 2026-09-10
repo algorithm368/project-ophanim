@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import type { IOCType } from "@/lib/ioc";
 import { modeHref } from "@/lib/route-mode";
+import { SCAN_MISSING_KEY } from "@/lib/ti/url/active/credentials";
 import { mergeScans } from "@/lib/ti/url/active/merge";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
@@ -17,6 +18,34 @@ type State =
   | { status: "scanned"; batch: ActiveScanBatch }
   | { status: "unavailable"; message: string }
   | { status: "unreadable" };
+
+/**
+ * What the server already established about this indicator, when it had the
+ * chance to.
+ *
+ * `/check/[ioc]` knows the indicator before it renders and is holding a Redis
+ * connection open anyway, so it answers both halves there. The landing page
+ * does not have an indicator until one is typed, so it passes nothing and the
+ * card asks the route, as it always did.
+ *
+ * `batch: null` is a real answer, "never scanned", and is not the same as this
+ * prop being absent.
+ */
+export interface KnownScan {
+  batch: ActiveScanBatch | null;
+  /** Whether this deployment has any scanning engine configured at all. */
+  configured: boolean;
+}
+
+function stateFrom(known: KnownScan | undefined): State {
+  if (!known) return { status: "loading" };
+  if (!known.configured) {
+    return { status: "unavailable", message: SCAN_MISSING_KEY.error };
+  }
+  return known.batch
+    ? { status: "scanned", batch: known.batch }
+    : { status: "never" };
+}
 
 /** What a stored batch amounts to, in one clause. */
 function summarize(batch: ActiveScanBatch): string {
@@ -44,14 +73,18 @@ function summarize(batch: ActiveScanBatch): string {
 export function ActiveScanCard({
   indicator,
   kind,
-}: Readonly<{ indicator: string; kind: IOCType }>) {
-  const [state, setState] = useState<State>({ status: "loading" });
+  known,
+}: Readonly<{ indicator: string; kind: IOCType; known?: KnownScan }>) {
+  const [state, setState] = useState<State>(() => stateFrom(known));
 
   const targets = scanTargetsFor(indicator, kind);
   const scannable = targets.length > 0;
 
+  // Only when the server had no chance to answer, which is the landing page's
+  // freshly typed indicator. On a permalink this whole request is already paid
+  // for by the page's own Redis read.
   useEffect(() => {
-    if (!scannable) return;
+    if (!scannable || known) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -78,7 +111,7 @@ export function ActiveScanCard({
     return () => {
       cancelled = true;
     };
-  }, [indicator, scannable]);
+  }, [indicator, scannable, known]);
 
   if (!scannable) return null;
 

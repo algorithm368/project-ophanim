@@ -74,7 +74,7 @@ deliberately uniform, so the same change usually applies to IP, domain, and hash
   and records history. Each route file (`app/api/check/route.ts`,
   `check-domain`, `check-hash`) only supplies validation + the type-specific
   cache/run functions. The NDJSON event shape above is an unversioned wire
-  contract between this handler and `Checker.tsx`'s reader; a page held open
+  contract between this handler and `Checker/lookup.ts`'s reader; a page held open
   across a deploy sends its POST to whatever shipped most recently while
   running the reader from page load (#71). Vercel's Skew Protection would
   close that window, but it's Pro/Enterprise only (confirmed against Vercel's
@@ -105,8 +105,12 @@ app/api/scan-url/route.ts                active scan: POST submits, GET polls
 app/page.tsx, app/check/[ioc]/           passive: landing + result (+ OG image)
 app/scan/page.tsx, app/scan/[indicator]/ active: landing + scan page
 lib/route-mode.ts                        which mode a path is in, for the switch
+lib/ndjson.ts                            the NDJSON line reader both lanes use
+lib/ti/endpoints.ts                      which route checks which kind of IOC
+lib/ti/subject-target.ts                 whose identity a scanned indicator has
 lib/scan-input.ts                        what the active box makes of an input
-components/Checker.tsx, CheckResults.tsx passive UI entry points
+components/Checker/, CheckResults/       passive UI entry points
+components/result-skeleton.tsx           the loading shell, both modes
 components/ScanSearch.tsx                the active landing page's search box
 components/ModeSwitch.tsx                passive/active switch, in the banner
 components/ImageInspector.tsx            full-screen capture viewer, zoom + pan
@@ -169,6 +173,25 @@ accepts what the route would refuse.
 3. For UI changes, run `bun run dev` and check the feature in a browser. There
    are Playwright screenshot helpers in `scripts/` (e.g. `node scripts/shot.mjs`)
    used for visual checks. If you cannot verify the UI, say so explicitly.
+4. For anything touching the loading shells or how much the pages fetch,
+   `scripts/verify-loading.mjs` measures it rather than asserting it: it counts
+   the requests each page makes, reads the browser's own layout-shift score
+   across a navigation, and photographs the shell mid-flight. It needs a
+   production build, because `proxy.ts` waves everything through under
+   `next dev` and the shells are what a real navigation shows:
+
+   ```bash
+   bun run build
+   AUTH_TRUST_HOST=true bun run start -- -p 3001   # not :3000, that is yours
+   node --env-file=.env.local scripts/verify-loading.mjs
+   ```
+
+   `AUTH_TRUST_HOST` is only needed locally: Auth.js refuses an unrecognized
+   host in production and Vercel sets this for itself, so without it every
+   request is redirected to `/sign-in` and the run measures the sign-in page.
+   `--env-file` supplies `AUTH_SECRET`, which the script needs to mint its own
+   session cookie; signing in with a browser is not an option here, since the
+   `hd`-claim allowlist refuses the account.
 
 ## Automation
 

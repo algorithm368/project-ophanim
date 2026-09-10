@@ -4,8 +4,10 @@ import { Suspense } from "react";
 import { ResultSkeleton } from "@/components/result-skeleton";
 import { detectIOC } from "@/lib/ioc";
 import type { IOCType } from "@/lib/ioc";
-import { getCachedScanBatch } from "@/lib/ti/cache";
+import { getCachedResultFor, getCachedScanBatch } from "@/lib/ti/cache";
+import { subjectTargetFor } from "@/lib/ti/subject-target";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
+import type { CheckResult, DomainCheckResult } from "@/lib/ti/types";
 import { ScanReport } from "@/components/ScanReport";
 
 interface PageProps {
@@ -62,20 +64,43 @@ export default async function ScanPage({ params }: Readonly<PageProps>) {
     // Same container as Checker on /check, so the scan page and the result page
     // are the same width and the banner rule lines up across both.
     <main className="mx-auto w-full max-w-5xl px-4 py-6">
-      <Suspense fallback={<ResultSkeleton indicator={decoded} variant="scan" />}>
+      <Suspense fallback={<ResultSkeleton />}>
         <CachedScanReport decoded={decoded} kind={kind} />
       </Suspense>
     </main>
   );
 }
 
-/** The half that waits on Redis, so the page itself need not. */
+/**
+ * The half that waits on Redis, so the page itself need not.
+ *
+ * Both reads happen here, and the second one is the point: the subject's
+ * identity record used to be fetched from the browser on every single page
+ * load, which meant `GET /api/check` and, on a cache miss there, the entire
+ * passive fan-out across every registered source, for a card that is not even
+ * what this page is about. Read here it costs one more Redis GET alongside the
+ * batch, it lands in the first paint instead of arriving late and pushing the
+ * report down, and the client only reaches for the network when this misses.
+ */
 async function CachedScanReport({
   decoded,
   kind,
 }: Readonly<{ decoded: string; kind: IOCType }>) {
-  const initialBatch = await getCachedScanBatch(decoded);
+  const target = subjectTargetFor(decoded, kind);
+  const [initialBatch, subject] = await Promise.all([
+    getCachedScanBatch(decoded),
+    target ? getCachedResultFor(target.subjectKind, target.subject) : null,
+  ]);
+
   return (
-    <ScanReport indicator={decoded} kind={kind} initialBatch={initialBatch} />
+    <ScanReport
+      indicator={decoded}
+      kind={kind}
+      initialBatch={initialBatch}
+      // Narrowed by the subject kind that produced it: `subjectTargetFor` only
+      // ever answers ip or domain, so the url/hash arms of the cache dispatch
+      // are unreachable from here.
+      initialSubject={(subject as CheckResult | DomainCheckResult) ?? null}
+    />
   );
 }

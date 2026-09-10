@@ -349,6 +349,34 @@ describe("key namespaces", () => {
   });
 });
 
+// The dispatch two pages share. It replaced an if/else ladder inlined in
+// /check/[ioc], whose url branch fell through to the IP prefix, so a url
+// permalink read a key the url route never writes and missed every time.
+describe("getCachedResultFor", () => {
+  const BY_KIND = [
+    { kind: "ip", prefix: "ti:ip:v2:" },
+    { kind: "domain", prefix: "ti:domain:" },
+    { kind: "hash", prefix: "ti:hash:" },
+    { kind: "url", prefix: "ti:url:v1:" },
+  ] as const;
+
+  it.each(BY_KIND)("reads $kind under $prefix", async ({ kind, prefix }) => {
+    const cache = await loadCache(REST);
+    redisGet.mockResolvedValue(null);
+
+    await cache.getCachedResultFor(kind, "subject");
+    expect(redisGet).toHaveBeenCalledWith(prefix + "subject");
+  });
+
+  it("returns what the namespace holds", async () => {
+    const cache = await loadCache(REST);
+    redisGet.mockResolvedValue({ marker: "domain" });
+    await expect(cache.getCachedResultFor("domain", "evil.test")).resolves.toEqual(
+      { marker: "domain" },
+    );
+  });
+});
+
 // #37: a GreyNoise identification is kept far longer than a result, so a
 // rate-limited day can still fall back to what a live check already
 // established. It gets its own TTL, distinct from TI_CACHE_TTL_SECONDS,
