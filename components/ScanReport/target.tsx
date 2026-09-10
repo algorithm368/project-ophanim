@@ -9,7 +9,8 @@ import { attribution, type MergedScan } from "@/lib/ti/url/active/merge";
 import type { ScanCapability } from "@/lib/ti/url/active/capability";
 import type { ScanDetail, ScanVerdictLane } from "@/lib/ti/url/active/detail";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
-import { CopyableSummary } from "@/components/CheckResults/primitives";
+import { Card, CardContent } from "@/components/ui/card";
+import { CopyableSummary, SectionHeading } from "@/components/CheckResults/primitives";
 import { count } from "@/lib/text";
 
 /**
@@ -480,11 +481,9 @@ function EvidenceSections({
 export function TargetReport({
   merged,
   scans,
-  passive,
 }: Readonly<{
   merged: MergedScan;
   scans: ActiveScan[];
-  passive: React.ReactNode;
 }>) {
   const d = merged.detail;
   const cap = merged.capability;
@@ -513,134 +512,135 @@ export function TargetReport({
   const notCollected = notCollectedLines(merged);
 
   return (
-    <section className="space-y-6 border-b border-foreground/10 pb-8 last:border-b-0">
-      <h3 className="font-mono text-xs break-all text-foreground/60">
-        {merged.target}
-      </h3>
+    <Card className="sketch-shadow rounded-lg border border-foreground/12">
+      <CardContent className="space-y-6">
+        <SectionHeading>
+          <span className="break-all">{merged.target}</span>
+        </SectionHeading>
 
-      {/* The deliverable: a paragraph to paste into a case, beside the picture
-          of what actually loaded. Many cases end here. */}
-      <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
+        {/* The deliverable: a paragraph to paste into a case, beside the picture
+            of what actually loaded. Many cases end here. */}
+        <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
+          <div>
+            {narrative ? (
+              <CopyableSummary text={narrative} />
+            ) : (
+              <p className="text-sm text-foreground/60">
+                Nothing has come back for this URL yet, so there is nothing to
+                summarize. The sections below fill in as each engine finishes.
+              </p>
+            )}
+          </div>
+          <Capture
+            target={merged.target}
+            shot={shot}
+            onInspect={setInspecting}
+          />
+        </div>
+
+        {/* The five questions the owner named, each attributed. */}
         <div>
-          {narrative ? (
-            <CopyableSummary text={narrative} />
-          ) : (
-            <p className="text-sm text-foreground/60">
-              Nothing has come back for this URL yet, so there is nothing to
-              summarize. The sections below fill in as each engine finishes.
-            </p>
-          )}
+          <Row
+            label="Ends up at"
+            value={endsUpAtLine(d, hops)}
+            engines={by(scans, "finalUrl")}
+          />
+          <Row
+            label="Impersonates"
+            value={brands.length ? brands.join(", ") : undefined}
+            engines={brands.length ? ["urlscan.io"] : []}
+            tone="text-amber-600 dark:text-amber-400"
+          />
+          <Row
+            label="Asks for"
+            value={asksFor}
+            missing="form analysis unavailable"
+            engines={domEngines}
+            tone={cap.passwordField ? "text-red-600 dark:text-red-400" : undefined}
+          />
+          <Row
+            label="Domain age"
+            value={registered ? `registered ${registered}` : undefined}
+            engines={by(scans, d.domainCreated ? "domainCreated" : "domainAgeDays")}
+          />
+          <Row
+            label="Certificate"
+            value={certificate}
+            engines={by(scans, d.tlsIssuer ? "tlsIssuer" : "tlsAgeDays")}
+          />
         </div>
-        <Capture
-          target={merged.target}
-          shot={shot}
-          onInspect={setInspecting}
-        />
-      </div>
 
-      {/* The five questions the owner named, each attributed. */}
-      <div>
-        <Row
-          label="Ends up at"
-          value={endsUpAtLine(d, hops)}
-          engines={by(scans, "finalUrl")}
-        />
-        <Row
-          label="Impersonates"
-          value={brands.length ? brands.join(", ") : undefined}
-          engines={brands.length ? ["urlscan.io"] : []}
-          tone="text-amber-600 dark:text-amber-400"
-        />
-        <Row
-          label="Asks for"
-          value={asksFor}
-          missing="form analysis unavailable"
-          engines={domEngines}
-          tone={cap.passwordField ? "text-red-600 dark:text-red-400" : undefined}
-        />
-        <Row
-          label="Domain age"
-          value={registered ? `registered ${registered}` : undefined}
-          engines={by(scans, d.domainCreated ? "domainCreated" : "domainAgeDays")}
-        />
-        <Row
-          label="Certificate"
-          value={certificate}
-          engines={by(scans, d.tlsIssuer ? "tlsIssuer" : "tlsAgeDays")}
-        />
-      </div>
-
-      {/* Adjacent lines, so agreement or disagreement is visible without
-          comparing by eye. */}
-      <div className="space-y-1.5">
-        <h4 className="font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
-          Who says what
-        </h4>
-        {scans
-          .filter((s) => s.status === "done" && s.detail)
-          .map((s) => <EngineReading key={s.engine} scan={s} />)}
-        {passive}
-        {merged.disagreements.map((disagreement) => (
-          <p
-            key={disagreement.field}
-            className="pt-1 text-xs text-amber-600 dark:text-amber-400"
-          >
-            ⚠ The engines disagree on {midSentence(disagreement.field)}:{" "}
-            {disagreement.values
-              .map((v) => `${ENGINE_NAME[v.engine]} saw ${v.value}`)
-              .join(", ")}
-            {disagreement.note ? `. ${disagreement.note}` : ""}
-          </p>
-        ))}
-      </div>
-
-      <EvidenceSections merged={merged} hops={hops} />
-
-      {notCollected.length > 0 && (
-        <div className="space-y-1">
+        {/* Adjacent lines, so agreement or disagreement is visible without
+            comparing by eye. */}
+        <div className="space-y-1.5">
           <h4 className="font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
-            Not collected
+            Who says what
           </h4>
-          <p className="text-xs text-foreground/55">
-            {notCollected.join(" ")} Not observed, which is not the same as
-            observed to be absent.
-          </p>
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        {scans
-          .filter((s) => s.resultUrl)
-          .map((s) => (
-            <a
-              key={s.engine}
-              href={s.resultUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-foreground/60 underline underline-offset-2 hover:text-foreground"
+          {scans
+            .filter((s) => s.status === "done" && s.detail)
+            .map((s) => <EngineReading key={s.engine} scan={s} />)}
+          {merged.disagreements.map((disagreement) => (
+            <p
+              key={disagreement.field}
+              className="pt-1 text-xs text-amber-600 dark:text-amber-400"
             >
-              {ENGINE_NAME[s.engine]} report
-              <ExternalLink className="size-3" />
-            </a>
+              ⚠ The engines disagree on {midSentence(disagreement.field)}:{" "}
+              {disagreement.values
+                .map((v) => `${ENGINE_NAME[v.engine]} saw ${v.value}`)
+                .join(", ")}
+              {disagreement.note ? `. ${disagreement.note}` : ""}
+            </p>
           ))}
-      </div>
+        </div>
 
-      {inspecting && (
-        <ImageInspector
-          src={inspecting}
-          alt={`Screenshot of ${merged.target}`}
-          title={d.finalUrl ?? merged.target}
-          subtitle={[
-            shot ? `captured by ${ENGINE_NAME[shot.engine]}` : undefined,
-            d.title,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          href={shot?.resultUrl}
-          hrefLabel="Open the scanner's report"
-          onClose={() => setInspecting(null)}
-        />
-      )}
-    </section>
+        <EvidenceSections merged={merged} hops={hops} />
+
+        {notCollected.length > 0 && (
+          <div className="space-y-1">
+            <h4 className="font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
+              Not collected
+            </h4>
+            <p className="text-xs text-foreground/55">
+              {notCollected.join(" ")} Not observed, which is not the same as
+              observed to be absent.
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {scans
+            .filter((s) => s.resultUrl)
+            .map((s) => (
+              <a
+                key={s.engine}
+                href={s.resultUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-foreground/60 underline underline-offset-2 hover:text-foreground"
+              >
+                {ENGINE_NAME[s.engine]} report
+                <ExternalLink className="size-3" />
+              </a>
+            ))}
+        </div>
+
+        {inspecting && (
+          <ImageInspector
+            src={inspecting}
+            alt={`Screenshot of ${merged.target}`}
+            title={d.finalUrl ?? merged.target}
+            subtitle={[
+              shot ? `captured by ${ENGINE_NAME[shot.engine]}` : undefined,
+              d.title,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            href={shot?.resultUrl}
+            hrefLabel="Open the scanner's report"
+            onClose={() => setInspecting(null)}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
