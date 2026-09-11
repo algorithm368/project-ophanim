@@ -229,6 +229,53 @@ is exactly how AbuseIPDB's `usageType` stops being a fake behaviour category.
 60/90 VirusTotal and a 2/90 VirusTotal differ, and both are still one piece of
 evidence at VirusTotal's tier.
 
+Two things about that modulation were got wrong in the first draft and corrected
+by running the pricing against real rows. Both are recorded here because the
+mistake is easy to make again.
+
+**A tier's band is where its findings live, not where its floor starts.** The
+first draft gave `attributed` the range 60 to 85, which made 60 a floor on the
+score: a VirusTotal row with four of eighty-nine vendors flagging priced at 61,
+*above* the 49 the old arbitrary scale gave it, while a row with sixteen of
+eighty-nine fell from 100 to 64. The weak case went up and the strong case went
+down, which is the exact inversion this spec exists to remove. A twenty-five
+point band cannot express "this is a weak attribution", so the bands are wide:
+
+```
+confirmed   75 .. 100     attributed  25 .. 85
+reported     5 ..  70     observed     2 .. 35
+```
+
+`confirmed`'s floor sits at the aggregate's `MALICIOUS_FLOOR` deliberately, so a
+confirmed listing can still pin a verdict from anywhere in its band.
+
+**A vote ratio is not linear in evidence, and a published confidence is not a
+vote ratio.** `providerConfidence` was carrying two different kinds of number
+under one field. Sixteen of eighty-nine vendors and three of five DNSBL zones
+are *ratios*, where the first few voters carry most of the information and the
+eightieth carries almost none. AbuseIPDB's abuse confidence is a figure the
+provider has already decayed and calibrated, and running a curve over it inflates
+it a second time: a 12% confidence priced at 31 instead of 13. So the field
+carries its own kind, and only ratios are curved:
+
+```
+ratio:       f = 1 - (1 - x)²
+calibrated:  f = x
+```
+
+The exponent is 2, the gentlest curve that removes the inversion. Higher
+exponents also hold every band, but at 4 they lift `8.8.8.8` to 14 against a
+`low` cutoff of 15, which is no margin at all for an address whose only adverse
+row is one UCEPROTECT listing.
+
+One consequence worth stating rather than discovering later: three of five spam
+zones still prices at 75, above VirusTotal's 45 at sixteen of eighty-nine. That
+is correct and it is what `weight` is for. The score says how strong a finding
+is *for that kind of source*; the weight says how much that kind of source
+counts, and the DNSBL adapter's 0.5 is what discounts it. Conflating the two is
+how the old scale ended up with fifty-seven adapters each encoding their own
+authority into a number that was supposed to measure evidence.
+
 ### 4. Lineage, so corroboration counts evidence
 
 `SourceMeta` gains:

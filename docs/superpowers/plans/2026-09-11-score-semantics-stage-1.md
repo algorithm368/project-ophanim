@@ -165,6 +165,21 @@ export interface ProviderConfidence {
   of?: number;
   /** What the provider calls it, for the tooltip. */
   label: string;
+  /**
+   * Which kind of number this is, because the two are priced differently and
+   * the difference is not visible in the digits.
+   *
+   * A `ratio` is a count of voters out of a population: sixteen of eighty-nine
+   * vendors, three of five DNSBL zones. It is sublinear in evidence, since the
+   * first few voters carry most of the information and the eightieth carries
+   * almost none, so `scale.ts` curves it.
+   *
+   * A `calibrated` figure is one the provider already decayed and scaled for
+   * us, AbuseIPDB's abuse confidence being the case in the panel. Curving it
+   * would inflate a number that has already been shaped once: measured against
+   * a real row, a 12% confidence priced at 31 instead of 13.
+   */
+  kind: "ratio" | "calibrated";
 }
 
 /** ISO 8601 in UTC, e.g. "2026-08-30T01:00:00Z". */
@@ -274,10 +289,30 @@ describe("TIER_BAND", () => {
     expect(Object.keys(TIER_BAND).sort()).toEqual([...ALL_TIERS].sort());
   });
 
-  it("orders the adverse tiers, strongest first, with no gap between them", () => {
-    expect(TIER_BAND.confirmed!.floor).toBeGreaterThanOrEqual(TIER_BAND.attributed!.ceil);
+  it("orders the adverse tiers, strongest first, by both ends", () => {
+    // The bands overlap by design. A strong `attributed` should outscore a weak
+    // `confirmed`, because the strength of a finding and the firmness of the
+    // claim are different axes. What must hold is the ordering of each end.
+    expect(TIER_BAND.confirmed!.ceil).toBeGreaterThan(TIER_BAND.attributed!.ceil);
+    expect(TIER_BAND.confirmed!.floor).toBeGreaterThan(TIER_BAND.attributed!.floor);
+    expect(TIER_BAND.attributed!.ceil).toBeGreaterThan(TIER_BAND.reported!.ceil);
     expect(TIER_BAND.attributed!.floor).toBeGreaterThan(TIER_BAND.reported!.floor);
+    expect(TIER_BAND.reported!.ceil).toBeGreaterThan(TIER_BAND.observed!.ceil);
     expect(TIER_BAND.reported!.floor).toBeGreaterThan(TIER_BAND.observed!.floor);
+  });
+
+  it("lets a confirmed finding pin the aggregate's floor from anywhere in band", () => {
+    // MALICIOUS_FLOOR in aggregate.ts is 75.
+    expect(TIER_BAND.confirmed!.floor).toBe(75);
+  });
+
+  it("gives the adverse tiers room to say weak", () => {
+    // The first draft's 25-point attributed band could not: four of eighty-nine
+    // vendors priced above sixteen of eighty-nine did under the old scale.
+    for (const t of ["attributed", "reported"] as const) {
+      const b = TIER_BAND[t]!;
+      expect(b.ceil - b.floor, `${t} band is too narrow`).toBeGreaterThanOrEqual(50);
+    }
   });
 });
 
@@ -291,11 +326,11 @@ describe("assertionScore", () => {
     const band = TIER_BAND.reported!;
     const low = assertionScore({
       tier: "reported",
-      providerConfidence: { value: 0, of: 100, label: "abuse confidence" },
+      providerConfidence: { value: 0, of: 100, label: "zones", kind: "ratio" },
     });
     const high = assertionScore({
       tier: "reported",
-      providerConfidence: { value: 100, of: 100, label: "abuse confidence" },
+      providerConfidence: { value: 100, of: 100, label: "zones", kind: "ratio" },
     });
     expect(low).toBe(band.floor);
     expect(high).toBe(band.ceil);
@@ -305,19 +340,53 @@ describe("assertionScore", () => {
     expect(
       assertionScore({
         tier: "observed",
-        providerConfidence: { value: 300, of: 100, label: "nonsense" },
+        providerConfidence: { value: 300, of: 100, label: "nonsense", kind: "ratio" },
       }),
     ).toBe(TIER_BAND.observed!.ceil);
   });
 
-  it("treats a bare value with no denominator as a 0-1 fraction", () => {
-    const band = TIER_BAND.attributed!;
+  it("uses a calibrated figure exactly as published", () => {
+    // AbuseIPDB already decayed and scaled this. Curving it would shape a
+    // number that has been shaped once, which prices a 12% confidence at 31.
+    const band = TIER_BAND.reported!;
     expect(
       assertionScore({
-        tier: "attributed",
-        providerConfidence: { value: 0.5, label: "lists" },
+        tier: "reported",
+        providerConfidence: { value: 0.5, label: "abuse confidence", kind: "calibrated" },
       }),
     ).toBe(Math.round(band.floor + (band.ceil - band.floor) * 0.5));
+  });
+
+  it("curves a ratio, so a small minority reads as a small minority", () => {
+    const band = TIER_BAND.attributed!;
+    const mid = Math.round(band.floor + (band.ceil - band.floor) * 0.5);
+    const score = (value: number) =>
+      assertionScore({
+        tier: "attributed",
+        providerConfidence: { value, of: 89, label: "vendors flagging", kind: "ratio" },
+      })!;
+
+    // Four of eighty-nine has to stay in the bottom half of the band. Under the
+    // first draft's flat 60-to-85 band it priced at 61, above the 49 the old
+    // arbitrary scale gave it, while sixteen of eighty-nine fell to 64.
+    expect(score(4)).toBeLessThan(mid);
+    // And the ordering has to survive the curve.
+    expect(score(4)).toBeLessThan(score(16));
+    expect(score(16)).toBeLessThan(score(60));
+    expect(score(89)).toBe(band.ceil);
+  });
+
+  it("bends the curve rather than bending the band", () => {
+    // A curved ratio always scores at or above the straight line, which is what
+    // makes the first few voters count for more than their share.
+    const straight = (x: number) => 25 + (85 - 25) * x;
+    for (const x of [0.1, 0.25, 0.5, 0.75]) {
+      const curved = assertionScore({
+        tier: "attributed",
+        providerConfidence: { value: x, label: "share", kind: "ratio" },
+      })!;
+      expect(curved).toBeGreaterThanOrEqual(Math.round(straight(x)));
+    }
   });
 
   it("scores a clean look at zero, and a vouch at zero", () => {
@@ -367,24 +436,30 @@ export type Band = { floor: number; ceil: number };
  * same commit that moves it, which is what the calibration test enforces.
  */
 export const TIER_BAND: Record<AssertionTier, Band | null> = {
-  // The source holds the artefact. There is nothing stronger available to us,
-  // so this band reaches the top and its floor sits above the aggregate's
-  // MALICIOUS_FLOOR of 75: a confirmed listing alone is meant to pin a verdict.
-  confirmed: { floor: 85, ceil: 100 },
+  // The source holds the artefact. Nothing stronger is available to us, so this
+  // band reaches the top, and its floor sits exactly at the aggregate's
+  // MALICIOUS_FLOOR of 75 so a confirmed listing can pin a verdict from
+  // anywhere inside it.
+  confirmed: { floor: 75, ceil: 100 },
 
-  // The source's own analysis, without the artefact. Strong, and short of
-  // certain. The ceiling touches `confirmed`'s floor so the two tiers read as
-  // one continuous scale rather than two disjoint ones.
-  attributed: { floor: 60, ceil: 85 },
+  // The source's own analysis, without the artefact.
+  //
+  // The band is wide on purpose, and the first draft's 60 to 85 was wrong.
+  // A floor of 60 is a floor on the *score*, so a VirusTotal row with four of
+  // eighty-nine vendors flagging priced at 61, above the 49 the old arbitrary
+  // scale gave it, while sixteen of eighty-nine fell from 100 to 64: the weak
+  // case went up and the strong case went down. Twenty-five points is not
+  // enough room to say "this is a weak attribution".
+  attributed: { floor: 25, ceil: 85 },
 
-  // Third parties reported it. The band is wide because report counts genuinely
-  // vary by two orders of magnitude, and its ceiling stops below `attributed`'s
-  // floor on purpose: no volume of reports becomes an analysis.
-  reported: { floor: 10, ceil: 70 },
+  // Third parties reported it. Wide for the same reason, and its ceiling stops
+  // below `attributed`'s ceiling on purpose: no volume of reports becomes an
+  // analysis.
+  reported: { floor: 5, ceil: 70 },
 
   // The source saw the behaviour and the behaviour is not inherently adverse.
   // Scanning the internet is rude, not criminal, and a Tor relay is neither.
-  observed: { floor: 5, ceil: 35 },
+  observed: { floor: 2, ceil: 35 },
 
   // Looked, found nothing.
   none: { floor: 0, ceil: 0 },
@@ -404,18 +479,32 @@ const DEFINITE: ReadonlySet<AssertionTier> = new Set<AssertionTier>([
   "attributed",
 ]);
 
+// How sharply a vote ratio bends. Two is the gentlest curve that removes the
+// inversion the flat bands produced, measured over five recorded lookups.
+// Higher exponents also hold every band, but at four they lift 8.8.8.8 to 14
+// against a `low` cutoff of 15, which is no margin for an address whose only
+// adverse row is a single UCEPROTECT listing.
+const RATIO_CURVE = 2;
+
 /**
- * Normalise a provider's own figure to 0..1.
+ * Normalise a provider's own figure to 0..1, by its kind.
  *
- * With a denominator it is a ratio (60 of 90 vendors). Without one it is
- * already a fraction. Either way it is clamped, because a provider that
- * overruns its own denominator should move the number to the top of the band
- * and no further.
+ * A ratio is curved: the first few voters out of a large panel carry most of
+ * the information and the eightieth carries almost none, so four of eighty-nine
+ * vendors and sixteen of eighty-nine have to be separable at the bottom of the
+ * range rather than being two points apart near the top.
+ *
+ * A calibrated figure is used as published. The provider already shaped it, and
+ * shaping it twice is how a 12% abuse confidence prices at 31.
+ *
+ * Both are clamped: a provider that overruns its own denominator should reach
+ * the top of the band and go no further.
  */
 function normalize(c: ProviderConfidence): number {
   const raw = c.of && c.of > 0 ? c.value / c.of : c.value;
   if (!Number.isFinite(raw)) return 0;
-  return Math.min(1, Math.max(0, raw));
+  const x = Math.min(1, Math.max(0, raw));
+  return c.kind === "ratio" ? 1 - Math.pow(1 - x, RATIO_CURVE) : x;
 }
 
 /**
@@ -733,6 +822,7 @@ describe("ipsumAssertion", () => {
       value: 6,
       of: 10,
       label: "blocklists",
+      kind: "ratio",
     });
   });
 
@@ -786,6 +876,7 @@ export function ipsumAssertion(count: number): Assertion {
       value: Math.min(count, COUNT_CEILING),
       of: COUNT_CEILING,
       label: "blocklists",
+      kind: "ratio",
     },
   };
 }
@@ -872,9 +963,9 @@ describe("summarizeAbuse assertion", () => {
 
   it("carries AbuseIPDB's own confidence as the provider figure", () => {
     expect(summarizeAbuse(reported).assertion.providerConfidence).toEqual({
-      value: 90,
-      of: 100,
+      value: 0.9,
       label: "abuse confidence",
+      kind: "calibrated",
     });
   });
 
@@ -971,7 +1062,14 @@ Change `summarizeAbuse`'s return type to add `assertion: Assertion`, and build i
     behavior: behavior.length > 0 ? behavior : undefined,
     providerConfidence:
       (d.totalReports ?? 0) > 0
-        ? { value: score, of: 100, label: "abuse confidence" }
+        ? {
+            // Calibrated, not a ratio: AbuseIPDB decays its own reports and
+            // publishes the result, so it is carried as a 0-1 fraction and
+            // used as published.
+            value: score / 100,
+            label: "abuse confidence",
+            kind: "calibrated" as const,
+          }
         : undefined,
     observedAt: toInstant(d.lastReportedAt),
   };
@@ -1025,6 +1123,7 @@ describe("vtAssertion", () => {
       value: 60,
       of: 90,
       label: "vendors flagging",
+      kind: "ratio",
     });
   });
 
@@ -1100,7 +1199,12 @@ export function vtAssertion(stats: {
 
   return {
     tier: "attributed",
-    providerConfidence: { value: flagging, of: total, label: "vendors flagging" },
+    providerConfidence: {
+      value: flagging,
+      of: total,
+      label: "vendors flagging",
+      kind: "ratio",
+    },
   };
 }
 ```
@@ -1275,8 +1379,11 @@ export function torAssertion(
     tier: "observed",
     identity: "anonymizer",
     providerConfidence: {
+      // Calibrated, not a ratio: these are our own two settings for what an
+      // exit costs against a relay, already on the 0-1 scale we want.
       value: isExit ? EXIT_WEIGHT : RELAY_WEIGHT,
       label: isExit ? "exit node" : "relay",
+      kind: "calibrated",
     },
     observedAt: toInstant(lastSeen),
   };
@@ -1341,6 +1448,7 @@ describe("dnsblAssertion", () => {
       value: 3,
       of: 5,
       label: "zones listing",
+      kind: "ratio",
     });
   });
 
@@ -1399,6 +1507,7 @@ export function dnsblAssertion(listedCount: number, checked: number): Assertion 
       value: listedCount,
       of: checked,
       label: "zones listing",
+      kind: "ratio",
     },
   };
 }
@@ -1504,7 +1613,9 @@ Use `/api/check-domain/<domain>` and `/api/check-hash/<hash>` for the other two 
 | An address on one IPsum list only | `low` | One noisy list must stay cheap |
 | An address on eight-plus IPsum lists | `suspicious` | Volume within one aggregate must move the number without reaching `confirmed` |
 | A Shodan census scanner (e.g. `71.6.146.185`) | `suspicious` | Named in `threat-type.ts`; the scanner cap must survive, and its identity must not read as an accusation |
-| A Tor exit | `low` | Identity, not accusation |
+| A busy Tor exit (e.g. `185.220.101.1`) | `malicious` | An exit that is also genuinely abused: 263 abuse reports, 13 VirusTotal detections, 3 spam zones. It is malicious *as well as* being an exit, not because of it |
+| A quiet Tor exit, picked from the Onionoo list with no abuse history | `low` | The identity case proper: being an exit is a kind of address, not an accusation. This is the entry the busy exit above cannot stand in for |
+| A live Feodo C2 (e.g. `50.16.16.211`) | `malicious` | The `confirmed` midpoint path, which no other entry exercises, since Feodo publishes no per-address figure |
 | The zero-byte file digest `da39a3ee5e6b4b0d3255bfef95601890afd80709` | `clean` | Named in `aggregate.ts:186`; the vouch quorum must still hold off the URLhaus listing |
 | A known-bad hash on MalwareBazaar | `malicious` | `confirmed` on the hash path |
 | A clean domain (e.g. `google.com`) | `clean` | The domain path, where the weighted panel is thinner |
@@ -1569,6 +1680,26 @@ describe("assertion pricing lands in the same band", () => {
 
 Run: `bun run test -- calibration`
 Expected: FAIL. Several entries land in a different band under assertion pricing. This is the information the task exists to produce.
+
+**Measured baseline, 2026-09-11.** Five of these entries were already run
+end to end against the live pipeline while the scale was being designed, with
+the eight adapters' assertions built by hand and fed through the real
+`aggregateRisk` and `applyScannerPolicy`. Under the bands and curve now in
+`scale.ts`, all five held their band:
+
+| Indicator | Today | Repriced |
+| --- | --- | --- |
+| `8.8.8.8` | clean 6 | clean 9 |
+| `71.6.146.185` | suspicious 73 | suspicious 52 |
+| `185.220.101.1` | malicious 75 | malicious 75 |
+| `50.16.16.211` | malicious 75 | malicious 75 |
+| `162.243.103.246` | malicious 76 | malicious 75 |
+
+This is a floor for the task, not a result: it was measured against a
+hand-written copy of the adapter logic, and the point of the task is to measure
+it against the adapters themselves. If a number here does not reproduce, the
+adapter and the hand-written copy disagree, and the adapter is the one that
+counts.
 
 - [ ] **Step 4: Tune `TIER_BAND` until the bands agree**
 
