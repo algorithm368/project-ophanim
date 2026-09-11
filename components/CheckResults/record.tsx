@@ -143,13 +143,18 @@ export const SubjectMasthead = memo(function SubjectMasthead({
 });
 
 /** Matches the row rhythm above, so the card does not jump when the result
- *  lands. Mirrors the skeleton already in IpDossierCard. */
+ *  lands. Mirrors the skeleton already in IpDossierCard. Stacks below `sm` for
+ *  the same reason `RecordRow` does, so the placeholder keeps describing the
+ *  shape of the thing it is standing in for at both breakpoints. */
 export function SubjectMastheadSkeleton() {
     return (
         <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1 space-y-3">
                 {["w-48", "w-36", "w-44", "w-40"].map((w) => (
-                    <div key={w} className="flex items-baseline gap-3">
+                    <div
+                        key={w}
+                        className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3"
+                    >
                         <span className="sweep h-3 w-24 shrink-0 rounded" />
                         <span className={cn("sweep h-3 rounded", w)} />
                     </div>

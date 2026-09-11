@@ -151,7 +151,12 @@ export function CopyButton({
 export function CopyableSummary({ text }: Readonly<{ text: string }>) {
     return (
         <div className="space-y-1.5">
-            <p className="font-sans text-[0.95rem] leading-relaxed text-foreground/85">
+            {/* The measure is capped, not the card. Left to the full ~960px of
+                the verdict hero this paragraph ran about 110 characters a line,
+                against the 65-75 that keeps a reader from losing the line on the
+                return sweep. Only the text is bounded; the card, the meter and
+                the meta row still span the full width. */}
+            <p className="max-w-[60ch] font-sans text-[0.95rem] leading-relaxed text-foreground/85">
                 {text}
             </p>
             <CopyButton text={text} />
@@ -182,15 +187,28 @@ export function SectionHeading({
  *  of flex rows, so every section's label column lines up with every other's
  *  regardless of content length — the thing ad hoc width classes kept fighting.
  *  A fixed `<colgroup>` under `table-fixed` is what makes the label column a
- *  real, shared boundary instead of an approximation. */
+ *  real, shared boundary instead of an approximation.
+ *
+ *  Below `sm` the ledger stops being a ledger. An 11rem label column out of the
+ *  ~326px a 390px viewport leaves (less again beside the masthead sprite) left
+ *  the value column near 120px, so `Priors` set as ten lines of one or two
+ *  words and the mobile result page ran 6,390px against desktop's 5,115px on a
+ *  third the width. Every element in the table is switched to `block` for that
+ *  range — table, tbody, rows and cells together, since a `display:block` child
+ *  of a `display:table` parent gets wrapped in an anonymous table box and lays
+ *  out as neither — which drops the colgroup out of play and puts each label on
+ *  its own line above its value. The two-column grid is correct on desktop and
+ *  does not move. */
 export function RecordTable({ children }: Readonly<{ children: ReactNode }>) {
     return (
-        <table className="w-full table-fixed border-collapse text-sm">
+        <table className="block w-full border-collapse text-sm sm:table sm:table-fixed">
             <colgroup>
                 <col className="w-44" />
                 <col />
             </colgroup>
-            <tbody className="[&>tr:first-child>td]:pt-0">{children}</tbody>
+            <tbody className="block sm:table-row-group [&>tr:first-child>td]:pt-0">
+                {children}
+            </tbody>
         </table>
     );
 }
@@ -204,10 +222,10 @@ export function RecordSection({
 }: Readonly<{ title: string; children: ReactNode }>) {
     return (
         <>
-            <tr>
+            <tr className="block sm:table-row">
                 <td
                     colSpan={2}
-                    className="border-b border-foreground/10 pt-4 pb-1.5 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase"
+                    className="block border-b border-foreground/10 pt-4 pb-1.5 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase sm:table-cell"
                 >
                     {title}
                 </td>
@@ -242,11 +260,16 @@ export function RecordRow({
     mono?: boolean;
 }>) {
     return (
-        <tr className="border-b border-foreground/[0.06] last:border-b-0">
+        <tr className="block border-b border-foreground/[0.06] last:border-b-0 sm:table-row">
+            {/* Stacked below `sm`: the label keeps its own type treatment and
+                becomes the row's eyebrow, so the record still reads as a record
+                rather than as a list of paragraphs. Padding splits accordingly —
+                the label takes the top, the value the bottom — so a stacked row
+                occupies the same vertical rhythm as the side-by-side one. */}
             <td
                 title={hint}
                 className={cn(
-                    "py-1.5 pr-3 align-baseline font-mono text-[11px] text-muted-foreground",
+                    "block pt-1.5 pb-0 align-baseline font-mono text-[11px] text-muted-foreground sm:table-cell sm:py-1.5 sm:pr-3",
                     hint &&
                         "w-fit cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2",
                 )}
@@ -255,7 +278,7 @@ export function RecordRow({
             </td>
             <td
                 className={cn(
-                    "py-1.5 align-baseline break-words text-sm",
+                    "block pt-0 pb-1.5 align-baseline break-words text-sm sm:table-cell sm:py-1.5",
                     mono && "font-mono text-[13px]",
                     tone ?? "text-foreground",
                 )}

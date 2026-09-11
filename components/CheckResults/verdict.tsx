@@ -147,39 +147,40 @@ function VerdictShell({
             <CardContent className="space-y-4">
                 {/* Verdict + risk level. The verdict word is the focal point and
                     the only element that carries color; the level reads as a plain
-                    monochrome band over a monochrome meter. */}
+                    monochrome band over a monochrome meter.
+
+                    Both sit on one baseline, adjacent. They were previously set at
+                    the same size and pushed to opposite ends of a ~960px card by
+                    `justify-between`, which made one claim ("clean", "minimal risk")
+                    read as two: the eye took the verdict, travelled the full width,
+                    and took a second statement of the same thing in a different
+                    vocabulary. The band drops to label size so it reads as the
+                    qualifier it is — the meter below already carries the magnitude
+                    a third time, which is two times more than the claim needs. */}
                 <div className="space-y-2.5">
-                    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-                        <span className="flex flex-wrap items-baseline gap-x-2">
-                            <span
-                                className={cn(
-                                    "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
-                                    style.text,
-                                )}
-                            >
-                                {style.headline}
-                            </span>
-                            {threat && (
-                                <span
-                                    title={`Reported by ${threat.sources.join(", ")}${
-                                        threat.also.length
-                                            ? `. Also described as ${threat.also.join(", ")}.`
-                                            : ""
-                                    }`}
-                                    className="font-mono text-base font-bold uppercase leading-none tracking-tight text-muted-foreground"
-                                >
-                                    · {threat.type}
-                                </span>
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <span
+                            className={cn(
+                                "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
+                                style.text,
                             )}
+                        >
+                            {style.headline}
                         </span>
-                        <span className="font-mono font-bold uppercase leading-none text-foreground">
-                            <span className="text-2xl sm:text-3xl">
-                                {RISK_LEVEL[result.verdict]}
+                        {threat && (
+                            <span
+                                title={`Reported by ${threat.sources.join(", ")}${
+                                    threat.also.length
+                                        ? `. Also described as ${threat.also.join(", ")}.`
+                                        : ""
+                                }`}
+                                className="font-mono text-base font-bold uppercase leading-none tracking-tight text-muted-foreground"
+                            >
+                                · {threat.type}
                             </span>
-                            <span className="text-base font-medium text-muted-foreground">
-                                {" "}
-                                risk
-                            </span>
+                        )}
+                        <span className="font-mono text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+                            {RISK_LEVEL[result.verdict]} risk
                         </span>
                     </div>
                     <div
@@ -214,8 +215,19 @@ function VerdictShell({
                     sits in the fixed centre column, and a fixed min-width on
                     the button keeps its box (and so its centre, where the
                     pointer just clicked) from moving when "hide details" swaps
-                    back to the longer "details, N signals" label. */}
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+                    back to the longer "details, N signals" label.
+
+                    Three columns need about 380px to hold their contents, and a
+                    390px viewport offers 326px once the page and card padding
+                    are paid: the centre column's 11.5rem left the outer two
+                    around 70px each, which broke "4d ago, cached" over three
+                    lines and clipped "fetch fresh" to "fetch" at the card's
+                    edge. Below `sm` it becomes two columns with the toggle
+                    dropped onto its own full-width row beneath them — hence the
+                    `order-last`, since the toggle sits between its neighbours in
+                    the DOM, which is the order it must keep once the three
+                    columns are back. */}
+                <div className="grid grid-cols-2 items-center gap-x-3 gap-y-2 text-xs text-muted-foreground sm:grid-cols-[1fr_auto_1fr] sm:gap-y-1.5">
                     <CheckedAt
                         checkedAt={result.checkedAt}
                         cached={result.cached}
@@ -225,14 +237,14 @@ function VerdictShell({
                             type="button"
                             onClick={() => setDetailsOpen((v) => !v)}
                             aria-expanded={detailsOpen}
-                            className="min-w-[11.5rem] shrink-0 text-center font-mono text-xs text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
+                            className="order-last col-span-2 min-w-[11.5rem] shrink-0 justify-self-center text-center font-mono text-xs text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground sm:order-none sm:col-span-1 sm:justify-self-auto"
                         >
                             {detailsOpen
                                 ? "hide details"
                                 : `details, ${signalCount} signals`}
                         </button>
                     ) : (
-                        <span />
+                        <span className="hidden sm:block" />
                     )}
                     <Button
                         type="button"
@@ -460,33 +472,106 @@ export function SourceDots({
      *  answered ones. */
     panel?: SourceMeta[];
 }>) {
+    const tally = dotTally(sources, total);
     return (
-        <div className="flex flex-wrap gap-1" aria-hidden>
-            {dotSlots(sources, total, panel).map((slot, i) => (
-                <span
-                    // Position is the identity here: two layers of a URL check
-                    // can share a source id, so an id key would collide.
-                    key={i}
-                    title={slot.name}
-                    className={cn(
-                        "size-1.5 rounded-full",
-                        slot.result
-                            ? dotTone(slot.result)
-                            : "animate-pulse bg-foreground/15",
-                    )}
-                />
-            ))}
+        // The min-height holds the row at caption height from the first frame.
+        // The dots are 6px and the caption ~17px, so a caption that appears once
+        // the panel is known (the first frame has no totals to count) would
+        // otherwise grow the row under everything below it.
+        <div className="flex min-h-[1.125rem] flex-wrap items-center gap-x-3 gap-y-1.5">
+            <div className="flex flex-wrap gap-1" aria-hidden>
+                {dotSlots(sources, total, panel).map((slot, i) => (
+                    <span
+                        // Position is the identity here: two layers of a URL check
+                        // can share a source id, so an id key would collide.
+                        key={i}
+                        title={slot.name}
+                        className={cn(
+                            "size-1.5 rounded-full",
+                            slot.result
+                                ? DOT_TONE[dotReading(slot.result)]
+                                : "animate-pulse bg-foreground/15",
+                        )}
+                    />
+                ))}
+            </div>
+            {/* The legend the strip never had. Twenty-five 6px dots with one of
+                them a different hue is a chart with no key: nothing on the page
+                said what a dot stood for, what the odd colour meant, or how many
+                there were of each — and a reader who cannot separate red from
+                green got no reading at all, since the strip is aria-hidden and
+                hue was the only channel carrying it. Counting in text puts the
+                figure in a second channel and gives assistive tech the summary
+                instead of nothing. The strip itself keeps registry order, which
+                is deliberate; see `dotSlots`. */}
+            {tally.length > 0 && (
+                <p className="font-mono text-[11px] text-muted-foreground">
+                    {tally.map((part, i) => (
+                        <span key={part.key}>
+                            {i > 0 && <span aria-hidden> · </span>}
+                            <span className={part.tone}>{part.text}</span>
+                        </span>
+                    ))}
+                </p>
+            )}
         </div>
     );
 }
 
-/** The same three readings the progress list uses: adverse, gap, clean. */
-function dotTone(s: SourceResult): string {
-    if (s.status === "ok" && (s.malicious === true || (s.score ?? 0) > 0)) {
-        return "bg-red-600 dark:bg-red-400";
+/** The three readings a settled source can have. `dotTone` and the caption
+ *  beneath the strip both go through this, so the colours and the counts
+ *  cannot come to disagree about the same source. */
+type DotReading = "adverse" | "gap" | "clean";
+
+function dotReading(s: SourceResult): DotReading {
+    if (s.status !== "ok") return "gap";
+    if (s.malicious === true || (s.score ?? 0) > 0) return "adverse";
+    return "clean";
+}
+
+const DOT_TONE: Record<DotReading, string> = {
+    adverse: "bg-red-600 dark:bg-red-400",
+    gap: "bg-amber-500",
+    clean: "bg-emerald-600 dark:bg-emerald-400",
+};
+
+/** The caption's parts, in the order they matter, zeroes omitted.
+ *
+ *  Counted from exactly the sources the strip renders rather than from
+ *  `consensusBuckets`, which covers only the weight-bearing detectors: a
+ *  caption sitting under the dots has to describe the dots, not a different
+ *  and smaller population that happens to be nearby on the card. */
+function dotTally(
+    sources: SourceResult[],
+    total: number,
+): { key: string; text: string; tone?: string }[] {
+    let adverse = 0;
+    let gap = 0;
+    let clean = 0;
+    for (const s of sources) {
+        const reading = dotReading(s);
+        if (reading === "adverse") adverse += 1;
+        else if (reading === "gap") gap += 1;
+        else clean += 1;
     }
-    if (s.status !== "ok") return "bg-amber-500";
-    return "bg-emerald-600 dark:bg-emerald-400";
+    const waiting = Math.max(0, total - sources.length);
+
+    const parts: { key: string; text: string; tone?: string }[] = [];
+    if (adverse > 0) {
+        parts.push({
+            key: "adverse",
+            text: `${adverse} adverse`,
+            tone: "text-red-600 dark:text-red-400",
+        });
+    }
+    // "No answer" is its own reading on purpose: a source that timed out, hit a
+    // rate limit or has no key never assessed the indicator, and folding it in
+    // with the ones that looked and found nothing would let a gap in the
+    // evidence read as evidence.
+    if (gap > 0) parts.push({ key: "gap", text: `${gap} no answer` });
+    if (clean > 0) parts.push({ key: "clean", text: `${clean} clean` });
+    if (waiting > 0) parts.push({ key: "waiting", text: `${waiting} waiting` });
+    return parts;
 }
 
 /** One cell of the stat strip: a small label over the value it names. */

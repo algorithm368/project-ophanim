@@ -64,23 +64,47 @@ function jumpTo(e: MouseEvent<HTMLAnchorElement>, id: string) {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function NavLink({ item, active }: Readonly<{ item: NavItem; active: boolean }>) {
+/**
+ * One jump target, labelled.
+ *
+ * The label used to live only in `aria-label`/`title`, which made the nav six
+ * unnamed glyphs: nothing on screen mapped a fingerprint to "Dossier" or a
+ * telescope to "Research", and because the section set differs per IOC type
+ * (and again on the scan page) the mapping could not be learned once and
+ * reused. A tooltip is not a fix — it needs a pointer, a hover, and a second
+ * of patience to answer a question the label answers for free.
+ *
+ * `rail` is the desktop gutter column, `strip` the sticky row on narrow
+ * screens, where the target also grows to the 44px minimum it was missing at
+ * `size-9`.
+ */
+function NavLink({
+    item,
+    active,
+    variant,
+}: Readonly<{ item: NavItem; active: boolean; variant: "rail" | "strip" }>) {
     const Icon = ICONS[item.id] ?? Circle;
     return (
         <a
             href={`#${item.id}`}
             onClick={(e) => jumpTo(e, item.id)}
-            aria-label={item.label}
-            title={item.label}
             aria-current={active ? "true" : undefined}
             className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-md transition-colors",
+                "flex min-w-0 shrink-0 items-center rounded-md transition-colors",
+                // Tight by design. The rail is fixed in the left gutter, which
+                // is (100vw - 64rem) / 2 wide — 128px at the xl breakpoint where
+                // the rail first appears — so padding spent here is padding that
+                // pushes the rail into the content column.
+                variant === "rail"
+                    ? "gap-2 px-2 py-1.5 text-xs"
+                    : "min-h-11 gap-1.5 px-2.5 text-xs",
                 active
-                    ? "bg-muted text-foreground"
+                    ? "bg-muted font-medium text-foreground"
                     : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
         >
-            <Icon className="size-4" />
+            <Icon className={variant === "rail" ? "size-4 shrink-0" : "size-3.5 shrink-0"} />
+            <span className="truncate">{item.label}</span>
         </a>
     );
 }
@@ -134,31 +158,46 @@ export function SectionNav({ items }: Readonly<{ items: NavItem[] }>) {
 
     return (
         <>
-            {/* Wide screens: vertical icon rail floating in the left gutter. */}
+            {/* Wide screens: vertical labelled rail floating in the left gutter. */}
             <nav
                 aria-label="Result sections"
-                className="fixed top-28 left-4 z-30 hidden flex-col gap-1 rounded-lg border border-border bg-background/80 p-1 backdrop-blur xl:flex 2xl:left-8"
+                // Width is left to the content — the rail is as wide as its
+                // longest label and no wider. The gutter it sits in is
+                // (100vw - 64rem) / 2, or 128px at `xl`, and the content column
+                // pads 16px in from there; a fixed width wide enough for the
+                // longest label on any page would spend most of that clearance
+                // on the pages whose labels are shorter. The max-width is a
+                // backstop against a future section named something long.
+                className="fixed top-28 left-4 z-30 hidden max-w-[7rem] flex-col gap-0.5 rounded-lg border border-border bg-background/80 p-1 backdrop-blur xl:flex 2xl:left-8"
             >
                 {present.map((item) => (
                     <NavLink
                         key={item.id}
                         item={item}
                         active={active === item.id}
+                        variant="rail"
                     />
                 ))}
             </nav>
 
-            {/* Narrow screens: sticky horizontal icon strip above the content. */}
+            {/* Narrow screens: sticky horizontal labelled strip above the content.
+                Opaque, unlike the frosted panel this replaced. At 70% over a
+                blur, the page scrolling underneath showed through the strip as
+                ghosted text: tolerable behind six icons, not behind six words,
+                where the reader is asked to separate the label from whatever
+                happens to be passing behind it. The blur stays for the sliver
+                the border rounds off. */}
             <nav
                 aria-label="Result sections"
-                className="sticky top-[4.25rem] z-20 -mx-4 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70 xl:hidden"
+                className="sticky top-[4.25rem] z-20 -mx-4 border-b border-border bg-background px-4 backdrop-blur xl:hidden"
             >
-                <div className="flex gap-1 overflow-x-auto py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex gap-1 overflow-x-auto py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {present.map((item) => (
                         <NavLink
                             key={item.id}
                             item={item}
                             active={active === item.id}
+                            variant="strip"
                         />
                     ))}
                 </div>
