@@ -369,14 +369,22 @@ The score changing meaning is only honest if the page says what it now means.
 Too large for one merge, so it lands in three, each shippable on its own and
 each leaving the app working.
 
-**Stage 1, the model and the scale, no behaviour change.** `Assertion`,
-`IdentityClass`, `AssertionTier`, `Instant` and `scale.ts` are added.
-`SourceFinding` accepts both the assertion and the legacy fields. `scale.ts` is
-tuned so that adapters which have been converted produce the same number they
-produced before. Convert a first batch of about eight adapters chosen to cover
-every tier, including Feodo, AbuseIPDB, IPsum, VirusTotal, GreyNoise, Tor and a
-DNSBL. The calibration set and its test land here, since this is the stage that
-could silently move a verdict. Nothing on the page changes yet.
+**Stage 1, the model and the scale, emitted in parallel and read by nothing.**
+`Assertion`, `IdentityClass`, `AssertionTier`, `Instant` and `scale.ts` are
+added. A converted adapter emits its assertion *alongside* its existing `score`,
+`malicious` and `categories`, all three unchanged, and `aggregateRisk` keeps
+reading the legacy fields. Only the calibration test reads the new one, which is
+how the mapping gets checked against eight adapters' worth of real behaviour
+before anything depends on it. Convert Feodo, IPsum, AbuseIPDB, VirusTotal,
+GreyNoise, Tor, a DNSBL and ET Open, chosen to cover every tier and both
+lineages. Nothing on the page changes, and no verdict moves, because nothing
+downstream is reading the new field yet.
+
+The invariant this stage is held to is **band preservation, not digit
+preservation**. `assertionScore()` will not reproduce every adapter's current
+integer, and should not: AbuseIPDB passing its own 0-100 confidence straight
+through to a possible 100 is one of the things this spec exists to stop. What
+must not move is any calibration indicator's verdict band.
 
 **Stage 2, the remaining adapters, and the old fields go away.** The other
 forty-nine adapters convert. `score` and `malicious` are removed from the type
