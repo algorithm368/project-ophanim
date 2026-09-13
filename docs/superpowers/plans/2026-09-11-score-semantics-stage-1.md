@@ -1619,6 +1619,7 @@ Use `/api/check-domain/<domain>` and `/api/check-hash/<hash>` for the other two 
 | The zero-byte file digest `da39a3ee5e6b4b0d3255bfef95601890afd80709` | `clean` | Named in `aggregate.ts:186`; the vouch quorum must still hold off the URLhaus listing |
 | A known-bad hash on MalwareBazaar | `malicious` | `confirmed` on the hash path |
 | A clean domain (e.g. `google.com`) | `clean` | The domain path, where the weighted panel is thinner |
+| `github.com` | `low` | Reads `malicious` 75 today, floored by ThreatFox, with URLhaus at 100 for "hosts 7940 malicious URLs" (#92, measured 2026-09-13). A platform is not its worst tenant. Recorded at its current wrong answer's expected replacement, so any fix is measured; if the scale alone does not move it, the entry fails and says so |
 | An NXDOMAIN domain | `unknown` | No data is not clean |
 | An IPv6 address | `clean` | A thin panel must not read as a suspicious one |
 

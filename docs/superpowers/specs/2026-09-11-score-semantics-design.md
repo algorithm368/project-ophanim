@@ -480,7 +480,12 @@ moving at the end of stage 2, and wiping twice is worse than wiping late.
    stage 2, not a guess made here.
 2. The calibration set's membership. It should include at least one indicator
    per known failure mode: the zero-byte file digest named in `aggregate.ts`,
-   an identified scanner, a compromised major site, and an IPv6 address.
+   an identified scanner, a major site read as its worst tenant, and an IPv6
+   address. The third has a live example rather than a hypothetical one:
+   `github.com` returns `malicious` 75 today, floored by ThreatFox, because
+   people host malware on GitHub (#92, measured 2026-09-13). It is not
+   compromised, it is a host, and nothing in the panel can express the
+   difference between a claim about a URL and a claim about the apex.
 3. Whether the tier of a `reported` source should scale with the report count.
    AbuseIPDB with 200 reports and AbuseIPDB with 2 are different, and
    `providerConfidence` may or may not be enough to express it without letting
