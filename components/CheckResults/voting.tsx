@@ -1,41 +1,22 @@
 "use client";
 
-import { Fragment } from "react";
 import { Asterisk, Check, Circle, Star } from "lucide-react";
-import type { Confidence, GeoResolution, ResolverConsensus } from "@/lib/ti/types";
-import { buildVoteTable, providerLabel, type VoteCell } from "@/lib/ti/geo/votes";
-import { buildResolverBallot } from "@/lib/ti/dns/ballot";
-import { ConfidenceLevel, geoConfidenceReason, resolverConfidenceReason } from "./confidence";
-
-/** Compact resolved-value reference: the field label, the consensus value, and
- *  that field's confidence. Renders three grid cells so the columns line up
- *  across every row. The "answer" the source votes below support. Takes just
- *  the three fields it reads rather than the full VoteColumn, so a caller
- *  with a single ad hoc field (the resolver ballot) doesn't have to fake the
- *  rest of that shape. */
-function ResolvedRow({
-    label,
-    winner,
-    confidence,
-}: Readonly<{ label: string; winner: string; confidence: Confidence }>) {
-    return (
-        <>
-            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-                {label}
-            </span>
-            <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
-                {winner}
-            </span>
-            <ConfidenceLevel confidence={confidence} />
-        </>
-    );
-}
+import { type VoteCell } from "@/lib/ti/geo/votes";
 
 /** One source's vote in a single field column. Every state shares the same grey,
  *  so the icon shape, not color, carries the meaning: a check for agreement, a
  *  ring for a scattered point, and a minimal asterisk plus the value for a
  *  dissent (the one that should pop). Absent votes render blank. */
-function VoteMark({ cell }: Readonly<{ cell: VoteCell | undefined }>) {
+export function VoteMark({
+    cell,
+    compact,
+}: Readonly<{
+    cell: VoteCell | undefined;
+    /** Drop a dissent's value to its tooltip. The ballots live in a
+     *  three-column tile now, and "Andorra la Vella" printed inline pushed the
+     *  matrix out of its own grid. */
+    compact?: boolean;
+}>) {
     if (!cell || cell.status === "absent") return <span aria-hidden />;
     if (cell.status === "scatter")
         return (
@@ -46,12 +27,15 @@ function VoteMark({ cell }: Readonly<{ cell: VoteCell | undefined }>) {
         );
     if (cell.status === "dissent")
         return (
-            <span className="inline-flex items-center gap-1 text-foreground/70">
+            <span
+                title={compact ? cell.value : undefined}
+                className="inline-flex min-w-0 items-center gap-1 text-foreground/70"
+            >
                 <Asterisk
                     className="size-3 shrink-0 text-foreground/55"
-                    aria-label="differs"
+                    aria-label={`differs: ${cell.value}`}
                 />
-                {cell.value}
+                {!compact && cell.value}
             </span>
         );
     return (
@@ -64,147 +48,5 @@ function VoteMark({ cell }: Readonly<{ cell: VoteCell | undefined }>) {
                 />
             )}
         </span>
-    );
-}
-
-/** Geo-confidence section: a plain header, the resolved values, then a ballot per
- *  TI source showing how each one voted. Minimal, document-style, no masthead or
- *  gauge. No-op when nothing resolved. `unit` names the voter for the reason
- *  line: a plain IP's geo is a vote across providers, a domain's is a vote
- *  across its own resolved IPs. */
-export function VotingCard({
-    res,
-    unit,
-}: Readonly<{ res: GeoResolution; unit?: string }>) {
-    const table = buildVoteTable(res);
-    if (!table) return null;
-    const confidence = res.overall?.confidence ?? "low";
-    const pct = res.overall ? Math.round(res.overall.score * 100) : null;
-
-    return (
-        <section className="space-y-4">
-            {/* Plain header: uppercase label left, confidence on the right. */}
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-foreground/10 pb-3">
-                <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.12em] text-foreground">
-                    Geo confidence
-                </span>
-                <span className="flex items-center gap-1.5">
-                    <ConfidenceLevel confidence={confidence} />
-                    {pct != null && (
-                        <span className="font-mono text-[10px] tabular-nums text-foreground/55">
-                            {pct}/100
-                        </span>
-                    )}
-                </span>
-            </div>
-
-            <p className="text-[13px] leading-snug text-muted-foreground">
-                {geoConfidenceReason(res, unit)}
-            </p>
-
-            {/* Resolved consensus values, the answer the votes support. One field
-                per row, with label / value / confidence in aligned columns. */}
-            <div className="grid grid-cols-[auto_minmax(0,auto)_auto] items-baseline justify-start gap-x-2.5 gap-y-2">
-                {table.fields.map((f) => (
-                    <ResolvedRow
-                        key={f.key}
-                        label={f.label}
-                        winner={f.winner}
-                        confidence={f.confidence}
-                    />
-                ))}
-            </div>
-
-            {/* How each TI source voted: a tally with one column per field, so the
-                votes line up. Same grey throughout, icons carry the meaning. */}
-            <div className="border-t border-foreground/10 pt-3">
-                <div className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Source votes
-                </div>
-                <div
-                    className="grid items-center gap-x-5 gap-y-2.5 text-[12px]"
-                    style={{
-                        gridTemplateColumns: `auto repeat(${table.fields.length}, auto)`,
-                    }}
-                >
-                    <span aria-hidden />
-                    {table.fields.map((f) => (
-                        <span
-                            key={f.key}
-                            className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground"
-                        >
-                            {f.label}
-                        </span>
-                    ))}
-                    {table.providers.map((id) => (
-                        <Fragment key={id}>
-                            <span className="font-mono text-[12px] text-foreground/65">
-                                {providerLabel(id)}
-                            </span>
-                            {table.fields.map((f) => (
-                                <VoteMark key={f.key} cell={f.cells[id]} />
-                            ))}
-                        </Fragment>
-                    ))}
-                </div>
-            </div>
-
-            {table.fields.some((f) => f.authorityId) && (
-                <p className="text-[11px] text-muted-foreground">
-                    <Star className="mr-1 inline size-3 align-[-1px] text-foreground/55" />
-                    allocation authority, RIPEstat ASN
-                </p>
-            )}
-        </section>
-    );
-}
-
-/** IP-confidence section: which DNS resolver agrees on the resolved IP(s), the
- *  question upstream of "where is it" (Geo confidence, above). Same layout as
- *  VotingCard's single-field case, but the ballot is one row per resolver
- *  rather than per geo provider. No-op when no resolver answered. */
-export function IpConfidenceCard({
-    consensus,
-}: Readonly<{ consensus: ResolverConsensus }>) {
-    const ballot = buildResolverBallot(consensus);
-    if (!ballot) return null;
-
-    return (
-        <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-foreground/10 pb-3">
-                <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.12em] text-foreground">
-                    IP confidence
-                </span>
-                <ConfidenceLevel confidence={ballot.confidence} />
-            </div>
-
-            <p className="text-[13px] leading-snug text-muted-foreground">
-                {resolverConfidenceReason(consensus)}
-            </p>
-
-            <div className="grid grid-cols-[auto_minmax(0,auto)_auto] items-baseline justify-start gap-x-2.5 gap-y-2">
-                <ResolvedRow
-                    label="Resolves to"
-                    winner={ballot.winner}
-                    confidence={ballot.confidence}
-                />
-            </div>
-
-            <div className="border-t border-foreground/10 pt-3">
-                <div className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Resolver votes
-                </div>
-                <div className="grid grid-cols-[auto_auto] items-center gap-x-5 gap-y-2.5 text-[12px]">
-                    {consensus.perResolver.map(({ resolver }) => (
-                        <Fragment key={resolver}>
-                            <span className="font-mono text-[12px] text-foreground/65">
-                                {resolver}
-                            </span>
-                            <VoteMark cell={ballot.cells[resolver]} />
-                        </Fragment>
-                    ))}
-                </div>
-            </div>
-        </section>
     );
 }

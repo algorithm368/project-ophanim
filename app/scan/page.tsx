@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 export default function ScanHome() {
   return (
     <main className="relative min-h-full">
-      <div className="mx-auto w-full max-w-5xl px-4 py-6">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6">
         <ScanSearch />
       </div>
     </main>

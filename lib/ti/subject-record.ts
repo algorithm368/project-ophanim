@@ -1,6 +1,15 @@
 import { cloudProvider } from "./cloud";
 import { HASH_ALGO_LABEL } from "../hash";
-import { classifyDomainLabel, classifyHashLabel, classifyIpLabel } from "./indicator-class";
+import { parseDomain } from "../domain";
+import {
+  classifyDomainLabel,
+  classifyHashLabel,
+  classifyIpLabel,
+  contentCategory,
+  domainEvidence,
+  hashEvidence,
+  ipEvidence,
+} from "./indicator-class";
 import { maliciousTags } from "./sources/shodan-internetdb";
 import { IDENTIFIERS, threatTypeOf } from "./threat-type";
 import type { ThreatTypeVerdict } from "./threat-type";
@@ -222,7 +231,12 @@ const fromGeoFlags: Resolver = (r) => {
   if (!geo?.isHosting || geo.isProxy) return null;
   const backers = geoResolutionOf(r)?.flags?.sources?.isHosting;
   if (backers && !backedByFreeSource(r, backers)) return null;
-  return { label: classifyIpLabel(geo).label, sources: ["geo flags"] };
+  // The generic, spelled out rather than fetched from classifyIpLabel.
+  // Guarded as it is, that call could only ever return this one label, and once
+  // the classifier grew rungs like "Front door" and "Single host" the borrowed
+  // answer would have started answering a different question: this ladder asks
+  // who runs the box, not how much of an identity the address has.
+  return { label: "Hosting / Datacenter", sources: ["geo flags"] };
 };
 
 const INFRA: Resolver[] = [
@@ -376,37 +390,70 @@ const fromTranco: Resolver = (r) => {
 };
 
 /**
+ * What kind of site Cloudflare says this is.
+ *
+ * Deliberately resolved here rather than in `infraClaim`: this is a key-gated
+ * source, and `infraClaim` is one of the two inputs to `spriteFor`, so a claim
+ * added there would change the drawn body depending on whether a token was set
+ * that day. That is #37 in a new costume. `lastResortClaim` only ever feeds the
+ * class label, which is text, and a key-gated source refining wording is
+ * allowed where deciding the picture is not.
+ *
+ * It outranks both Tranco and the infrastructure claim because a category
+ * answers what a site is, where a rank answers only how busy it is and a CDN
+ * answers only where it sits.
+ */
+/** Not `primaryCategory`, which is Cloudflare's own field and is not the
+ *  primary *content* category: for pornhub.com it is "CIPA Filter", a US
+ *  school-filtering statute, and this claim printed "This is a CIPA Filter
+ *  site". The category list, with the filter taxonomy dropped, answers what the
+ *  site is. */
+const fromCloudflareCategory: Resolver = (r) => {
+  const details = ok(r.sources, "cloudflare-intel")?.details;
+  const category =
+    contentCategory(strArr(details?.categories)) ??
+    contentCategory([str(details?.primaryCategory) ?? ""]);
+  return category ? { label: `${category} site`, sources: ["cloudflare-intel"] } : null;
+};
+
+/**
  * What to say when no rung identified anything. Never empty: for these three
  * the absence of a finding is itself the classification.
  */
+/** What kind of threat a file's flagging sources describe, for the class
+ *  headline. Exported so the hero can ask the same question the record does and
+ *  get the same answer, rather than each running its own tally. */
+export function fileThreat(r: HashCheckResult): string | undefined {
+  return threatTypeOf(r.sources, {
+    verdict: r.verdict,
+    benignOverride: r.scoreBreakdown?.benignOverride,
+  })?.type;
+}
+
 export function lastResortClaim(r: AnyResult): Claim {
   const tranco = fromTranco(r);
   if (tranco) return tranco;
+  // All three classifiers now name the mechanism themselves, rather than the
+  // call site asserting one. That mattered most here: "registration age" was
+  // hardcoded for every domain, including the ones whose class was settled by
+  // DNS returning nothing or by the name sitting under a free-subdomain
+  // service, neither of which is a registration date.
   if (isDomain(r)) {
-    const resolves =
-      (r.context?.resolvedIps?.length ?? 0) > 0 || (r.context?.ipv6?.length ?? 0) > 0;
-    return {
-      label: classifyDomainLabel(r.context, resolves).label,
-      sources: ["registration age"],
-    };
+    const domain = classifyDomainLabel(
+      domainEvidence(r.domain, parseDomain(r.domain)?.registrable, r.context, r.sources),
+    );
+    return { label: domain.label, sources: domain.sources };
   }
   if (isHash(r)) {
-    const hasData = r.sources.some((s) => s.status === "ok" && s.score !== undefined);
-    // classifyHashLabel falls all the way to "Unknown file" only when none of
-    // malwareFamily, fileType, or hasData is true, i.e. when no file metadata
-    // exists to be the mechanism. Naming "file metadata" as the source of a
-    // claim that there is none reads backwards, so that branch gets no source
-    // at all; every other branch keeps it, because there the input was real.
-    const hasMetadata = Boolean(r.context?.malwareFamily || r.context?.fileType) || hasData;
-    return {
-      label: classifyHashLabel(r.context, hasData).label,
-      sources: hasMetadata ? ["file metadata"] : [],
-    };
+    const file = classifyHashLabel(hashEvidence(r.context, r.sources, fileThreat(r)));
+    return { label: file.label, sources: file.sources };
   }
-  const geo = geoOf(r);
-  // Same story: classifyIpLabel(undefined) is "Unknown type", and there is no
-  // geo input to call "geo flags" when there was none.
-  return { label: classifyIpLabel(geo).label, sources: geo ? ["geo flags"] : [] };
+  // Same story: with nothing to read, classifyIpLabel is "Unknown type" and
+  // returns no sources, because there was no input to name as the mechanism.
+  // Every other rung names what decided it, which is why the list comes back
+  // from the classifier now instead of being assumed to be the geo flags.
+  const ip = classifyIpLabel(ipEvidence(geoOf(r), r.sources));
+  return { label: ip.label, sources: ip.sources };
 }
 
 /** Provider names specific enough to count as a *named* box, as opposed to a
@@ -424,21 +471,31 @@ const THREAT_BODY: [RegExp, BodyKey][] = [
   [/tor |anonymizer|proxy|vpn/i, "anonymizer"],
 ];
 
-/** classifyIpLabel's four IP labels, mapped onto their sprite body. "Hosting /
- *  Datacenter" and "Anonymizer" fall through to the default: spriteFor only
- *  reaches typeBody(r) once infra and threatBody are both null, and infra
- *  already includes fromGeoFlags (isHosting), so a genuine hosting IP would
- *  have produced an infra claim before this ever runs. A proxy/VPN/Tor IP
- *  works the same way through fromProxyFlag's threat claim. Both labels are
- *  still handled here rather than assumed unreachable, since either resolver
- *  can decline for its own reasons (an unguarded key-gated source, a missing
- *  free backer) and leave classifyIpLabel as the only thing that answered. */
+/** classifyIpLabel's labels, mapped onto their sprite body. The hosting-shaped
+ *  ones and "Anonymizer" fall through to the default: spriteFor only reaches
+ *  typeBody(r) once infra and threatBody are both null, and infra already
+ *  includes fromGeoFlags (isHosting), so a genuine hosting IP would have
+ *  produced an infra claim before this ever runs. A proxy/VPN/Tor IP works the
+ *  same way through fromProxyFlag's threat claim. Both are still handled here
+ *  rather than assumed unreachable, since either resolver can decline for its
+ *  own reasons (an unguarded key-gated source, a missing free backer) and leave
+ *  classifyIpLabel as the only thing that answered.
+ *
+ *  "Front door" shares the hosting golem for now, which understates it: it is
+ *  the one class whose meaning inverts, a wall with tenants behind it rather
+ *  than a box that might be hostile, and it wants a body of its own. That is
+ *  more than a line here, because the sprite has its own resolver chain and
+ *  this switch is only its last resort; a front door has to enter the infra
+ *  claim ladder to be drawn reliably. */
 function ipFallbackBody(r: AnyResult): BodyKey {
-  switch (classifyIpLabel(geoOf(r)).label) {
+  switch (classifyIpLabel(ipEvidence(geoOf(r), r.sources)).label) {
     case "Anonymizer":
       return "anonymizer";
     case "Mobile network":
       return "mobile";
+    // An organisation's egress is an end-user network wearing a company name,
+    // so it belongs with the consumer line rather than with the datacentre.
+    case "Corporate network":
     case "Residential / Other":
       return "residential";
     case "Unknown type":
@@ -658,7 +715,13 @@ function subjectOf(r: AnyResult): string {
 export function buildSubjectRecord(r: AnyResult): SubjectRecord {
   const infra = infraClaim(r);
   const threat = threatClaim(r);
-  const klass = threat ?? infra ?? lastResortClaim(r);
+  // Cloudflare's category sits between the threat and the infrastructure claim
+  // on purpose. "Behind Microsoft Azure" is where a site is hosted, not what it
+  // is, and on the modern web nearly every name is behind something, so an
+  // infra claim would otherwise win for almost all of them. `spriteFor` is
+  // still handed `infra`, so the drawn body does not move with the token, and
+  // whichever claim the class does not take becomes the `hostedOn` line.
+  const klass = threat ?? fromCloudflareCategory(r) ?? infra ?? lastResortClaim(r);
   const hostedOn = infra && infra !== klass ? infra : undefined;
 
   // The behaviour axis. Identification sources are filtered out so a source

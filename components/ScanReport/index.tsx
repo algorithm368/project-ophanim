@@ -19,8 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/CheckResults/primitives";
 import { SectionNav, type NavItem } from "@/components/CheckResults/section-nav";
-import { IpDossierCard } from "@/components/CheckResults/dossier";
-import { DomainProfileCard } from "@/components/CheckResults/profile";
+import { IdentityCard as SubjectRecordCard } from "@/components/CheckResults/identity";
 import { ActiveModeButton, ArmedPanel } from "./active-mode";
 import { ScanAnswer } from "./answer";
 import { ScanCapture } from "./capture";
@@ -80,10 +79,7 @@ const SECTIONS: NavItem[] = [
  * error in this project, not a warning. Pulled out of `ScanReport` itself so
  * that component's cognitive complexity stays under the enforced limit.
  */
-function IdentityCard({
-  subject,
-  loadingKind,
-}: Readonly<{ subject: SubjectState; loadingKind: SubjectKind }>) {
+function IdentityCard({ subject }: Readonly<{ subject: SubjectState }>) {
   if (subject.status === "failed") {
     return (
       <p className="text-sm text-foreground/60">
@@ -92,21 +88,15 @@ function IdentityCard({
       </p>
     );
   }
-  if (subject.status === "ready" && subject.subjectKind === "ip") {
-    return (
-      <IpDossierCard result={subject.result as CheckResult} streaming={false} />
-    );
-  }
   if (subject.status === "ready") {
     return (
-      <DomainProfileCard
-        result={subject.result as DomainCheckResult}
+      <SubjectRecordCard
+        result={subject.result as CheckResult | DomainCheckResult}
         streaming={false}
       />
     );
   }
-  if (loadingKind === "ip") return <IpDossierCard result={null} streaming />;
-  return <DomainProfileCard result={null} streaming />;
+  return <SubjectRecordCard result={null} streaming />;
 }
 
 /** How far along a running batch is, as a bar and a count. */
@@ -486,10 +476,7 @@ export function ScanReport({
           context for a page about the visit, which is why it is down here at
           all rather than occupying the first screen as it used to. */}
       <section id="subject" className="scroll-mt-20">
-        <IdentityCard
-          subject={subject}
-          loadingKind={target?.subjectKind ?? "domain"}
-        />
+        <IdentityCard subject={subject} />
       </section>
     </div>
   );

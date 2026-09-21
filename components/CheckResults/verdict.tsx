@@ -1,37 +1,8 @@
 "use client";
 
-import {
-    Clock,
-    RefreshCw,
-    ShieldAlert,
-    ShieldCheck,
-    ShieldQuestion,
-} from "lucide-react";
-import {
-    type AnyCheckResult,
-    isDomainResult,
-    isHashResult,
-    type SourceMeta,
-    type SourceResult,
-    type Verdict,
-} from "@/lib/ti/types";
-import { useEffect, useMemo, useState } from "react";
-import {
-    buildDomainNarrative,
-    buildHashNarrative,
-    buildNarrative,
-    consensusBuckets,
-    type ResultLike,
-} from "@/lib/ti/narrative";
-import { scoreRationale } from "@/lib/ti/rationale";
-import { threatTypeOf } from "@/lib/ti/threat-type";
-import { scoreConfidence } from "@/lib/ti/confidence";
-import { isNewlyFlagged, reputationTrend } from "@/lib/ti/trend";
-import { relativeTime } from "@/lib/relative-time";
+import { ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
+import type { SourceMeta, SourceResult, Verdict } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CopyableSummary } from "./primitives";
 import type { IconType } from "./types";
 
 export type VerdictStyle = {
@@ -46,17 +17,11 @@ export type VerdictStyle = {
     border: string;
 };
 
-// Qualitative risk level shown in place of the numeric score. The verdict word
-// already carries the meaning and the color, so the level stays monochrome and
-// coarser (a plain band), mirroring how the old score read as a bare number.
-const RISK_LEVEL: Record<Verdict, string> = {
-    malicious: "High",
-    suspicious: "Medium",
-    low: "Low",
-    clean: "Minimal",
-    unknown: "Unknown",
-};
-
+/**
+ * The verdict's colour and label, shared by every component that has to show
+ * one. The hero this file used to hold is gone: `panel.tsx` renders the
+ * verdict now, once, under the sprite.
+ */
 export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
     malicious: {
         label: "Malicious",
@@ -114,293 +79,6 @@ export const VERDICT_STYLE: Record<Verdict, VerdictStyle> = {
         border: "border-foreground/20",
     },
 };
-
-function VerdictShell({
-    result,
-    onRefresh,
-    narrative,
-}: Readonly<{
-    result: ResultLike;
-    onRefresh: () => void;
-    narrative: string;
-}>) {
-    const [detailsOpen, setDetailsOpen] = useState(false);
-    const style = VERDICT_STYLE[result.verdict];
-    // What kind of threat, as opposed to how bad. A C2, a spam bot, a Tor exit
-    // and a research scanner all read "malicious 75", and the analyst does
-    // something different with each one.
-    const threat = threatTypeOf(result.sources, {
-        verdict: result.verdict,
-        benignOverride: result.scoreBreakdown?.benignOverride,
-    });
-    // "Why this score" and "how much to trust it" are two questions an
-    // analyst asks together, never one without the other, so they sit behind
-    // one disclosure instead of two. Computed here (not inside ScoreDetails)
-    // so the meta row's toggle can know whether there is anything to show.
-    const rationale = scoreRationale(result);
-    const stats = consensusStats(result);
-    const hasDetails = Boolean(rationale) || stats.length > 0;
-    const signalCount = consensusBuckets(result).total;
-
-    return (
-        <Card className="sketch-shadow rounded-lg border border-foreground/12">
-            <CardContent className="space-y-4">
-                {/* Verdict + risk level. The verdict word is the focal point and
-                    the only element that carries color; the level reads as a plain
-                    monochrome band over a monochrome meter. */}
-                <div className="space-y-2.5">
-                    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-                        <span className="flex flex-wrap items-baseline gap-x-2">
-                            <span
-                                className={cn(
-                                    "font-mono text-2xl font-bold leading-none tracking-tight uppercase sm:text-3xl",
-                                    style.text,
-                                )}
-                            >
-                                {style.headline}
-                            </span>
-                            {threat && (
-                                <span
-                                    title={`Reported by ${threat.sources.join(", ")}${
-                                        threat.also.length
-                                            ? `. Also described as ${threat.also.join(", ")}.`
-                                            : ""
-                                    }`}
-                                    className="font-mono text-base font-bold uppercase leading-none tracking-tight text-muted-foreground"
-                                >
-                                    · {threat.type}
-                                </span>
-                            )}
-                        </span>
-                        <span className="font-mono font-bold uppercase leading-none text-foreground">
-                            <span className="text-2xl sm:text-3xl">
-                                {RISK_LEVEL[result.verdict]}
-                            </span>
-                            <span className="text-base font-medium text-muted-foreground">
-                                {" "}
-                                risk
-                            </span>
-                        </span>
-                    </div>
-                    <div
-                        role="meter"
-                        aria-label="Risk score"
-                        aria-valuenow={Math.round(result.riskScore)}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
-                    >
-                        <div
-                            className="h-full rounded-full bg-foreground"
-                            style={{
-                                width: `${Math.max(0, Math.min(100, result.riskScore))}%`,
-                            }}
-                        />
-                    </div>
-                    <SourceDots sources={result.sources} total={result.sources.length} />
-                </div>
-
-                <CopyableSummary text={narrative} />
-
-                {/* Meta: one row, not three blocks. How fresh the result is,
-                    the disclosure for why it scored the way it did, and where
-                    it came from are three facts that used to occupy a stamp,
-                    a "why this score" button, and an always-open stat grid;
-                    the grid was the loudest thing on the card for a question
-                    ("how much to trust this") not every reader asks. The
-                    exact stamp is on hover, so nothing is lost.
-
-                    A three-column grid, not a flex row: the details toggle
-                    sits in the fixed centre column, and a fixed min-width on
-                    the button keeps its box (and so its centre, where the
-                    pointer just clicked) from moving when "hide details" swaps
-                    back to the longer "details, N signals" label. */}
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-                    <CheckedAt
-                        checkedAt={result.checkedAt}
-                        cached={result.cached}
-                    />
-                    {hasDetails ? (
-                        <button
-                            type="button"
-                            onClick={() => setDetailsOpen((v) => !v)}
-                            aria-expanded={detailsOpen}
-                            className="min-w-[11.5rem] shrink-0 text-center font-mono text-xs text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
-                        >
-                            {detailsOpen
-                                ? "hide details"
-                                : `details, ${signalCount} signals`}
-                        </button>
-                    ) : (
-                        <span />
-                    )}
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        className="justify-self-end gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
-                        onClick={onRefresh}
-                    >
-                        <RefreshCw className="size-3" />
-                        {result.cached ? "fetch fresh" : "re-check"}
-                    </Button>
-                </div>
-
-                {detailsOpen && hasDetails && (
-                    <ScoreDetails rationale={rationale} stats={stats} />
-                )}
-            </CardContent>
-        </Card>
-    );
-}
-
-/**
- * "2m ago, cached", ticking.
- *
- * A cached permalink renders this card on the server and then hydrates it in
- * the browser, so two clocks produce the label. They agree to well within the
- * resolution of anything `relativeTime` returns, and the effect below re-runs
- * with the browser's own clock on mount regardless; `suppressHydrationWarning`
- * covers the once-a-minute render that straddles a boundary, and the
- * locale-formatted title, which is the server's locale until mount.
- */
-function CheckedAt({
-    checkedAt,
-    cached,
-}: Readonly<{ checkedAt: string; cached?: boolean }>) {
-    const [now, setNow] = useState(() => Date.now());
-
-    // A result that was two minutes old when the tab was opened is not two
-    // minutes old an hour later, and this line is the only thing that says so.
-    // The tick is also what reconciles the server's clock with the browser's,
-    // which is why there is no synchronous correction on mount: the two are a
-    // second apart at worst, well inside the resolution of any label this
-    // renders, so waiting for the first tick costs nothing.
-    useEffect(() => {
-        const id = setInterval(() => setNow(Date.now()), 30_000);
-        return () => clearInterval(id);
-    }, []);
-
-    return (
-        <span
-            suppressHydrationWarning
-            title={`Checked ${new Date(checkedAt).toLocaleString()}`}
-            className="inline-flex items-center gap-1.5 font-mono"
-        >
-            <Clock className="size-3" />
-            {relativeTime(checkedAt, now)}
-            {cached && ", cached"}
-        </span>
-    );
-}
-
-/**
- * Why the score is what it is, and how much to trust it, in one panel behind
- * one disclosure. `scoreRationale()` reads the intermediates `aggregateRisk()`
- * recorded rather than re-deriving them, so the terms here cannot drift from
- * the number above them. `consensusStats()` is the same figures the old
- * always-visible strip showed; folding both behind the meta row's toggle means
- * the card's default view is the headline, the meter, and the summary, not a
- * stat grid nobody asked for yet.
- */
-function ScoreDetails({
-    rationale,
-    stats,
-}: Readonly<{
-    rationale: ReturnType<typeof scoreRationale>;
-    stats: Stat[];
-}>) {
-    return (
-        <div className="space-y-3 border-t border-foreground/12 pt-3">
-            {rationale && (
-                <div className="space-y-2">
-                    {/* Numbers only. The two rows that answer the question sit
-                        next to each other: what the loudest source said, and
-                        what everything else averaged to. */}
-                    <dl className="font-mono text-[11px] text-muted-foreground">
-                        {rationale.terms.map((term, i) => (
-                            <div
-                                key={`${term.label}-${i}`}
-                                className={cn(
-                                    "flex items-baseline gap-x-3 py-0.5",
-                                    term.derived &&
-                                        "border-t border-foreground/12 text-foreground",
-                                )}
-                            >
-                                <dt className="w-24 shrink-0 uppercase tracking-wider">
-                                    {term.label}
-                                </dt>
-                                <dd className="w-14 shrink-0 text-right font-bold tabular-nums text-foreground">
-                                    {term.value}
-                                </dd>
-                                <dd className="min-w-0 flex-1 truncate text-muted-foreground">
-                                    {term.note}
-                                </dd>
-                            </div>
-                        ))}
-                    </dl>
-                    {rationale.note && (
-                        <p className="text-[13px] leading-relaxed text-muted-foreground">
-                            {rationale.note}
-                        </p>
-                    )}
-                </div>
-            )}
-            {stats.length > 0 && (
-                <dl className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-x-4 gap-y-3">
-                    {stats.map((s) => (
-                        <div
-                            key={s.key}
-                            title={s.title}
-                            className={cn("min-w-0", s.wide && "col-span-2")}
-                        >
-                            <dt className="font-mono text-[10px] uppercase leading-none tracking-[0.14em] text-muted-foreground">
-                                {s.label}
-                            </dt>
-                            <dd
-                                className={cn(
-                                    "mt-1.5 font-mono text-[13px] leading-snug break-words text-foreground",
-                                    s.emphatic && "font-bold",
-                                )}
-                            >
-                                {s.value}
-                            </dd>
-                        </div>
-                    ))}
-                </dl>
-            )}
-        </div>
-    );
-}
-
-/** The narrative builder that matches the result's shape. Order matters only in
- *  that the plain IP builder is the fallback, not a case. */
-function narrativeFor(result: AnyCheckResult): string {
-    if (isHashResult(result)) return buildHashNarrative(result).join(" ");
-    if (isDomainResult(result)) return buildDomainNarrative(result).join(" ");
-    return buildNarrative(result).join(" ");
-}
-
-export function VerdictHero({
-    result,
-    onRefresh,
-}: Readonly<{
-    result: AnyCheckResult;
-    onRefresh: () => void;
-}>) {
-    // `result` only changes when the lookup actually finishes or refreshes,
-    // but VerdictHero re-renders on every parent update in between (the ETA
-    // ticker, sibling cards streaming in); narrativeFor dispatches into a
-    // thousand-line sentence assembler each call, so it is worth keying this.
-    const narrative = useMemo(() => narrativeFor(result), [result]);
-    return (
-        <VerdictShell
-            result={result}
-            onRefresh={onRefresh}
-            narrative={narrative}
-        />
-    );
-}
 
 /** One position in the dot strip: a source that has answered, or one that has
  *  not yet. */
@@ -460,166 +138,106 @@ export function SourceDots({
      *  answered ones. */
     panel?: SourceMeta[];
 }>) {
+    const tally = dotTally(sources, total);
     return (
-        <div className="flex flex-wrap gap-1" aria-hidden>
-            {dotSlots(sources, total, panel).map((slot, i) => (
-                <span
-                    // Position is the identity here: two layers of a URL check
-                    // can share a source id, so an id key would collide.
-                    key={i}
-                    title={slot.name}
-                    className={cn(
-                        "size-1.5 rounded-full",
-                        slot.result
-                            ? dotTone(slot.result)
-                            : "animate-pulse bg-foreground/15",
-                    )}
-                />
-            ))}
+        // The min-height holds the row at caption height from the first frame.
+        // The dots are 6px and the caption ~17px, so a caption that appears once
+        // the panel is known (the first frame has no totals to count) would
+        // otherwise grow the row under everything below it.
+        <div className="flex min-h-[1.125rem] flex-wrap items-center gap-x-3 gap-y-1.5">
+            <div className="flex flex-wrap gap-1" aria-hidden>
+                {dotSlots(sources, total, panel).map((slot, i) => (
+                    <span
+                        // Position is the identity here: two layers of a URL check
+                        // can share a source id, so an id key would collide.
+                        key={i}
+                        title={slot.name}
+                        className={cn(
+                            "size-1.5 rounded-full",
+                            slot.result
+                                ? DOT_TONE[dotReading(slot.result)]
+                                : "animate-pulse bg-foreground/15",
+                        )}
+                    />
+                ))}
+            </div>
+            {/* The legend the strip never had. Twenty-five 6px dots with one of
+                them a different hue is a chart with no key: nothing on the page
+                said what a dot stood for, what the odd colour meant, or how many
+                there were of each — and a reader who cannot separate red from
+                green got no reading at all, since the strip is aria-hidden and
+                hue was the only channel carrying it. Counting in text puts the
+                figure in a second channel and gives assistive tech the summary
+                instead of nothing. The strip itself keeps registry order, which
+                is deliberate; see `dotSlots`. */}
+            {tally.length > 0 && (
+                <p className="font-mono text-[11px] text-muted-foreground">
+                    {tally.map((part, i) => (
+                        <span key={part.key}>
+                            {i > 0 && <span aria-hidden> · </span>}
+                            <span className={part.tone}>{part.text}</span>
+                        </span>
+                    ))}
+                </p>
+            )}
         </div>
     );
 }
 
-/** The same three readings the progress list uses: adverse, gap, clean. */
-function dotTone(s: SourceResult): string {
-    if (s.status === "ok" && (s.malicious === true || (s.score ?? 0) > 0)) {
-        return "bg-red-600 dark:bg-red-400";
+/** The three readings a settled source can have. `dotTone` and the caption
+ *  beneath the strip both go through this, so the colours and the counts
+ *  cannot come to disagree about the same source. */
+type DotReading = "adverse" | "gap" | "clean";
+
+function dotReading(s: SourceResult): DotReading {
+    if (s.status !== "ok") return "gap";
+    if (s.malicious === true || (s.score ?? 0) > 0) return "adverse";
+    return "clean";
+}
+
+const DOT_TONE: Record<DotReading, string> = {
+    adverse: "bg-red-600 dark:bg-red-400",
+    gap: "bg-amber-500",
+    clean: "bg-emerald-600 dark:bg-emerald-400",
+};
+
+/** The caption's parts, in the order they matter, zeroes omitted.
+ *
+ *  Counted from exactly the sources the strip renders rather than from
+ *  `consensusBuckets`, which covers only the weight-bearing detectors: a
+ *  caption sitting under the dots has to describe the dots, not a different
+ *  and smaller population that happens to be nearby on the card. */
+function dotTally(
+    sources: SourceResult[],
+    total: number,
+): { key: string; text: string; tone?: string }[] {
+    let adverse = 0;
+    let gap = 0;
+    let clean = 0;
+    for (const s of sources) {
+        const reading = dotReading(s);
+        if (reading === "adverse") adverse += 1;
+        else if (reading === "gap") gap += 1;
+        else clean += 1;
     }
-    if (s.status !== "ok") return "bg-amber-500";
-    return "bg-emerald-600 dark:bg-emerald-400";
+    const waiting = Math.max(0, total - sources.length);
+
+    const parts: { key: string; text: string; tone?: string }[] = [];
+    if (adverse > 0) {
+        parts.push({
+            key: "adverse",
+            text: `${adverse} adverse`,
+            tone: "text-red-600 dark:text-red-400",
+        });
+    }
+    // "No answer" is its own reading on purpose: a source that timed out, hit a
+    // rate limit or has no key never assessed the indicator, and folding it in
+    // with the ones that looked and found nothing would let a gap in the
+    // evidence read as evidence.
+    if (gap > 0) parts.push({ key: "gap", text: `${gap} no answer` });
+    if (clean > 0) parts.push({ key: "clean", text: `${clean} clean` });
+    if (waiting > 0) parts.push({ key: "waiting", text: `${waiting} waiting` });
+    return parts;
 }
 
 /** One cell of the stat strip: a small label over the value it names. */
-type Stat = {
-    key: string;
-    label: string;
-    value: string;
-    title?: string;
-    /** Lifted out of the muted tone, for the things that change what happens next. */
-    emphatic?: boolean;
-    /** Takes two grid tracks. For the cells holding a phrase rather than a
-     *  count, which would otherwise wrap inside a column sized for "13". */
-    wide?: boolean;
-};
-
-/** "1 rate limited, 2 no key", skipping the zeroes. Empty when all are 0. */
-function tally(buckets: Readonly<{ count: number; label: string }>[]): string {
-    return buckets
-        .filter((b) => b.count > 0)
-        .map((b) => `${b.count} ${b.label}`)
-        .join(", ");
-}
-
-/**
- * The cells of the consensus strip, in reading order.
- *
- * Split out from the rendering because deciding *which* facts this check has to
- * report is the whole of the logic here, and the markup below is then four
- * lines that do not need reading.
- */
-function consensusStats(result: ResultLike): Stat[] {
-    // Only scoring feeds (weight > 0) are detectors; context-only sources like
-    // geolocation (weight 0) can't flag, so excluding them keeps this strip
-    // consistent with the narrative's "of N TI sources" (issue #8). The tally
-    // logic is the unit-tested consensusBuckets() — the single source of truth.
-    const c = consensusBuckets(result);
-    const confidence = scoreConfidence(result);
-    const trend = reputationTrend(result.history);
-    const newlyFlagged = isNewlyFlagged(result.history, result.verdict);
-
-    const stats: Stat[] = [];
-
-    // How much the score is worth believing, as distinct from how bad it is.
-    // It leads because everything to its right is the evidence it was drawn
-    // from, so the strip reads as a claim followed by its support.
-    if (confidence) {
-        stats.push({
-            key: "confidence",
-            label: "Confidence",
-            value: confidence.level,
-            title: confidence.reason,
-        });
-    }
-
-    // Detectors, adverse and clean are always present, zero included: a stable
-    // set of columns is what makes the strip scannable, and "0 adverse" is a
-    // finding rather than an absence of one.
-    stats.push(
-        { key: "detectors", label: "Detectors", value: String(c.total) },
-        { key: "adverse", label: "Adverse", value: String(c.adverse) },
-    );
-
-    // Flagged is a subset of adverse, not a fourth bucket, so the value says
-    // "of" rather than standing alone. Reporting only this count understated
-    // the evidence, which is why "adverse" leads: a source listed on Spamhaus
-    // ZEN scores 38, just under FLAG_THRESHOLD, and used to read as clean.
-    if (c.flagged > 0 && c.flagged < c.adverse) {
-        stats.push({
-            key: "flagged",
-            label: "Flagged",
-            value: `${c.flagged} of ${c.adverse}`,
-        });
-    }
-
-    stats.push({ key: "clean", label: "Clean", value: String(c.clean) });
-
-    // A source with no record of the indicator never assessed it, which is not
-    // the same as having looked and found it clean.
-    if (c.noRecord > 0) {
-        stats.push({
-            key: "norecord",
-            label: "No record",
-            value: String(c.noRecord),
-        });
-    }
-
-    // The ways a source can fail to answer, collected under one label: these
-    // are gaps in the evidence rather than opinions about the indicator, and
-    // most checks have none, so the cell costs nothing when nothing is wrong.
-    const gaps = tally([
-        { count: c.errored, label: "errors" },
-        { count: c.rateLimited, label: "rate limited" },
-        { count: c.noKey, label: "no key" },
-        // Family-skipped sources are not misconfigured, so they must not be
-        // reported as missing a key.
-        { count: c.unsupported, label: "unsupported" },
-    ]);
-    if (gaps) stats.push({ key: "gaps", label: "Gaps", value: gaps, wide: true });
-
-    // What the recorded checks say. Reported, never scored: today's verdict
-    // becomes tomorrow's history, so feeding it back would let a verdict
-    // confirm itself. The full sentence is on hover.
-    if (trend) {
-        stats.push({
-            key: "history",
-            label: "History",
-            value: newlyFlagged ? "newly flagged" : trend.short,
-            title: trend.steady
-                ? `${trend.summary}. Every recorded check reached the same verdict.`
-                : `${trend.summary}. Verdicts on record: ${trend.seen.join(", ")}.`,
-            emphatic: newlyFlagged,
-            wide: true,
-        });
-    }
-
-    // Every floor-pinned verdict is borderline by construction: the floor is 75
-    // and the malicious cutoff is 70, so it lands five points into a band it
-    // did not reach on consensus. Those are the verdicts worth a second look,
-    // so the flag is stated here rather than only inside the rationale.
-    if (result.scoreBreakdown?.borderline) {
-        stats.push({
-            key: "flag",
-            // Not "Flag": the strip may already carry a "Flagged" column, and
-            // two labels a letter apart meaning unrelated things is the kind of
-            // thing that gets misread once and distrusted after.
-            label: "Caveat",
-            value: "borderline",
-            title: "Within five points of a verdict boundary, so the label could fall either way.",
-            emphatic: true,
-        });
-    }
-
-    return stats;
-}
-
-

@@ -9,7 +9,7 @@ import { ResultSkeleton } from "@/components/result-skeleton";
  *  the rest, since loading UI accepts no parameters. */
 export default function Loading() {
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6">
+    <main className="mx-auto w-full max-w-7xl px-4 py-6">
       <ResultSkeleton />
     </main>
   );

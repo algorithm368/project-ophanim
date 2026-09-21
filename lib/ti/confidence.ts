@@ -1,5 +1,7 @@
 import type {
   Confidence,
+  GeoResolution,
+  ResolverConsensus,
   ScoreBreakdown,
   SourceCategory,
   SourceResult,
@@ -209,4 +211,68 @@ export function scoreConfidence(
 
   const score = coverage * (AGREEMENT_SHARE + (1 - AGREEMENT_SHARE) * agreement);
   return { level: levelFor(score), score, coverage, agreement, reason };
+}
+
+/**
+ * The same two axes for the location vote, so the panel's foot can state score
+ * confidence and location confidence in one vocabulary.
+ *
+ * The axes are chosen to mean what the score's mean, not to reuse their names
+ * loosely. `coverage` is how much of the location actually resolved, over the
+ * four fields the reconciler tries for; `agreement` is the share of the
+ * providers that reported a country which backed the winning one. Both are real
+ * shares of real denominators, which is the property that makes the score's
+ * pair worth trusting.
+ *
+ * `level` is the reconciler's own verdict rather than a second opinion computed
+ * here: `lib/ti/geo/` already weighs provider reliability, and recomputing a
+ * tier from two of its outputs would quietly disagree with the tier the vote
+ * table prints beside each field.
+ */
+export interface GeoConfidence {
+  level: Confidence;
+  /** Share of country, city, coordinates and ASN that resolved at all, 0-1. */
+  coverage: number;
+  /** Providers backing the winning country, over those that named one, 0-1. */
+  agreement: number;
+}
+
+/** The four fields the reconciler attempts. Coverage is measured against all
+ *  four whether or not this subject could ever have had them, for the same
+ *  reason the score keeps unanswerable sources in its denominator. */
+const GEO_FIELDS = ["country", "city", "coordinates", "asn"] as const;
+
+export function geoConfidence(res: GeoResolution | undefined): GeoConfidence | null {
+  if (!res?.country) return null;
+  const resolved = GEO_FIELDS.filter((k) => res[k] !== undefined).length;
+  return {
+    level: res.overall?.confidence ?? "low",
+    coverage: resolved / GEO_FIELDS.length,
+    agreement: res.country.agreement,
+  };
+}
+
+/**
+ * The same two axes again, for the question upstream of both: which address the
+ * name resolves to at all.
+ *
+ * Both denominators come straight off the ballot, which is what makes this
+ * comparable with the other two rather than merely formatted like them. Coverage
+ * is the resolvers that answered over the resolvers asked, so a query that timed
+ * out lowers it rather than silently leaving the vote. Agreement is the share of
+ * those answers that backed the winning set.
+ *
+ * `level` is the consensus's own bucket, for the same reason the location row
+ * takes the reconciler's: a tier recomputed here from two of its outputs would
+ * eventually disagree with the one the rest of the app prints.
+ */
+export function resolveConfidence(
+  consensus: ResolverConsensus | undefined,
+): GeoConfidence | null {
+  if (!consensus?.totalResolvers || consensus.respondingResolvers === 0) return null;
+  return {
+    level: consensus.bucket,
+    coverage: consensus.respondingResolvers / consensus.totalResolvers,
+    agreement: consensus.agreeCount / consensus.respondingResolvers,
+  };
 }

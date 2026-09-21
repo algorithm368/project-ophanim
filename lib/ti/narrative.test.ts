@@ -17,6 +17,7 @@ import type {
   HashCheckResult,
   SourceResult,
 } from "./types";
+import { src } from "./subject-record.test";
 
 function makeSource(
   over: Partial<SourceResult> & { name: string; weight?: number },
@@ -680,6 +681,42 @@ describe("buildNarrative — unclassified type is hedged (issue #10)", () => {
     const text = ip({ isHosting: true, isp: "Cloudflare" });
     expect(text).toContain("hosting or datacenter infrastructure");
     expect(text).not.toContain("likely a residential");
+  });
+});
+
+describe("buildNarrative — an address with no identity of its own", () => {
+  /** 104.21.48.41: Cloudflare anycast, no PTR, a reverse-IP lookup that stopped
+   *  counting at its own ceiling. */
+  function frontDoor(): string {
+    const result: CheckResult = {
+      ip: "104.21.48.41",
+      checkedAt: "2026-09-15T00:00:00Z",
+      riskScore: 13,
+      verdict: "clean",
+      geo: { isHosting: true, isp: "Cloudflare, Inc.", asn: "AS13335 Cloudflare, Inc." },
+      sources: [
+        src({ id: "reverse-ip", details: { domainCount: 500, atCeiling: true } }),
+        src({ id: "cloud-range", details: { provider: "Cloudflare" } }),
+      ],
+      stats: makeStats(),
+    };
+    return buildNarrative(result).join(" ");
+  }
+
+  it("names the thing rather than calling it a datacentre", () => {
+    // The flags are true and were also the whole of what this sentence knew, so
+    // it used to say "hosting or datacenter infrastructure operated by
+    // Cloudflare" about a wall with fifty thousand tenants behind it.
+    expect(frontDoor()).toContain("a reverse-proxy front door");
+    expect(frontDoor()).not.toContain("hosting or datacenter infrastructure");
+  });
+
+  it("says what that means for the number underneath it", () => {
+    expect(frontDoor()).toContain("nothing scored here is about any one of them");
+  });
+
+  it("still names the operator, the AS and the prefix", () => {
+    expect(frontDoor()).toContain("operated by Cloudflare, Inc. (AS13335)");
   });
 });
 

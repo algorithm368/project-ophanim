@@ -9,6 +9,7 @@ import {
 } from "@/lib/ti/types";
 import { algoFromLength } from "@/lib/hash";
 import { cn } from "@/lib/utils";
+import { Tile } from "./frame";
 import type { Mode } from "./types";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -177,12 +178,12 @@ export const SourceBreakdown = memo(function SourceBreakdown({
         relevanceRank(a) - relevanceRank(b) || (b.score ?? 0) - (a.score ?? 0);
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-baseline justify-between border-b border-foreground/15 pb-2">
-                <h2 className="font-mono text-[12px] font-semibold tracking-[0.16em] text-foreground/75 uppercase">
-                    Source breakdown
-                </h2>
-                <span className="flex items-center gap-1.5 font-mono text-[12px] tabular-nums text-muted-foreground">
+        <Tile
+            span={12}
+            id="sources"
+            title="Source breakdown"
+            note={
+                <span className="flex items-center gap-1.5 tabular-nums">
                     {streaming && (
                         <span
                             aria-hidden
@@ -191,7 +192,9 @@ export const SourceBreakdown = memo(function SourceBreakdown({
                     )}
                     {sources.length} sources
                 </span>
-            </div>
+            }
+            className="space-y-6 p-4"
+        >
             {CATEGORY_ORDER.filter((cat) =>
                 sources.some((s) => s.source.category === cat),
             ).map((cat) => {
@@ -209,7 +212,7 @@ export const SourceBreakdown = memo(function SourceBreakdown({
                             </span>
                             <div className="h-px flex-1 bg-border" />
                         </div>
-                        <div className="overflow-hidden rounded-lg border border-border">
+                        <div className="border-t border-foreground/12">
                             {group.map((s) => (
                                 <SourceRow
                                     // Not the bare id: a URL check's domain
@@ -226,7 +229,7 @@ export const SourceBreakdown = memo(function SourceBreakdown({
                     </div>
                 );
             })}
-        </div>
+        </Tile>
     );
 });
 

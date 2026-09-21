@@ -1,12 +1,8 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Check, ChevronRight, Copy } from "lucide-react";
-import {
-    type DomainCheckResult,
-    type HashCheckResult,
-    type HashContext,
-} from "@/lib/ti/types";
+import { type HashCheckResult, type HashContext } from "@/lib/ti/types";
 import {
     formatBytes,
     formatDate,
@@ -14,270 +10,20 @@ import {
     hashCleanSummary,
 } from "@/lib/ti/narrative";
 import { describeDll } from "@/lib/ti/dll-dictionary";
-import { buildSubjectRecord } from "@/lib/ti/subject-record";
 import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
-    PivotList,
     RecordRow,
     RecordSection,
     RecordTable,
     SectionHeading,
     useCopied,
 } from "./primitives";
-import { SubjectMasthead, SubjectMastheadSkeleton } from "./record";
-import { IpConfidenceCard } from "./voting";
 
 /** A hairline rule used to separate the identity line from the field groups. */
 export function Rule() {
     return <div className="h-px bg-foreground/10" />;
-}
-
-type DomainContextOf = NonNullable<DomainCheckResult["context"]>;
-
-/** Who the name is registered through, and for how long. */
-function RegistrationGroup({
-    ctx,
-    rank,
-}: Readonly<{ ctx: DomainContextOf; rank?: number }>) {
-    const created = formatDate(ctx.createdAt);
-    const expires = formatDate(ctx.expiresAt);
-    const age = ageLabel(ctx.ageDays);
-    const categories = ctx.categories ?? [];
-    if (
-        !ctx.registrar &&
-        !created &&
-        !expires &&
-        categories.length === 0 &&
-        rank === undefined
-    ) {
-        return null;
-    }
-
-    // A domain registered in the last month is the single most useful age
-    // signal on this card, so it is the one thing here that takes colour.
-    const fresh = ctx.ageDays !== undefined && ctx.ageDays < 30;
-
-    return (
-        <RecordSection title="Registration">
-            {ctx.registrar && <RecordRow label="Registrar">{ctx.registrar}</RecordRow>}
-            {rank !== undefined && (
-                <RecordRow label="Popularity">
-                    Tranco rank {rank.toLocaleString("en-US")}
-                </RecordRow>
-            )}
-            {created && (
-                <RecordRow
-                    label="Registered"
-                    tone={fresh ? "text-orange-600 dark:text-orange-400" : undefined}
-                >
-                    {created}
-                    {age ? ` · ${age} old` : ""}
-                </RecordRow>
-            )}
-            {expires && <RecordRow label="Expires">{expires}</RecordRow>}
-            {categories.length > 0 && (
-                <RecordRow label="Category">{categories.slice(0, 3).join(", ")}</RecordRow>
-            )}
-        </RecordSection>
-    );
-}
-
-/** Where the name points, and how well the resolvers agree about it. */
-function DnsRecordsGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
-    const ips = ctx.resolvedIps ?? [];
-    const ns = ctx.nameservers ?? [];
-    const reverse = ctx.reverse ?? [];
-    const caa = ctx.caa ?? [];
-    const dnssec =
-        ctx.dnssec !== undefined && ctx.dnssec !== "unknown" ? ctx.dnssec : undefined;
-    const consensus =
-        ctx.resolverConsensus && ctx.resolverConsensus.respondingResolvers > 1
-            ? ctx.resolverConsensus
-            : undefined;
-
-    const anything =
-        ips.length > 0 ||
-        ns.length > 0 ||
-        reverse.length > 0 ||
-        caa.length > 0 ||
-        dnssec !== undefined ||
-        consensus !== undefined;
-    if (!anything) return null;
-
-    return (
-        <RecordSection title="DNS records">
-            {ips.length > 0 && (
-                <RecordRow label="Resolves to">
-                    <PivotList values={ips} />
-                </RecordRow>
-            )}
-            {ns.length > 0 && (
-                <RecordRow label="Nameservers">
-                    <PivotList values={ns} />
-                </RecordRow>
-            )}
-            {reverse.length > 0 && (
-                <RecordRow label="Reverse DNS (PTR)">
-                    <PivotList values={reverse} />
-                </RecordRow>
-            )}
-            {caa.length > 0 && (
-                <RecordRow
-                    label="CAA"
-                    mono
-                    hint="Certificate Authority Authorization, which CAs may issue TLS certs for this domain"
-                >
-                    {caa.join(", ")}
-                </RecordRow>
-            )}
-            {dnssec && (
-                <RecordRow
-                    label="DNSSEC"
-                    hint="Whether the zone is DNSSEC-signed (resolver set the AD flag)"
-                    tone={
-                        dnssec === "signed"
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : undefined
-                    }
-                >
-                    {dnssec === "signed" ? "Signed" : "Unsigned"}
-                </RecordRow>
-            )}
-            {consensus && (
-                <RecordRow
-                    label="Resolvers"
-                    hint="Unfiltered DoH resolvers queried for the A record, and how many agree on the resolved IP. A low count suggests GeoDNS, split-horizon, or possible poisoning."
-                    tone={
-                        consensus.bucket === "low"
-                            ? "text-red-600 dark:text-red-400"
-                            : undefined
-                    }
-                >
-                    {consensus.agreeCount}/{consensus.respondingResolvers}
-                    {consensus.bucket === "low" ? " split" : " agree"}
-                </RecordRow>
-            )}
-        </RecordSection>
-    );
-}
-
-/** Who may send mail as this domain, and what happens when they fail. */
-function EmailSecurityGroup({ ctx }: Readonly<{ ctx: DomainContextOf }>) {
-    const mx = ctx.mx ?? [];
-    if (mx.length === 0 && !ctx.spf && !ctx.dmarc) return null;
-
-    return (
-        <RecordSection title="Email security">
-            {mx.length > 0 && (
-                <RecordRow label="Mail (MX)">
-                    <PivotList values={mx} />
-                </RecordRow>
-            )}
-            {ctx.spf && (
-                <RecordRow
-                    label="SPF"
-                    mono
-                    hint="Sender Policy Framework, which servers may send mail for this domain"
-                >
-                    {ctx.spf}
-                </RecordRow>
-            )}
-            {ctx.dmarc && (
-                <RecordRow
-                    label="DMARC"
-                    mono
-                    hint="Policy for handling mail that fails SPF/DKIM authentication"
-                >
-                    {ctx.dmarc}
-                </RecordRow>
-            )}
-        </RecordSection>
-    );
-}
-
-/** A domain's age in the largest unit that stays exact: days under a year,
- *  then years and the remaining days. */
-function ageLabel(ageDays: number | undefined): string | undefined {
-    if (ageDays === undefined) return undefined;
-    if (ageDays < 365) return `${ageDays} days`;
-    return `${Math.floor(ageDays / 365)} yr ${ageDays % 365} d`;
-}
-
-export function DomainProfileCard({
-    result,
-    streaming = false,
-}: Readonly<{
-    result: DomainCheckResult | null;
-    /** Set while the panel is still answering. Renders a plain skeleton, since
-     *  there is no registration/DNS context to show until the result lands. */
-    streaming?: boolean;
-}>) {
-    // Hooks run before any early return, matching IpDossierCard: SubjectMasthead
-    // is memo'd on `record`, and a fresh object every render (this card's own,
-    // not while streaming) defeated that memo.
-    const record = useMemo(
-        () => (result ? buildSubjectRecord(result) : null),
-        [result],
-    );
-
-    if (streaming || !result || !record) {
-        return (
-            <Card className="sketch-shadow rounded-lg border border-foreground/12">
-                <CardContent className="space-y-4">
-                    <SectionHeading>Subject record</SectionHeading>
-                    <SubjectMastheadSkeleton />
-                    <div className="space-y-2">
-                        <span className="sweep block h-3 w-full rounded" />
-                        <span className="sweep block h-3 w-5/6 rounded" />
-                        <span className="sweep block h-3 w-2/3 rounded" />
-                    </div>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    const ctx = result.context;
-
-    return (
-        <Card className="sketch-shadow rounded-lg border border-foreground/12">
-            <CardContent className="space-y-4">
-                <SectionHeading>Subject record</SectionHeading>
-
-                <div className="space-y-4">
-                    <SubjectMasthead record={record} verdict={result.verdict} />
-
-                    {ctx ? (
-                        <RecordTable>
-                            <RegistrationGroup
-                                ctx={ctx}
-                                rank={
-                                    result.sources.find((s) => s.source.id === "tranco")
-                                        ?.details?.rank as number | undefined
-                                }
-                            />
-                            <DnsRecordsGroup ctx={ctx} />
-                            <EmailSecurityGroup ctx={ctx} />
-                        </RecordTable>
-                    ) : (
-                        <p className="text-sm text-muted-foreground">
-                            No registration or DNS context was returned for this domain.
-                        </p>
-                    )}
-                </div>
-
-                {/* dnsGeoSource's own consensus (originResolverConsensus), not
-                    dnsSource's resolverConsensus used by the DNS Records group
-                    above — the two are independent DNS fetches and can name a
-                    different winning IP on a GeoDNS/anycast name. */}
-                {ctx?.originResolverConsensus && (
-                    <IpConfidenceCard consensus={ctx.originResolverConsensus} />
-                )}
-            </CardContent>
-        </Card>
-    );
 }
 
 function CopyHashButton({ value }: Readonly<{ value: string }>) {
@@ -625,26 +371,15 @@ export function HashProfileCard({
      *  no verdict, family, or fingerprint can be shown until the result lands. */
     streaming?: boolean;
 }>) {
-    // Hooks run before any early return, matching IpDossierCard: SubjectMasthead
-    // is memo'd on `record`, and a fresh object every render (this card's own,
-    // not while streaming) defeated that memo.
-    const record = useMemo(
-        () => (result ? buildSubjectRecord(result) : null),
-        [result],
-    );
-
-    if (streaming || !result || !record) {
+    if (streaming || !result) {
         return (
-            <Card className="sketch-shadow rounded-lg border border-foreground/12">
-                <CardContent className="space-y-4">
-                    <SectionHeading>Subject record</SectionHeading>
-                    <SubjectMastheadSkeleton />
-                    <div className="space-y-2">
-                        <span className="sweep block h-3 w-full rounded" />
-                        <span className="sweep block h-3 w-5/6 rounded" />
-                    </div>
-                </CardContent>
-            </Card>
+            <div className="space-y-3">
+                <SectionHeading>Analysis</SectionHeading>
+                <div className="space-y-2">
+                    <span className="sweep block h-3 w-full rounded" />
+                    <span className="sweep block h-3 w-5/6 rounded" />
+                </div>
+            </div>
         );
     }
 
@@ -721,12 +456,12 @@ export function HashProfileCard({
     );
 
     return (
-        <Card className="sketch-shadow rounded-lg border border-foreground/12">
-            <CardContent className="space-y-4">
-                <SectionHeading>Subject record</SectionHeading>
-
-                <SubjectMasthead record={record} verdict={result.verdict} />
-
+        <div className="space-y-3">
+            {/* What the file was seen doing. What it *is* lives in the subject
+                record inside the panel above; this is only behaviour, which is
+                why the heading names that rather than the file. */}
+            <SectionHeading>Analysis</SectionHeading>
+            <div className="space-y-4">
                 {emptyThreat && (
                     <p className="text-sm leading-relaxed text-muted-foreground">
                         Flagged by scoring sources, but no behaviour, engine labels,
@@ -988,7 +723,7 @@ export function HashProfileCard({
                         </div>
                     </>
                 )}
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }
