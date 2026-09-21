@@ -6,6 +6,23 @@ const ENDPOINT = "https://api.hackertarget.com/reverseiplookup/";
 // surfaced set so the relations list stays meaningful and bounded.
 const MAX_DOMAINS = 40;
 
+/**
+ * Where HackerTarget's free tier stops listing, which is *not* where the names
+ * stop existing.
+ *
+ * These are two different ceilings and conflating them was a real bug. Ours is
+ * `MAX_DOMAINS`, a display choice: we know the count and show fewer. Theirs is
+ * this, an admission: the API returns 500 lines and says nothing about what it
+ * left out. An anycast front door has tens of thousands of names behind it, and
+ * this source reported `domainCount: 500` for one, which reads as a measurement
+ * of 500 rather than as "at least 500, the API gave up".
+ *
+ * The distinction earns its keep twice over, because hitting the ceiling is the
+ * single most reliable co-tenancy signal we have: see `classifyIpLabel`, which
+ * uses `atCeiling` rather than the number to tell a front door from a host.
+ */
+const PROVIDER_CEILING = 500;
+
 /** True when the body is HackerTarget's free-tier quota message, not a result. */
 export function isQuotaExceeded(text: string): boolean {
   return /api count exceeded|increase quota|too many|rate.?limit/i.test(text);
@@ -22,6 +39,46 @@ export function parseReverseIp(text: string, ip: string): string[] {
     .map((line) => line.trim().toLowerCase().replace(/\.$/, ""))
     .filter((line) => line !== ip && /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(line));
   return [...new Set(hosts)];
+}
+
+/**
+ * Turn the parsed name list into the finding, distinguishing a count from a
+ * floor.
+ *
+ * Split out of `check` so the ceiling logic can be tested without a network
+ * call, since that distinction is the whole point of this source now: an
+ * anycast address reaches `classifyIpLabel` as "at least 500" rather than as
+ * "exactly 500", and the difference decides whether the page calls it a front
+ * door or a landlord.
+ */
+export function describeTenancy(domains: string[]): SourceFinding {
+  if (domains.length === 0) {
+    return { status: "ok", summary: "No other domains found on this IP" };
+  }
+
+  const shown = domains.slice(0, MAX_DOMAINS);
+  const relations: RelatedIndicator[] = shown.map((value) => ({
+    value,
+    type: "domain",
+    relation: "hosted",
+  }));
+
+  const atCeiling = domains.length >= PROVIDER_CEILING;
+  const capped = domains.length > MAX_DOMAINS;
+  return {
+    status: "ok",
+    summary: `${atCeiling ? "More than " : ""}${domains.length} ${
+      domains.length === 1 ? "domain shares" : "domains share"
+    } this IP${capped ? ` (showing ${MAX_DOMAINS})` : ""}`,
+    details: {
+      domainCount: domains.length,
+      // The count above is a floor when this is set, not a measurement.
+      // Anything reading `domainCount` has to know which of the two it holds.
+      atCeiling,
+      domains: shown,
+    },
+    relations,
+  };
 }
 
 /**
@@ -55,28 +112,7 @@ export const reverseIpSource: TiSource = {
       }
       if (!ok) return { status: "error", error: `HTTP ${status}` };
 
-      const domains = parseReverseIp(text, ip);
-      if (domains.length === 0) {
-        return { status: "ok", summary: "No other domains found on this IP" };
-      }
-
-      const shown = domains.slice(0, MAX_DOMAINS);
-      const relations: RelatedIndicator[] = shown.map((value) => ({
-        value,
-        type: "domain",
-        relation: "hosted",
-      }));
-
-      const capped = domains.length > MAX_DOMAINS;
-      return {
-        status: "ok",
-        summary: `${domains.length} domain${domains.length === 1 ? "" : "s"} share this IP${
-          capped ? ` (showing ${MAX_DOMAINS})` : ""
-        }`,
-        details: { domainCount: domains.length, domains: shown },
-        relations,
-        raw: text.trim(),
-      };
+      return { ...describeTenancy(parseReverseIp(text, ip)), raw: text.trim() };
     } catch (err) {
       return {
         status: isTimeout(err) ? "timeout" : "error",

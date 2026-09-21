@@ -8,6 +8,7 @@
 import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { count } from "@/lib/text";
 import { FLAG_THRESHOLD } from "./aggregate";
+import { classifyIpLabel, contentCategory, ipEvidence } from "./indicator-class";
 import { isUsageCategory } from "./threat-type";
 import { ENGINE_NAME } from "./url/active/engines";
 import type { MergedScan } from "./url/active/merge";
@@ -546,37 +547,17 @@ export function threatSentences(
   return out;
 }
 
-/**
- * What kind of network the address sits on, and what that implies.
+/** What the address is: network type woven with its operator, ASN and prefix.
  *
- * Proxy is checked first and keeps the hosting fact when both are set: the
- * profile card shows both trait chips, so collapsing to "anonymizer" alone
- * would drop the datacenter context (issue #9). No flag at all means ip-api
- * did not classify the address, which is "unclassified" rather than positive
- * evidence of an end-user network, so the last case hedges rather than
- * asserts (issue #10).
- */
-function addressType(geo: GeoContext): { phrase: string; tail: string } {
-  if (geo.isProxy) {
-    return {
-      phrase: geo.isHosting
-        ? "an anonymizer (proxy, VPN, or Tor) on hosting/datacenter infrastructure"
-        : "an anonymizer (proxy, VPN, or Tor)",
-      tail: ", so the real origin is hidden",
-    };
-  }
-  if (geo.isHosting) {
-    return { phrase: "hosting or datacenter infrastructure", tail: "" };
-  }
-  if (geo.isMobile) {
-    return { phrase: "a mobile carrier (cellular) address", tail: "" };
-  }
-  return { phrase: "likely a residential or business endpoint", tail: "" };
-}
-
-/** What the address is: network type woven with its operator, ASN and prefix. */
+ *  The type and its consequence come from `classifyIpLabel`, which is the third
+ *  place that used to read `isProxy`/`isHosting`/`isMobile` for itself. That is
+ *  why this sentence said "hosting or datacenter infrastructure operated by
+ *  Cloudflare" about an anycast front door: the flags are true, and they are
+ *  also the whole of what the sentence knew. It now carries the tail the class
+ *  brings with it, which is where "nothing scored here is about any one of
+ *  them" reaches the reader. */
 function addressIdentity(geo: GeoContext, result: CheckResult): string {
-  const { phrase, tail } = addressType(geo);
+  const { phrase, tail } = classifyIpLabel(ipEvidence(geo, result.sources));
   const operator = geo.isp || geo.org || geo.asnOrg || "";
   const op = operator ? ` operated by ${operator}` : "";
   // ip-api's ASN field bundles the org name; keep just the AS number here.
@@ -666,7 +647,10 @@ export function buildDomainNarrative(result: DomainCheckResult): string[] {
   }
 
   // What the domain is: maturity, registrar, and content category in one read.
-  const categories = ctx?.categories ?? [];
+  // Filtered, because Cloudflare mixes its filter-list taxonomy in with the
+  // content categories and sorts it first, which read as "categorized as cipa
+  // filter, pornography".
+  const categories = (ctx?.categories ?? []).filter((c) => contentCategory([c]));
   const catText = categories.length
     ? `, categorized as ${categories.slice(0, 2).join(", ").toLowerCase()}`
     : "";
