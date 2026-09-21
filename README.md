@@ -75,6 +75,11 @@ Enabled only when an API key is set:
 | Google Safe Browsing  | `GOOGLE_SAFE_BROWSING_API_KEY`       |
 | VirusTotal            | `VIRUSTOTAL_API_KEY`                 |
 | ThreatFox             | `THREATFOX_API_KEY`                  |
+| Cloudflare Radar      | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` |
+
+> Cloudflare Radar supplies the domain's content category, which is what the
+> record means by "this is a". It is context only and carries no weight: a
+> category says what a site is for, never whether it is dangerous.
 
 > The DNS blocklists (DBL/SURBL) are most accurate when not queried through a
 > large public resolver - some refuse open-resolver queries and return a "query

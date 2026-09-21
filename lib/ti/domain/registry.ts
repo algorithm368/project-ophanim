@@ -17,6 +17,7 @@ import { virusTotalDomainSource } from "./sources/virustotal";
 import { pdnsDomainSource } from "./sources/pdns";
 import { threatFoxDomainSource } from "./sources/threatfox";
 import { trancoSource } from "./sources/tranco";
+import { cloudflareIntelSource } from "./sources/cloudflare-intel";
 
 /** All registered domain TI sources, in display order. */
 export const domainSources: TiSource[] = [
@@ -38,4 +39,5 @@ export const domainSources: TiSource[] = [
   pdnsDomainSource,
   threatFoxDomainSource,
   trancoSource,
+  cloudflareIntelSource,
 ];
