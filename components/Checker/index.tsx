@@ -8,7 +8,6 @@ import { detectIOC, refangIOC, iocFromPath } from "@/lib/ioc";
 import type { GeoRow } from "@/lib/ti/geo";
 import type { UrlCheckResult } from "@/lib/ti/url/types";
 import { buildPartial } from "@/lib/ti/partial";
-import type { KnownScan } from "@/components/CheckResults/active-scan";
 import { useResearchStream } from "@/components/CheckResults/use-research";
 import {
   DetectionHint,
@@ -42,17 +41,11 @@ const BulkGeoResults = dynamic(loadBulkGeo, { ssr: false });
 export default function Checker({
   initialQuery,
   initialResult,
-  knownScan,
 }: Readonly<{
   initialQuery?: string;
   /** A server-fetched cached result for a permalink (/check/<ioc>). When present
    *  it is shown immediately on first paint, skipping the client lookup. */
   initialResult?: AnyCheckResult | UrlCheckResult | null;
-  /** Whether this permalink's indicator has ever been actively scanned, read
-   *  server-side on the same Redis trip as the result. Absent on the landing
-   *  page, where there is no indicator until one is typed and the card has to
-   *  ask the route itself. */
-  knownScan?: KnownScan;
 }>) {
   const [mode, setMode] = useState<Mode>(
     () => detectIOC(initialQuery ?? "") ?? "ip",
@@ -399,12 +392,6 @@ export default function Checker({
     [result, progress],
   );
 
-  // What the server read describes the indicator this page was opened for, so
-  // it stops applying the moment a different one is looked up: after that the
-  // card asks the route, as it does on the landing page.
-  const known =
-    initialQuery && (pending || query) === initialQuery ? knownScan : undefined;
-
   const searchBox = (
     <SearchBox
       compact={showCompact}
@@ -425,7 +412,7 @@ export default function Checker({
   );
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6">
       {showCompact ? (
         searchBox
       ) : (
@@ -517,7 +504,6 @@ export default function Checker({
           onRefresh={refresh}
           onPivot={pivot}
           research={research}
-          known={known}
         />
       )}
     </div>

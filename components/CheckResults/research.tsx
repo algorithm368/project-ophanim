@@ -1,16 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { preconnect } from "react-dom";
-import {
-    Check,
-    Copy,
-    Eye,
-    ExternalLink,
-    ImageOff,
-    Loader2,
-    Maximize2,
-} from "lucide-react";
+import { ExternalLink, ImageOff, Loader2, Maximize2 } from "lucide-react";
 import { ArchivePreview } from "@/components/ArchivePreview";
 import { ImageInspector } from "@/components/ImageInspector";
 import {
@@ -33,10 +25,27 @@ import {
     type UrlScanItem,
     type WaybackSnapshot,
 } from "@/lib/ti/research";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { PivotList, SectionHeading, useCopied } from "./primitives";
+import { cn } from "@/lib/utils";
+import { Tile } from "./frame";
+
 import type { ResearchStreamState } from "./use-research";
+
+/**
+ * Outbound research, in the bestiary panel's own idiom.
+ *
+ * Rules this file exists to hold, all of them borrowed from `panel.tsx` and
+ * `identity.tsx` so the three cards read as one document:
+ *
+ *  - Full-bleed sections divided by a rule, never padded boxes inside a padded
+ *    card. The card itself carries no padding; each section carries its own.
+ *  - Labels are small caps mono, values are mono. Nothing is a chip or a pill:
+ *    a rounded fill claims to be a control of its own weight, and twelve of
+ *    them in a row claim twelve times as much attention as the section deserves.
+ *  - Colour belongs to the sprite and the verdict. Not to a copy confirmation.
+ */
+
+/** The small caps label used for every heading below the section title. */
+const CAPS = "font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase";
 
 /** Open a URL in a new *background* tab, keeping the user on the result page.
  *  A synthetic modifier-click (Ctrl on Windows/Linux, Cmd on macOS) is the
@@ -66,12 +75,8 @@ function openInBackground(url: string) {
 
 /** Intercept a plain left-click to open in the background, preserving the user's
  *  place; modified clicks / non-primary buttons keep native handling. */
-function backgroundClick(
-    e: React.MouseEvent<HTMLAnchorElement>,
-    url: string,
-) {
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
-        return;
+function backgroundClick(e: React.MouseEvent<HTMLAnchorElement>, url: string) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     openInBackground(url);
 }
@@ -80,12 +85,6 @@ function backgroundClick(
 function openAll(links: ResearchLink[]) {
     for (const link of links) openInBackground(link.url);
 }
-
-const CHIP =
-    "group inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:border-foreground/40 hover:bg-muted focus-visible:border-foreground/40 focus-visible:bg-muted focus-visible:outline-none";
-
-const SUBLABEL =
-    "font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase";
 
 /** ISO timestamp → YYYY-MM-DD; "—" for missing/sentinel (pre-1990) dates. */
 function fmtDay(iso?: string): string {
@@ -101,6 +100,9 @@ function hostOf(url: string): string {
         return url;
     }
 }
+
+/** The strip's tile: 96px wide, 16:9, the size both capture lanes share. */
+const TILE = "aspect-video w-24 shrink-0";
 
 /** One screenshot tile: a shimmer while the image loads, a soft fade-in on
  *  success, and a labeled fallback when the scan produced no screenshot or the
@@ -146,6 +148,15 @@ function ScanThumb({ item }: Readonly<{ item: UrlScanItem }>) {
     );
 }
 
+/** The hover veil both strips share: a magnifier over a dimmed tile. */
+function ZoomVeil() {
+    return (
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100">
+            <Maximize2 className="size-4" />
+        </span>
+    );
+}
+
 /** URLScan submissions as a thumbnail strip: small screenshots side by side,
  *  wrapping onto further rows only once the strip runs out of width, rather
  *  than each scan claiming its own line going down the card. A scan with no
@@ -157,7 +168,7 @@ function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
 
     return (
         <>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
                 {scans.map((s) =>
                     s.screenshot ? (
                         <button
@@ -166,12 +177,13 @@ function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
                             onClick={() => setZoom(s)}
                             aria-label={`View screenshot of ${s.pageUrl}`}
                             title={`${hostOf(s.pageUrl)}, ${fmtDay(s.time)}`}
-                            className="group relative w-24 shrink-0 overflow-hidden rounded border border-border cursor-zoom-in"
+                            className={cn(
+                                TILE,
+                                "group relative cursor-zoom-in overflow-hidden border border-foreground/12",
+                            )}
                         >
                             <ScanThumb item={s} />
-                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100">
-                                <Maximize2 className="size-4" />
-                            </span>
+                            <ZoomVeil />
                         </button>
                     ) : (
                         <a
@@ -181,7 +193,10 @@ function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
                             rel="noopener noreferrer"
                             onClick={(e) => backgroundClick(e, s.scanUrl)}
                             title={`${s.pageUrl} — open scan`}
-                            className="flex aspect-video w-24 shrink-0 flex-col items-center justify-center gap-1 rounded border border-border bg-muted px-1 text-center text-muted-foreground transition-colors hover:border-foreground/40"
+                            className={cn(
+                                TILE,
+                                "flex flex-col items-center justify-center gap-1 border border-foreground/12 bg-muted px-1 text-center text-muted-foreground transition-colors hover:border-foreground/40",
+                            )}
                         >
                             <span className="max-w-full truncate font-mono text-[10px]">
                                 {hostOf(s.pageUrl)}
@@ -213,84 +228,151 @@ function UrlScanList({ scans }: Readonly<{ scans: UrlScanItem[] }>) {
 /** Where every capture on this row is served from. */
 const ARCHIVE_ORIGIN = "https://web.archive.org";
 
-/** Captures already asked for, so hovering a chip twice costs one request. */
-const warmedCaptures = new Set<string>();
-
 /**
- * Ask for a capture during the pause before the click that needs it.
+ * The viewport each capture is laid out at before it is scaled into its tile.
  *
- * Hovering a chip is a second or so of intent that was being thrown away, and
- * the archive spends most of a cold request finding the record rather than
- * sending it. So this pays off twice over: the browser may serve the frame from
- * cache, and the archive has the record in hand either way.
- *
- * `rel="prefetch"` rather than React's `preload`, which speaks `rel="preload"`
- * and needs an `as` this is not: the destination here is a document a frame
- * will navigate to, not a subresource of this page.
+ * 640px rather than a desktop width on purpose: a site that still has a
+ * responsive stylesheet serves its narrow layout there, which is one column of
+ * large type and survives being shrunk by a factor of six. The same page laid
+ * out at 1280 shrinks into grey noise.
  */
-function warmCapture(url: string | null) {
-    if (!url || warmedCaptures.has(url)) return;
-    warmedCaptures.add(url);
-    const link = document.createElement("link");
-    link.rel = "prefetch";
-    link.href = url;
-    document.head.append(link);
+const FRAME_W = 640;
+const FRAME_H = 360;
+/** 96px of tile over 640px of page. Keeps the strip the same size as URLScan's. */
+const FRAME_SCALE = 0.15;
+
+/** How long each tile waits behind the one before it. The archive is replaying a
+ *  whole page per frame, and eight at once is how a strip of captures turns into
+ *  eight timeouts. */
+const STAGGER_MS = 450;
+
+/** True once `ref` has been anywhere near the viewport. Latches, because a strip
+ *  that has started fetching should not restart when it scrolls back off. */
+function useSeen(ref: React.RefObject<HTMLElement | null>): boolean {
+    const [seen, setSeen] = useState(false);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || seen) return;
+        const io = new IntersectionObserver(
+            (entries) => entries.some((e) => e.isIntersecting) && setSeen(true),
+            { rootMargin: "300px" },
+        );
+        io.observe(el);
+        return () => io.disconnect();
+    }, [ref, seen]);
+    return seen;
 }
 
 /**
- * Wayback snapshots as dated chips, each of which can be looked at here.
+ * One archived capture as a thumbnail.
  *
- * The date opens the capture in place, because "what did this site look like in
- * March" is the question the chip exists to answer and a new tab at the archive
- * is a detour. The arrow still goes to the archive for the toolbar, the
- * calendar, and everything else the archive does better.
+ * The archive keeps no screenshots, so the only picture of a capture is the
+ * capture itself: a sandboxed frame with scripts off, laid out at a narrow
+ * viewport and scaled down to tile size. Scripts off is not only a safety
+ * measure here, it is why this is affordable at all, and it means a page built
+ * entirely in JavaScript shows as whatever it serves without one. The date under
+ * the tile is what identifies it either way.
+ */
+function ArchiveThumb({
+    snapshot,
+    index,
+    start,
+    onOpen,
+}: Readonly<{
+    snapshot: WaybackSnapshot;
+    index: number;
+    /** Held false until the strip is near the viewport, so a card the reader
+     *  never scrolls to never asks the archive for anything. */
+    start: boolean;
+    onOpen: () => void;
+}>) {
+    const frameUrl = archiveFrameUrl(snapshot.url);
+    const [armed, setArmed] = useState(false);
+    const [loaded, setLoaded] = useState(false);
+    const day = fmtDay(snapshot.time);
+
+    useEffect(() => {
+        if (!start || armed) return;
+        const id = setTimeout(() => setArmed(true), index * STAGGER_MS);
+        return () => clearTimeout(id);
+    }, [start, armed, index]);
+
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            title={`View this capture, ${day}`}
+            aria-label={`View the ${day} capture`}
+            className="group w-24 shrink-0 cursor-zoom-in"
+        >
+            <span
+                className={cn(
+                    TILE,
+                    "relative block overflow-hidden border border-foreground/12 bg-muted",
+                )}
+            >
+                {!loaded && <span className="sweep absolute inset-0 block" />}
+                {armed && frameUrl && (
+                    <iframe
+                        // sandbox="" is the whole point: no scripts, no forms,
+                        // no popups, no navigation, no same-origin access.
+                        sandbox=""
+                        referrerPolicy="no-referrer"
+                        loading="lazy"
+                        src={frameUrl}
+                        onLoad={() => setLoaded(true)}
+                        title={`Capture of ${day}`}
+                        tabIndex={-1}
+                        aria-hidden
+                        style={{
+                            width: FRAME_W,
+                            height: FRAME_H,
+                            transform: `scale(${FRAME_SCALE})`,
+                            transformOrigin: "top left",
+                        }}
+                        className={cn(
+                            "pointer-events-none absolute top-0 left-0 border-0 bg-white grayscale-[0.15] transition duration-300 group-hover:grayscale-0",
+                            loaded ? "opacity-100" : "opacity-0",
+                        )}
+                    />
+                )}
+                <ZoomVeil />
+            </span>
+            <span className="mt-1 block text-center font-mono text-[10px] tabular-nums text-muted-foreground">
+                {day}
+            </span>
+        </button>
+    );
+}
+
+/**
+ * Wayback captures as the same thumbnail strip URLScan gets.
+ *
+ * Dated chips said when a capture exists; a strip says what was there, which is
+ * the question the row is asked. Clicking one opens it full size, where the
+ * archive's own toolbar and calendar are one link away.
  */
 function WaybackRow({ snapshots }: Readonly<{ snapshots: WaybackSnapshot[] }>) {
     const [preview, setPreview] = useState<WaybackSnapshot | null>(null);
+    const strip = useRef<HTMLDivElement>(null);
+    const seen = useSeen(strip);
     const frameUrl = preview ? archiveFrameUrl(preview.url) : null;
 
-    // The first click on a chip was paying for DNS and a TLS handshake before
-    // the archive had even been asked for anything. Settle that while the row
-    // is being read instead.
+    // The first frame was paying for DNS and a TLS handshake before the archive
+    // had been asked for anything. Settle that while the row is being read.
     preconnect(ARCHIVE_ORIGIN);
 
     return (
         <>
-            <div className="flex flex-wrap gap-1.5">
-                {snapshots.map((s) => (
-                    <span
+            <div ref={strip} className="flex flex-wrap gap-1.5">
+                {snapshots.map((s, i) => (
+                    <ArchiveThumb
                         key={s.url}
-                        // Both the pointer and the keyboard announce a chip
-                        // before they commit to it, and either is early enough
-                        // to be worth acting on.
-                        onPointerEnter={() => warmCapture(archiveFrameUrl(s.url))}
-                        onFocus={() => warmCapture(archiveFrameUrl(s.url))}
-                        className="group inline-flex items-stretch overflow-hidden rounded-md border border-border bg-muted/40 transition-colors hover:border-foreground/40"
-                    >
-                        <button
-                            type="button"
-                            onClick={() => setPreview(s)}
-                            title={`View this capture, ${fmtDay(s.time)}`}
-                            aria-label={`View the ${fmtDay(s.time)} capture`}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                        >
-                            <Eye className="size-3 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground" />
-                            <span className="font-mono text-[12px] tabular-nums">
-                                {fmtDay(s.time)}
-                            </span>
-                        </button>
-                        <a
-                            href={s.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => backgroundClick(e, s.url)}
-                            title="Open at the Wayback Machine"
-                            aria-label={`Open the ${fmtDay(s.time)} capture at the Wayback Machine`}
-                            className="inline-flex items-center border-l border-border px-1.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:outline-none"
-                        >
-                            <ExternalLink className="size-3" />
-                        </a>
-                    </span>
+                        snapshot={s}
+                        index={i}
+                        start={seen}
+                        onOpen={() => setPreview(s)}
+                    />
                 ))}
             </div>
             {preview && frameUrl && (
@@ -313,19 +395,19 @@ function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
     const [expanded, setExpanded] = useState(false);
     const shown = expanded ? certs : certs.slice(0, CERT_PREVIEW);
     return (
-        <div className="space-y-1.5">
+        <div>
             {shown.map((c, i) => (
                 <div
                     key={`${c.issuer}-${c.notBefore}-${c.commonName ?? ""}-${i}`}
-                    className="flex items-baseline justify-between gap-3 text-[13px]"
+                    className="grid grid-cols-[1fr_auto] items-baseline gap-3 border-b border-foreground/8 py-1 last:border-b-0"
                 >
                     <span
-                        className="min-w-0 truncate"
+                        className="min-w-0 truncate font-mono text-[11.5px]"
                         title={c.commonName ?? c.issuer}
                     >
                         {c.issuer}
                     </span>
-                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
                         {fmtDay(c.notBefore)} → {fmtDay(c.notAfter)}
                     </span>
                 </div>
@@ -334,9 +416,9 @@ function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
                 <button
                     type="button"
                     onClick={() => setExpanded((v) => !v)}
-                    className="text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    className={cn(CAPS, "mt-2 transition-colors hover:text-foreground")}
                 >
-                    {expanded ? "show less" : `show all ${certs.length}`}
+                    {expanded ? "Show less" : `Show all ${certs.length}`}
                 </button>
             )}
         </div>
@@ -346,14 +428,11 @@ function CertList({ certs }: Readonly<{ certs: ResearchCert[] }>) {
 /**
  * The frame every provider sits in, whether it is loading, empty, or full.
  *
- * One frame and one body height, because these blocks arrive seconds apart: a
- * lane that shrinks when it lands and grows when the next one starts moves the
- * card under the reader's cursor. A slot that never changes size means the only
- * thing that changes is the content.
- *
- * A flat row, not a bordered box: `LiveResearch` separates providers with a
- * `divide-y`, the same idiom the subject record's field groups use, so a card
- * with several lanes reads as one list rather than a stack of boxes-in-a-box.
+ * A ledger row rather than a stacked block: the provider's name and what it
+ * says about itself sit in the same 8.5rem label column the subject record
+ * uses, so the two cards line up down the page. One body height, because these
+ * lanes arrive seconds apart and a slot that grows when the next one starts
+ * moves the card under the reader's cursor.
  */
 function ProviderShell({
     name,
@@ -369,21 +448,14 @@ function ProviderShell({
     children: React.ReactNode;
 }>) {
     return (
-        <div className="space-y-2 py-3">
-            <div className="flex items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-foreground">
+        <div className="grid grid-cols-[8.5rem_1fr] items-start gap-x-4 border-b border-foreground/12 py-3 last:border-b-0">
+            <div className="min-w-0">
+                <div className="font-mono text-[11.5px] font-bold tracking-[0.06em] uppercase">
                     {name}
-                </span>
-                <div className="flex items-center gap-2">
-                    {loading && (
-                        <Loader2
-                            className="size-3 animate-spin text-muted-foreground"
-                            aria-hidden
-                        />
-                    )}
-                    <span className="font-mono text-[11px] text-muted-foreground">
-                        {note}
-                    </span>
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[9.5px] text-muted-foreground">
+                    {loading && <Loader2 className="size-2.5 animate-spin" aria-hidden />}
+                    <span className="min-w-0 truncate">{note}</span>
                     {link && (
                         <a
                             href={link}
@@ -391,14 +463,14 @@ function ProviderShell({
                             rel="noopener noreferrer"
                             onClick={(e) => backgroundClick(e, link)}
                             title="Open provider"
-                            className="text-muted-foreground transition-colors hover:text-foreground"
+                            className="shrink-0 transition-colors hover:text-foreground"
                         >
-                            <ExternalLink className="size-3.5" />
+                            <ExternalLink className="size-3" />
                         </a>
                     )}
                 </div>
             </div>
-            <div className="min-h-16">{children}</div>
+            <div className="min-w-0 min-h-14">{children}</div>
         </div>
     );
 }
@@ -412,23 +484,11 @@ function ProviderBody({ data }: Readonly<{ data: ResearchData }>) {
             <WaybackRow snapshots={data.snapshots} />
         ) : null;
     }
-    if (data.certs.length === 0 && data.subdomains.length === 0) return null;
-    return (
-        <div className="space-y-3">
-            {data.subdomains.length > 0 && (
-                <div className="space-y-1.5">
-                    <div className={SUBLABEL}>
-                        Subdomains{" "}
-                        <span className="text-muted-foreground/60">
-                            ({data.subdomains.length})
-                        </span>
-                    </div>
-                    <PivotList values={data.subdomains} max={12} />
-                </div>
-            )}
-            {data.certs.length > 0 && <CertList certs={data.certs} />}
-        </div>
-    );
+    // Only the certificates. The names this lane also returns have their own
+    // tile in the frame, which prints all of them against the apex rather than
+    // a capped dozen in a column this wide.
+    if (data.certs.length === 0) return null;
+    return <CertList certs={data.certs} />;
 }
 
 /** The header note: what the lane says about itself in one phrase. Empty and
@@ -458,7 +518,7 @@ function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
     return (
         <ProviderShell name={provider.name} note={noteFor(result)} link={link}>
             {body ?? (
-                <p className="flex h-16 items-center text-[13px] text-muted-foreground">
+                <p className="flex h-14 items-center font-mono text-[11.5px] text-muted-foreground">
                     {BLANK_BODY[status] ?? "Nothing to show."}
                 </p>
             )}
@@ -471,15 +531,11 @@ function ProviderBlock({ result }: Readonly<{ result: ResearchResult }>) {
 function ProviderSkeleton({ name }: Readonly<{ name?: string }>) {
     return (
         <ProviderShell
-            name={
-                name ?? (
-                    <span className="sweep inline-block h-3 w-24 rounded align-middle" />
-                )
-            }
+            name={name ?? <span className="sweep inline-block h-3 w-20 rounded align-middle" />}
             note="loading…"
             loading
         >
-            <div className="flex h-16 flex-col justify-center gap-2">
+            <div className="flex h-14 flex-col justify-center gap-2">
                 {["w-full", "w-4/5", "w-2/3"].map((w) => (
                     <span key={w} className={`sweep block h-2.5 rounded ${w}`} />
                 ))}
@@ -493,7 +549,7 @@ function ProviderSkeleton({ name }: Readonly<{ name?: string }>) {
  *  so a fast source (URLScan) appears immediately and a slow one (crt.sh) never
  *  blocks it. Renders nothing when there is no live lane for this IOC type
  *  (e.g. a bare hash) and no error. */
-function LiveResearch({
+export function LiveIntelTile({
     research,
     kind,
 }: Readonly<{ research: ResearchStreamState; kind: IOCType }>) {
@@ -507,30 +563,91 @@ function LiveResearch({
     if (!loading && visible.length === 0 && !error) return null;
 
     return (
-        <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-                <div className={SUBLABEL}>Live intel</div>
-                {loading && (
-                    <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-                )}
-            </div>
-
-            <div className="divide-y divide-foreground/[0.06] [&>:first-child]:pt-0 [&>:last-child]:pb-0">
-                {visible.map((m) => {
-                    const r = results[m.id];
-                    return r ? (
-                        <ProviderBlock key={m.id} result={r} />
-                    ) : (
-                        <ProviderSkeleton key={m.id} name={m.name} />
-                    );
-                })}
-            </div>
+        <Tile
+            span={5}
+            id="research"
+            title="Live intel"
+            note={
+                loading ? (
+                    <Loader2 className="size-3 animate-spin" />
+                ) : (
+                    `${visible.length} ${visible.length === 1 ? "lane" : "lanes"}`
+                )
+            }
+        >
+            {visible.map((m) => {
+                const r = results[m.id];
+                return r ? (
+                    <ProviderBlock key={m.id} result={r} />
+                ) : (
+                    <ProviderSkeleton key={m.id} name={m.name} />
+                );
+            })}
             {error && visible.length === 0 && (
-                <p className="font-mono text-[12px] text-muted-foreground">
+                <p className="font-mono text-[11.5px] text-muted-foreground">
                     Live lookup unavailable.
                 </p>
             )}
-        </div>
+        </Tile>
+    );
+}
+
+/**
+ * Where else to look, three groups side by side.
+ *
+ * Side by side rather than stacked, the way the evidence section halves its
+ * detectors: twelve destinations are four rows tall instead of nine, so the
+ * block reads as a directory under the live lanes rather than as the bulk of
+ * the card.
+ */
+export function LinksTile({
+    indicator,
+    kind,
+    span = 7,
+}: Readonly<{ indicator: string; kind: IOCType; span?: 7 | 12 }>) {
+    const sections = researchLinks(indicator, kind);
+    const total = sections.reduce((n, s) => n + s.links.length, 0);
+    return (
+        <Tile span={span} title="Look elsewhere" note={`${total} destinations`}>
+            <div className="grid gap-x-10 md:grid-cols-3">
+                {sections.map((section) => (
+                    <div key={section.id}>
+                        <div className="mb-1 flex items-baseline justify-between gap-3">
+                            <span className={CAPS}>{section.label}</span>
+                            {/* Best-effort: opens every link in this group at once. */}
+                            <button
+                                type="button"
+                                onClick={() => openAll(section.links)}
+                                title={`Open all ${section.label.toLowerCase()} links`}
+                                className={cn(
+                                    CAPS,
+                                    "inline-flex shrink-0 items-center gap-1 transition-colors hover:text-foreground",
+                                )}
+                            >
+                                All
+                                <ExternalLink className="size-2.5" />
+                            </button>
+                        </div>
+                        {section.links.map((link) => (
+                            <a
+                                key={link.id}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={`Search ${link.name} for ${indicator}`}
+                                onClick={(e) => backgroundClick(e, link.url)}
+                                className="group grid grid-cols-[1fr_auto] items-center gap-3 border-b border-foreground/12 py-1.5 transition-colors last:border-b-0 hover:border-foreground/40"
+                            >
+                                <span className="truncate font-mono text-[11.5px]">
+                                    {link.name}
+                                </span>
+                                <ExternalLink className="size-3 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
+                            </a>
+                        ))}
+                    </div>
+                ))}
+            </div>
+        </Tile>
     );
 }
 
@@ -542,7 +659,7 @@ function LiveResearch({
  * actually requested. URL is checked first because it is the most specific
  * shape and the other guards would not recognize it.
  */
-function researchTarget(result: AnyCheckResult | UrlCheckResult): {
+export function researchTarget(result: AnyCheckResult | UrlCheckResult): {
     indicator: string;
     kind: IOCType;
 } {
@@ -557,128 +674,4 @@ function researchTarget(result: AnyCheckResult | UrlCheckResult): {
         return { indicator: result.domain, kind: "domain" };
     }
     return { indicator: result.ip, kind: "ip" };
-}
-
-/** Outbound research panel: live free-API context (URLScan/Wayback/crt.sh)
- *  fetched and rendered inline, followed by one-click links that open each
- *  platform's search for this indicator in a new tab. A Copy control puts the
- *  indicator on the clipboard for platforms whose search can't be deep-linked
- *  (e.g. ANY.RUN). */
-export function ResearchCard({
-    result,
-    research,
-    streaming = false,
-}: Readonly<{
-    result: AnyCheckResult | UrlCheckResult | null;
-    research: ResearchStreamState;
-    /** Set while the panel is still answering (IP path only, so far). Domain,
-     *  hash and URL call sites don't pass this yet and keep their prior
-     *  all-or-nothing render, hence the default. There is no indicator/kind to
-     *  research until `result` lands, so streaming renders a plain skeleton
-     *  rather than the live-research lane. */
-    streaming?: boolean;
-}>) {
-    const [copied, copy] = useCopied();
-
-    if (streaming || !result) {
-        return (
-            <Card className="sketch-shadow rounded-lg border border-foreground/12">
-                <CardContent className="space-y-5">
-                    <SectionHeading>Research</SectionHeading>
-                    <div className="space-y-2">
-                        <span className="sweep block h-3 w-24 rounded" />
-                        <div className="flex flex-wrap gap-1.5">
-                            {["w-20", "w-24", "w-16", "w-28"].map((w) => (
-                                <span
-                                    key={w}
-                                    className={`sweep block h-7 rounded-md ${w}`}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    const { indicator, kind } = researchTarget(result);
-
-    const sections = researchLinks(indicator, kind);
-
-    return (
-        <Card className="sketch-shadow rounded-lg border border-foreground/12">
-            <CardContent className="space-y-5">
-                <SectionHeading
-                    action={
-                        <div className="flex min-w-0 items-center gap-1.5">
-                            <code className="max-w-[150px] truncate font-mono text-[12px] text-muted-foreground sm:max-w-[260px]">
-                                {indicator}
-                            </code>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="xs"
-                                aria-label={`Copy ${kind}`}
-                                className="gap-1.5 text-muted-foreground hover:text-foreground"
-                                onClick={() => copy(indicator)}
-                            >
-                                {copied ? (
-                                    <>
-                                        <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                                        Copied
-                                    </>
-                                ) : (
-                                    <>
-                                        <Copy className="size-3.5" />
-                                        Copy
-                                    </>
-                                )}
-                            </Button>
-                        </div>
-                    }
-                >
-                    Research
-                </SectionHeading>
-
-                <LiveResearch research={research} kind={kind} />
-
-                {sections.map((section) => (
-                    <div key={section.id} className="space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                            <div className={SUBLABEL}>{section.label}</div>
-                            {/* Best-effort: opens every chip in this group at once. */}
-                            <button
-                                type="button"
-                                onClick={() => openAll(section.links)}
-                                title={`Open all ${section.label.toLowerCase()} links`}
-                                className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none"
-                            >
-                                Open all
-                                <ExternalLink className="size-3" />
-                            </button>
-                        </div>
-                        {/* Wrapping chips: small flat hit targets, a hover fill, and
-                            a ↗ that brightens on hover so each reads as an outbound
-                            link. Mirrors the Pivot chip idiom. */}
-                        <div className="flex flex-wrap gap-1.5">
-                            {section.links.map((link) => (
-                                <a
-                                    key={link.id}
-                                    href={link.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title={`Search ${link.name} for ${indicator}`}
-                                    onClick={(e) => backgroundClick(e, link.url)}
-                                    className={CHIP}
-                                >
-                                    {link.name}
-                                    <ExternalLink className="size-3 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
-                                </a>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </CardContent>
-        </Card>
-    );
 }

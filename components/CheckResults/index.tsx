@@ -13,46 +13,46 @@ import type { IOCType } from "@/lib/ioc";
 import type { PartialLookup } from "@/lib/ti/partial";
 import { PivotContext } from "./primitives";
 import { LayerStack } from "./layers";
-import { ActiveScanCard, type KnownScan } from "./active-scan";
-import { VerdictHero } from "./verdict";
-import { PendingHero } from "./pending";
+import { Frame } from "./frame";
+import {
+    BallotsTile,
+    ConfidenceTile,
+    EvidenceTile,
+    hasBallots,
+    HeroTile,
+    ProvenanceTile,
+    RailTile,
+} from "./panel";
+import { RecordTile, VitalsTile } from "./identity";
+import { SubdomainsTile } from "./subdomains";
+import { FrameSkeleton } from "./pending";
 import { SourceBreakdown } from "./sources";
 import { SourceHealthNotice } from "./activity";
-import { CertificatesCard, PassiveDnsCard } from "./deep";
-import {
-    ConnectionsCard,
-    DistributionUrlsCard,
-} from "./connections";
-import { DomainProfileCard, HashProfileCard } from "./profile";
-import { IpDossierCard } from "./dossier";
-import { ResearchCard } from "./research";
+import { DistributionUrlsCard } from "./connections";
+import { HashProfileCard } from "./profile";
+import { LinksTile, LiveIntelTile, researchTarget } from "./research";
 import { SectionNav, type NavItem } from "./section-nav";
 import type { ResearchStreamState } from "./use-research";
 
-/** Section anchors + jump-nav labels, in document order, per IOC type. Cards
+/** Section anchors + jump-nav labels, in document order, per IOC type. Tiles
  *  self-hide when empty, so SectionNav prunes any that render nothing. */
 const IP_SECTIONS: NavItem[] = [
-    { id: "dossier", label: "Dossier" },
-    { id: "dns", label: "DNS" },
-    { id: "related", label: "Related" },
+    { id: "evidence", label: "Evidence" },
+    { id: "record", label: "Record" },
     { id: "research", label: "Research" },
-    { id: "scan", label: "Scan" },
     { id: "sources", label: "Sources" },
 ];
 
 const DOMAIN_SECTIONS: NavItem[] = [
-    { id: "origin", label: "Origin" },
-    { id: "certs", label: "Certs" },
-    { id: "dns", label: "DNS" },
-    { id: "related", label: "Related" },
+    { id: "evidence", label: "Evidence" },
+    { id: "record", label: "Record" },
+    { id: "subdomains", label: "Subdomains" },
     { id: "research", label: "Research" },
-    { id: "scan", label: "Scan" },
     { id: "sources", label: "Sources" },
 ];
 
 const HASH_SECTIONS: NavItem[] = [
-    { id: "origin", label: "Origin" },
-    { id: "related", label: "Related" },
+    { id: "origin", label: "Analysis" },
     { id: "dist", label: "Dist" },
     { id: "research", label: "Research" },
     { id: "sources", label: "Sources" },
@@ -67,58 +67,55 @@ function Section({ id, children }: Readonly<{ id: string; children: React.ReactN
     );
 }
 
+/**
+ * The whole result as one frame.
+ *
+ * Reading order is the grid's own order: what it is, how sure we are, what is
+ * on record, where else to look. The narrow lane is what a reader consults
+ * rather than reads, and it is tinted rather than separated, because the page
+ * is one subject and a gutter between the lanes made it two.
+ */
 function Results({
     result,
     partial,
     indicator,
     onRefresh,
     research,
-    known,
 }: Readonly<{
     result: CheckResult | null;
     partial: PartialLookup | null;
     indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
-    known?: KnownScan;
 }>) {
     const streaming = result === null;
     return (
         <div className="mt-5 space-y-5">
             {result && <SourceHealthNotice result={result} />}
-            {result ? (
-                <VerdictHero result={result} onRefresh={onRefresh} />
+            {streaming ? (
+                <FrameSkeleton indicator={indicator} partial={partial} kind="ip" />
             ) : (
-                partial && <PendingHero indicator={indicator} partial={partial} />
+                <Frame>
+                    <RailTile result={result} />
+                    <HeroTile result={result} />
+                    <ProvenanceTile result={result} onRefresh={onRefresh} />
+                    <VitalsTile result={result} />
+                    <ConfidenceTile result={result} />
+                    <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
+                    <BallotsTile result={result} />
+                    <RecordTile result={result} />
+                    <LiveIntelTile research={research} kind="ip" />
+                    <LinksTile indicator={researchTarget(result).indicator} kind="ip" />
+                    <SourceBreakdown
+                        sources={result.sources}
+                        indicator={indicator}
+                        kind="ip"
+                    />
+                </Frame>
             )}
             {/* Rendered in both phases: it draws the left rail, and a rail that
                 appears only with results slides the whole column sideways. */}
             <SectionNav items={IP_SECTIONS} />
-            <Section id="dossier">
-                <IpDossierCard result={result} streaming={streaming} />
-            </Section>
-            <Section id="dns">
-                <PassiveDnsCard result={result} streaming={streaming} />
-            </Section>
-            <Section id="related">
-                <ConnectionsCard result={result} streaming={streaming} />
-            </Section>
-            <Section id="research">
-                <ResearchCard result={result} research={research} streaming={streaming} />
-            </Section>
-            <Section id="scan">
-                {/* Takes an indicator, not a result: it reports whether a scan
-                    already exists, which does not depend on this lookup. */}
-                <ActiveScanCard indicator={indicator} kind="ip" known={known} />
-            </Section>
-            <Section id="sources">
-                <SourceBreakdown
-                    sources={result?.sources ?? partial?.sources ?? []}
-                    indicator={indicator}
-                    kind="ip"
-                    streaming={streaming}
-                />
-            </Section>
         </div>
     );
 }
@@ -129,56 +126,42 @@ function DomainResults({
     indicator,
     onRefresh,
     research,
-    known,
 }: Readonly<{
     result: DomainCheckResult | null;
     partial: PartialLookup | null;
     indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
-    known?: KnownScan;
 }>) {
     const streaming = result === null;
     return (
         <div className="mt-5 space-y-5">
             {result && <SourceHealthNotice result={result} />}
-            {result ? (
-                <VerdictHero result={result} onRefresh={onRefresh} />
+            {streaming ? (
+                <FrameSkeleton indicator={indicator} partial={partial} kind="domain" />
             ) : (
-                partial && <PendingHero indicator={indicator} partial={partial} />
+                <Frame>
+                    <RailTile result={result} />
+                    <HeroTile result={result} />
+                    <ProvenanceTile result={result} onRefresh={onRefresh} />
+                    <VitalsTile result={result} />
+                    <ConfidenceTile result={result} />
+                    <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
+                    <BallotsTile result={result} />
+                    <RecordTile result={result} />
+                    <SubdomainsTile result={result} />
+                    <LiveIntelTile research={research} kind="domain" />
+                    <LinksTile indicator={researchTarget(result).indicator} kind="domain" />
+                    <SourceBreakdown
+                        sources={result.sources}
+                        indicator={indicator}
+                        kind="domain"
+                    />
+                </Frame>
             )}
-            {/* Both phases: the rail draws the left column's edge, and a rail
-                that appears only with results slides the whole content column
-                sideways when the result lands. */}
+            {/* Rendered in both phases: it draws the left rail, and a rail that
+                appears only with results slides the whole column sideways. */}
             <SectionNav items={DOMAIN_SECTIONS} />
-            <Section id="origin">
-                <DomainProfileCard result={result} streaming={streaming} />
-            </Section>
-            <Section id="certs">
-                <CertificatesCard result={result} streaming={streaming} />
-            </Section>
-            <Section id="dns">
-                <PassiveDnsCard result={result} streaming={streaming} />
-            </Section>
-            <Section id="related">
-                <ConnectionsCard result={result} streaming={streaming} />
-            </Section>
-            <Section id="research">
-                <ResearchCard result={result} research={research} streaming={streaming} />
-            </Section>
-            <Section id="scan">
-                {/* Takes an indicator, not a result: it reports whether a scan
-                    already exists, which does not depend on this lookup. */}
-                <ActiveScanCard indicator={indicator} kind="domain" known={known} />
-            </Section>
-            <Section id="sources">
-                <SourceBreakdown
-                    sources={result?.sources ?? partial?.sources ?? []}
-                    indicator={indicator}
-                    kind="domain"
-                    streaming={streaming}
-                />
-            </Section>
         </div>
     );
 }
@@ -186,7 +169,6 @@ function DomainResults({
 const URL_SECTIONS: NavItem[] = [
     { id: "layers", label: "Layers" },
     { id: "research", label: "Research" },
-    { id: "scan", label: "Scan" },
     { id: "sources", label: "Sources" },
 ];
 
@@ -198,16 +180,12 @@ const URL_SECTIONS: NavItem[] = [
  */
 function UrlResults({
     result,
-    indicator,
     onRefresh,
     research,
-    known,
 }: Readonly<{
     result: UrlCheckResult | null;
-    indicator: string;
     onRefresh: () => void;
     research: ResearchStreamState;
-    known?: KnownScan;
 }>) {
     const streaming = result === null;
     const LAYER_TITLE = {
@@ -227,14 +205,12 @@ function UrlResults({
                 that appears only with results slides the whole content column
                 sideways when the result lands. */}
             <SectionNav items={URL_SECTIONS} />
-            <Section id="research">
-                <ResearchCard result={result} research={research} streaming={streaming} />
-            </Section>
-            <Section id="scan">
-                {/* Takes an indicator, not a result: it reports whether a scan
-                    already exists, which does not depend on this lookup. */}
-                <ActiveScanCard indicator={indicator} kind="url" known={known} />
-            </Section>
+            {result && (
+                <Frame>
+                    <LiveIntelTile research={research} kind="domain" />
+                    <LinksTile indicator={researchTarget(result).indicator} kind="domain" />
+                </Frame>
+            )}
             <Section id="sources">
                 {/* `result.layers` doesn't exist while streaming; render
                     nothing here until the result lands rather than crashing. */}
@@ -278,34 +254,37 @@ function HashResults({
     return (
         <div className="mt-5 space-y-5">
             {result && <SourceHealthNotice result={result} />}
-            {result ? (
-                <VerdictHero result={result} onRefresh={onRefresh} />
+            {streaming ? (
+                <FrameSkeleton indicator={indicator} partial={partial} kind="hash" />
             ) : (
-                partial && <PendingHero indicator={indicator} partial={partial} />
+                <Frame>
+                    <RailTile result={result} />
+                    <HeroTile result={result} />
+                    <ProvenanceTile result={result} onRefresh={onRefresh} />
+                    <VitalsTile result={result} />
+                    <ConfidenceTile result={result} />
+                    <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
+                    <BallotsTile result={result} />
+                    <RecordTile result={result} />
+                    <LiveIntelTile research={research} kind="hash" />
+                    <LinksTile indicator={researchTarget(result).indicator} kind="hash" />
+                    <SourceBreakdown
+                        sources={result.sources}
+                        indicator={indicator}
+                        kind="hash"
+                    />
+                </Frame>
             )}
-            {/* Both phases: the rail draws the left column's edge, and a rail
-                that appears only with results slides the whole content column
-                sideways when the result lands. */}
+            {/* Rendered in both phases: it draws the left rail, and a rail that
+                appears only with results slides the whole column sideways. */}
             <SectionNav items={HASH_SECTIONS} />
+            {/* Still their own cards: neither has been folded into the frame
+                yet. */}
             <Section id="origin">
                 <HashProfileCard result={result} streaming={streaming} />
             </Section>
-            <Section id="related">
-                <ConnectionsCard result={result} streaming={streaming} />
-            </Section>
             <Section id="dist">
                 <DistributionUrlsCard result={result} streaming={streaming} />
-            </Section>
-            <Section id="research">
-                <ResearchCard result={result} research={research} streaming={streaming} />
-            </Section>
-            <Section id="sources">
-                <SourceBreakdown
-                    sources={result?.sources ?? partial?.sources ?? []}
-                    indicator={indicator}
-                    kind="hash"
-                    streaming={streaming}
-                />
             </Section>
         </div>
     );
@@ -319,7 +298,6 @@ export default function CheckResults({
     onRefresh,
     onPivot,
     research,
-    known,
 }: Readonly<{
     result: AnyCheckResult | UrlCheckResult | null;
     /** Set while the panel is still answering; null once `result` arrives. */
@@ -333,9 +311,6 @@ export default function CheckResults({
     onPivot?: (value: string) => void;
     /** Progressive live-research state, fetched in parallel with the main check. */
     research: ResearchStreamState;
-    /** Whether this indicator has been actively scanned, when a server render
-     *  already answered it. Absent on a lookup typed into the landing page. */
-    known?: KnownScan;
 }>) {
     // A URL result is checked first: it is the most specific shape, and the
     // other guards would not recognize it. The guards still run when a result
@@ -350,7 +325,7 @@ export default function CheckResults({
     else if (isDomainResult(result)) shape = "domain";
     else shape = "ip";
 
-    const common = { partial, indicator, onRefresh, research, known };
+    const common = { partial, indicator, onRefresh, research };
     let body: React.ReactNode;
     if (shape === "url") {
         body = <UrlResults result={result as UrlCheckResult | null} {...common} />;

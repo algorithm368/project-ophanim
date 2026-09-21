@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   HIGH_AT,
   MEDIUM_AT,
+  geoConfidence,
   levelFor,
+  resolveConfidence,
   scoreConfidence,
 } from "@/lib/ti/confidence";
+import type { GeoResolution, ResolverConsensus } from "@/lib/ti/types";
 import type { SourceResult, SourceStatus } from "@/lib/ti/types";
 
 function src(opts: {
@@ -253,5 +256,84 @@ describe("agreement excludes a narrow list's silence", () => {
       sources: [cat("feodo", "blocklist", 0), cat("dnsbl", "dnsbl", 0, 0.5)],
     });
     expect(c?.agreement).toBe(1);
+  });
+});
+
+describe("geoConfidence", () => {
+  const field = (agreement: number) => ({
+    value: "Germany",
+    confidence: "high" as const,
+    score: 1,
+    agreement,
+    sources: ["a"],
+  });
+
+  const res = (over: Partial<GeoResolution> = {}): GeoResolution =>
+    ({
+      country: field(0.7),
+      providerCount: 9,
+      flags: { isHosting: false, isProxy: false, isMobile: false, sources: {} },
+      ...over,
+    }) as GeoResolution;
+
+  it("measures coverage over the four fields the reconciler tries for", () => {
+    // Country alone is a quarter of a location, however many providers agreed.
+    expect(geoConfidence(res())?.coverage).toBeCloseTo(0.25);
+    expect(
+      geoConfidence(res({ city: field(1), coordinates: field(1) as never, asn: field(1) }))?.coverage,
+    ).toBe(1);
+  });
+
+  it("takes agreement from the country vote", () => {
+    expect(geoConfidence(res())?.agreement).toBeCloseTo(0.7);
+  });
+
+  it("reports the reconciler's own tier rather than computing a second one", () => {
+    // lib/ti/geo already weighs provider reliability; a tier derived here would
+    // quietly disagree with the one the vote table prints per field.
+    expect(geoConfidence(res({ overall: { score: 0.9, confidence: "high" } }))?.level).toBe("high");
+    expect(geoConfidence(res())?.level).toBe("low");
+  });
+
+  it("answers nothing when no country resolved", () => {
+    expect(geoConfidence(undefined)).toBeNull();
+    expect(geoConfidence(res({ country: undefined }))).toBeNull();
+  });
+});
+
+describe("resolveConfidence", () => {
+  const consensus = (over: Partial<ResolverConsensus> = {}): ResolverConsensus => ({
+    respondingResolvers: 4,
+    totalResolvers: 4,
+    consensusIps: ["1.2.3.4"],
+    agreeCount: 4,
+    confidence: 1,
+    bucket: "high",
+    variants: [{ ips: ["1.2.3.4"], count: 4 }],
+    perResolver: [],
+    ...over,
+  });
+
+  it("counts a resolver that never answered against coverage", () => {
+    // A timed-out query is a gap in the ballot, not a silent abstention: two of
+    // four answering is half the coverage even when both agree.
+    const c = resolveConfidence(consensus({ respondingResolvers: 2, agreeCount: 2 }));
+    expect(c?.coverage).toBe(0.5);
+    expect(c?.agreement).toBe(1);
+  });
+
+  it("measures agreement against the resolvers that answered", () => {
+    const c = resolveConfidence(consensus({ respondingResolvers: 4, agreeCount: 3 }));
+    expect(c?.agreement).toBeCloseTo(0.75);
+  });
+
+  it("reports the consensus's own bucket rather than computing a second one", () => {
+    expect(resolveConfidence(consensus({ bucket: "medium" }))?.level).toBe("medium");
+  });
+
+  it("answers nothing when nobody resolved the name", () => {
+    expect(resolveConfidence(undefined)).toBeNull();
+    expect(resolveConfidence(consensus({ respondingResolvers: 0, agreeCount: 0 }))).toBeNull();
+    expect(resolveConfidence(consensus({ totalResolvers: 0 }))).toBeNull();
   });
 });

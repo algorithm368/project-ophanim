@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { detectIOC } from "@/lib/ioc";
 import { modeRouteFor } from "@/lib/route-mode";
+import { FrameSkeleton } from "@/components/CheckResults/pending";
 
 /**
  * The inert shell a route shows before its cached result has been read.
@@ -43,31 +45,24 @@ export function ResultSkeleton() {
   const indicator = route?.indicator;
 
   return (
-    <div className={lookup ? "mx-auto w-full max-w-5xl px-4 py-6" : undefined}>
+    <div className={lookup ? "mx-auto w-full max-w-7xl px-4 py-6" : undefined}>
       <div className="sweep h-12 w-full rounded-lg" />
 
       <div className="mt-5">
-        <div className="rounded-lg border border-foreground/12 p-4">
-          {indicator ? (
-            <p className="font-mono text-lg break-all text-foreground">
-              {indicator}
-            </p>
-          ) : (
-            // h-7, not h-6: `font-mono text-lg` is a 1.75rem line box, and a
-            // placeholder four pixels short of it moves the card when the name
-            // arrives.
+        {lookup ? (
+          // The finished page's own shape, every tile at its final span, so the
+          // result replaces placeholders rather than replacing a layout.
+          <FrameSkeleton
+            indicator={indicator}
+            kind={indicator ? (detectIOC(indicator) ?? undefined) : undefined}
+          />
+        ) : (
+          <div className="rounded-lg border border-foreground/12 p-4">
             <div className="sweep h-7 w-56 rounded" />
-          )}
-          <div className="sweep mt-3 h-1.5 w-full rounded-full" />
-          <div className="sweep mt-4 h-3 w-11/12 rounded" />
-          <div className="sweep mt-2 h-3 w-3/4 rounded" />
-        </div>
-
-        <div className="mt-5 rounded-lg border border-foreground/12 p-4">
-          <div className="sweep h-3 w-24 rounded" />
-          <div className="sweep mt-4 h-3 w-2/3 rounded" />
-          <div className="sweep mt-2 h-3 w-1/2 rounded" />
-        </div>
+            <div className="sweep mt-4 h-3 w-11/12 rounded" />
+            <div className="sweep mt-2 h-3 w-3/4 rounded" />
+          </div>
+        )}
       </div>
 
       <p className="sr-only" role="status" aria-live="polite">

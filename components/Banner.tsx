@@ -50,7 +50,7 @@ function handleHomeClick(e: React.MouseEvent<HTMLAnchorElement>) {
 export function Banner({ signOut }: Readonly<{ signOut?: React.ReactNode }>) {
   return (
     <header className="relative border-b border-border bg-background">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:py-4">
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:py-4">
         <Link
           href="/"
           onClick={handleHomeClick}

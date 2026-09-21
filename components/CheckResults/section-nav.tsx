@@ -163,12 +163,14 @@ export function SectionNav({ items }: Readonly<{ items: NavItem[] }>) {
                 aria-label="Result sections"
                 // Width is left to the content — the rail is as wide as its
                 // longest label and no wider. The gutter it sits in is
-                // (100vw - 64rem) / 2, or 128px at `xl`, and the content column
-                // pads 16px in from there; a fixed width wide enough for the
-                // longest label on any page would spend most of that clearance
-                // on the pages whose labels are shorter. The max-width is a
-                // backstop against a future section named something long.
-                className="fixed top-28 left-4 z-30 hidden max-w-[7rem] flex-col gap-0.5 rounded-lg border border-border bg-background/80 p-1 backdrop-blur xl:flex 2xl:left-8"
+                // (100vw - 80rem) / 2, which is 128px at `2xl` and nothing at
+                // all below it; that breakpoint is why the rail appears at
+                // `2xl` rather than `xl`, and it moved up when the content
+                // column widened from 64rem to 80rem. A fixed width wide enough
+                // for the longest label on any page would spend most of that
+                // clearance on the pages whose labels are shorter; the
+                // max-width is a backstop against a future long section name.
+                className="fixed top-28 left-4 z-30 hidden max-w-[7rem] flex-col gap-0.5 rounded-lg border border-border bg-background/80 p-1 backdrop-blur 2xl:flex"
             >
                 {present.map((item) => (
                     <NavLink
@@ -189,7 +191,7 @@ export function SectionNav({ items }: Readonly<{ items: NavItem[] }>) {
                 the border rounds off. */}
             <nav
                 aria-label="Result sections"
-                className="sticky top-[4.25rem] z-20 -mx-4 border-b border-border bg-background px-4 backdrop-blur xl:hidden"
+                className="sticky top-[4.25rem] z-20 -mx-4 border-b border-border bg-background px-4 backdrop-blur 2xl:hidden"
             >
                 <div className="flex gap-1 overflow-x-auto py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {present.map((item) => (

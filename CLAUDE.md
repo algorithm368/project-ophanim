@@ -124,9 +124,10 @@ a search box (`/` and `/scan`) and a page for one indicator (`/check/<ioc>` and
 the only thing in the app that visits the indicator, and `/scan/<indicator>` is
 the only place a scan can be started. `ModeSwitch` in the banner (beside the
 theme toggle) moves between them, carrying the indicator when there is one, and
-renders nothing on a path in neither mode. The card on `/check` is an entry
-point: it reports whether a scan already exists and links across, it never
-scans. `readScanInput` in `lib/scan-input.ts` is the boundary the active box
+renders nothing on a path in neither mode. `/check` carries no scan card of its
+own any more: the switch is the only crossing, so the passive page never spends
+a Redis trip or a client round-trip on a question about the active lane.
+`readScanInput` in `lib/scan-input.ts` is the boundary the active box
 enforces, deliberately the same one `/api/scan-url` applies, so the box never
 accepts what the route would refuse.
 
