@@ -1,6 +1,6 @@
 import { hostFromUrl } from "@/lib/url";
 import type { FormTarget, ScanCapability } from "./capability";
-import type { ScanDetail } from "./detail";
+import type { ScanDetail, ScanVerdictLane } from "./detail";
 import type { ScanEngine } from "./engines";
 import type { ActiveScan } from "./types";
 
@@ -51,8 +51,12 @@ export interface MergedScan {
  * is not a competing claim, so absence never becomes a difference. `read`
  * rather than a bare key because the hop count is a fact about what was served
  * too, and it is a list rather than a string.
+ *
+ * Exported for the scan page's ballots, which print every engine's answer on
+ * these same fields: one list, so the ballot and the disagreements computed
+ * here can never be comparing different things.
  */
-const COMPARED: {
+export const COMPARED: {
   label: string;
   read: (detail: ScanDetail) => string | undefined;
   note?: string;
@@ -155,14 +159,28 @@ function mergedDetail(finished: Finished[]): ScanDetail {
 
   // Malicious anywhere is malicious in the merged reading. The split itself is
   // reported separately as a disagreement, so nothing is hidden by this.
-  const verdicts = out.verdicts as ScanDetail["verdicts"];
-  out.verdicts = {
-    ...verdicts,
-    overall: {
-      ...verdicts.overall,
-      malicious: finished.some((f) => f.detail.verdicts.overall.malicious),
-    },
+  //
+  // Built here rather than left to the loop above, which never replaced the
+  // seeded `verdicts` (a seeded object is not empty), so every engine's brands,
+  // categories and tags were dropped and "Impersonates" read "no brand named"
+  // on a page urlscan had called a Microsoft phish. Labels are unioned: one
+  // engine naming a brand is a claim worth keeping even if the other named none.
+  const lanes = ordered.map((f) => f.detail.verdicts);
+  const union = (pick: (lane: ScanVerdictLane) => string[] | undefined) => {
+    const all = [...new Set(lanes.flatMap((l) => pick(l.overall) ?? []))];
+    return all.length ? all : undefined;
   };
+  out.verdicts = {
+    overall: {
+      ...lanes[0]?.overall,
+      malicious: finished.some((f) => f.detail.verdicts.overall.malicious),
+      brands: union((l) => l.brands),
+      categories: union((l) => l.categories),
+      tags: union((l) => l.tags),
+    },
+    engines: lanes.find((l) => l.engines)?.engines,
+    community: lanes.find((l) => l.community)?.community,
+  } satisfies ScanDetail["verdicts"];
 
   // `absent` is the intersection: a block one engine reported is not absent,
   // and claiming otherwise would understate what is known.

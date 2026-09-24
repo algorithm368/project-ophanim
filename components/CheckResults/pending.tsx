@@ -40,9 +40,11 @@ export function FrameSkeleton({
 }>) {
     return (
         <Frame>
-            <Tile span={3} tone="rail" className="flex flex-col items-center gap-3 p-4">
-                <div className="grid min-h-24 flex-1 place-items-center p-2">
-                    <span className="sweep block size-[88px] rounded" />
+            {/* The same box and the same centring as RailTile, so the sprite
+                lands where its placeholder was. */}
+            <Tile span={3} tone="rail" className="flex flex-col items-center justify-center gap-3 p-4">
+                <div className="grid min-h-24 place-items-center p-2">
+                    <span className="sweep block size-[128px] rounded" />
                 </div>
                 <span className="sweep block h-3 w-20 rounded" />
             </Tile>

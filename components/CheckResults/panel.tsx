@@ -66,7 +66,9 @@ export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
     const record = useMemo(() => buildSubjectRecord(result), [result]);
     const tone = VERDICT_STYLE[result.verdict];
     return (
-        <Tile span={3} tone="rail" className="flex flex-col items-center gap-3 p-4">
+        // Centred in both axes: the rail is as tall as the hero beside it, so a
+        // sprite pinned to the top left the lower half of the column empty.
+        <Tile span={3} tone="rail" className="flex flex-col items-center justify-center gap-3 p-4">
             {/* Corner brackets, not a box: an evidence crop rather than an
                 illustration frame. */}
             <div
@@ -81,7 +83,7 @@ export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
                     <span className="absolute bottom-0 left-0 size-3 border-b-2 border-l-2 border-current" />
                     <span className="absolute right-0 bottom-0 size-3 border-r-2 border-b-2 border-current" />
                 </span>
-                <Sprite spec={record.sprite} px={88} title={record.class.label} />
+                <Sprite spec={record.sprite} px={128} title={record.class.label} />
             </div>
             <div
                 className={cn(
@@ -275,12 +277,21 @@ function Freshness({ checkedAt }: Readonly<{ checkedAt: string }>) {
  * meant every non-secure context (the dev server over http://<LAN-IP>, a
  * browser with the API withheld) confirmed a copy that never happened.
  */
-function CopyBox({ text }: Readonly<{ text: string }>) {
+export function CopyBox({
+    text,
+    copyText = text,
+}: Readonly<{
+    text: string;
+    /** What lands on the clipboard, when it is more than what is shown. The
+     *  scan page shows one sentence beside rows that state every other fact,
+     *  but what is pasted into a ticket has to stand without those rows. */
+    copyText?: string;
+}>) {
     const [copied, copy] = useCopied();
 
     const copyUnlessSelecting = () => {
         if ((window.getSelection()?.toString() ?? "").length > 0) return;
-        void copy(text);
+        void copy(copyText);
     };
 
     return (
@@ -302,7 +313,7 @@ function CopyBox({ text }: Readonly<{ text: string }>) {
                     // not there is a selection. Stopping the event keeps the
                     // box's handler from running a second copy on top of it.
                     event.stopPropagation();
-                    void copy(text);
+                    void copy(copyText);
                 }}
                 aria-label="Copy summary"
                 className={cn(

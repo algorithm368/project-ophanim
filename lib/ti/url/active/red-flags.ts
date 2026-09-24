@@ -1,4 +1,6 @@
+import { parseIP } from "@/lib/ip";
 import { count } from "@/lib/text";
+import { hostFromUrl } from "@/lib/url";
 import type { MergedIndicator } from "./merge";
 
 /**
@@ -51,7 +53,7 @@ function daysSince(iso: string | undefined, now: number): number | undefined {
 /** "today" for the day it happened, otherwise "N days ago". A domain
  *  registered this morning reading as "0 days ago" is the one case where the
  *  count is least readable and the fact matters most. */
-function ago(days: number): string {
+export function ago(days: number): string {
   return days === 0 ? "today" : `${count(days, "day")} ago`;
 }
 
@@ -62,7 +64,12 @@ function ago(days: number): string {
  * exact instant is the sharper of the two: a domain created this morning reads
  * as "0 days" either way, but only one of them can say when.
  */
-function domainAgeDays(m: MergedIndicator, now: number): number | undefined {
+export function domainAgeDays(m: MergedIndicator, now: number): number | undefined {
+  // A bare address has no registration. `distillResult` now drops the 0 urlscan
+  // reports for one, and this keeps a batch cached before that from flagging
+  // an IP as a domain registered today.
+  const host = m.detail.domain ?? hostFromUrl(m.detail.finalUrl ?? "");
+  if (host && parseIP(host)) return undefined;
   return daysSince(m.detail.domainCreated, now) ?? m.detail.domainAgeDays;
 }
 
@@ -100,7 +107,7 @@ export function redFlagsFor(m: MergedIndicator, now: number): RedFlag[] {
     flags.push({
       id: "executable-download",
       label: `${count(m.capability.downloadLinks.length, "link")} to a file that runs when opened`,
-      section: "dom",
+      section: "payload",
     });
   }
 

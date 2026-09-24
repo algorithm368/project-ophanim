@@ -5,6 +5,7 @@ import { Maximize2 } from "lucide-react";
 import { ImageInspector } from "@/components/ImageInspector";
 import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import type { MergedIndicator } from "@/lib/ti/url/active/merge";
+import type { ScanClassKind } from "@/lib/ti/url/active/scan-class";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
 
 /** The scans that produced a screenshot this page can actually render.
@@ -17,31 +18,75 @@ function shotsIn(scans: ActiveScan[]): ActiveScan[] {
   );
 }
 
+/** Corner brackets rather than a box: an evidence crop, the same mark the
+ *  passive page puts around its sprite. */
+function Brackets() {
+  return (
+    <span aria-hidden className="pointer-events-none">
+      <span className="absolute -top-1 -left-1 size-3 border-t-2 border-l-2 border-current" />
+      <span className="absolute -top-1 -right-1 size-3 border-t-2 border-r-2 border-current" />
+      <span className="absolute -bottom-1 -left-1 size-3 border-b-2 border-l-2 border-current" />
+      <span className="absolute -right-1 -bottom-1 size-3 border-r-2 border-b-2 border-current" />
+    </span>
+  );
+}
+
+/** One line of small print in the capture's place, for when there is no
+ *  picture and the reason is itself worth saying. */
+function NoPicture({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <p className="grid aspect-[16/10] w-full place-items-center rounded border border-dashed border-foreground/15 p-4 text-center font-mono text-[11px] text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 /**
- * What the scanner saw, at the size it can be read at.
+ * What the scanner saw, in the place the passive page draws its sprite.
  *
- * The capture is the one piece of evidence on this page that no passive source
- * can produce, and at thumbnail size all it can do is prove that something
- * loaded. Full width, a misspelt footer and a wrong favicon are legible without
- * opening anything; clicking still opens the inspector for the rest.
+ * The scan page has no creature: the capture is its picture, and the one piece
+ * of evidence here no passive source can produce. At rail size it proves what
+ * loaded and shows a wrong logo or a login box at a glance; clicking opens the
+ * inspector for the misspelt footer.
  *
  * One capture normally, because the scanned URLs are one site answering on two
  * ports. Both when they are not: `separateSites` means the pictures differ, and
  * showing one of them would be picking a winner.
+ *
+ * Nothing at all when nothing answered. An empty frame there says what the
+ * page's class already says in words, and a placeholder would suggest a picture
+ * was expected and failed.
  */
-export function ScanCapture({
+export function RailCapture({
   merged,
   scans,
-}: Readonly<{ merged: MergedIndicator; scans: ActiveScan[] }>) {
+  kind,
+  tone,
+}: Readonly<{
+  merged: MergedIndicator;
+  scans: ActiveScan[];
+  kind: ScanClassKind | undefined;
+  /** The verdict's colour, carried by the brackets. */
+  tone: string;
+}>) {
   const [inspecting, setInspecting] = useState<ActiveScan | null>(null);
+
+  if (kind === undefined || kind === "no-answer") return null;
+  if (kind === "file") {
+    return <NoPicture>No page to capture, this URL is a file.</NoPicture>;
+  }
 
   const all = shotsIn(scans);
   if (all.length === 0) {
+    // Only blame Cloudflare's endpoint when Cloudflare is the reason: a urlscan
+    // scan that came back without a picture is a different gap.
+    const onlyCloudflare = scans.every((s) => s.status !== "done" || s.engine === "cloudflare");
     return (
-      <p className="rounded border border-dashed border-foreground/15 p-4 text-xs text-foreground/45">
-        No screenshot. Cloudflare serves its capture from an authenticated
-        endpoint, so only a urlscan.io scan produces one here.
-      </p>
+      <NoPicture>
+        {onlyCloudflare
+          ? "No screenshot. Cloudflare serves its capture from an authenticated endpoint, so only a urlscan.io scan produces one here."
+          : "No screenshot. The scanner returned none for this page."}
+      </NoPicture>
     );
   }
 
@@ -54,37 +99,38 @@ export function ScanCapture({
     : [[...byTarget.values()][0]];
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-4">
       {shots.map((shot) => (
-        <figure key={shot.target} className="space-y-1">
-          {/* The aspect ratio is reserved rather than inherited from the image.
-              A provider screenshot arrives with no intrinsic size the browser
-              knows in advance, so at full width an unreserved box is zero
-              pixels tall until it loads and roughly six hundred after, and
-              every section below it jumps that far down. 16/10 is the shape
-              urlscan captures at; a longer page is cropped, which is what
-              `object-top` and the inspector are for. */}
-          <button
-            type="button"
-            onClick={() => setInspecting(shot)}
-            aria-label={`Inspect the screenshot of ${shot.target}`}
-            title="Inspect the screenshot"
-            className="group relative block aspect-[16/10] w-full cursor-zoom-in overflow-hidden rounded border border-foreground/12 bg-muted/30"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
-            <img
-              src={shot.verdict?.screenshot}
-              alt={`Screenshot of ${shot.target}`}
-              className="size-full object-cover object-top"
-              loading="lazy"
-            />
-            <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100 group-focus-visible:bg-foreground/30 group-focus-visible:opacity-100">
-              <Maximize2 className="size-5" />
-            </span>
-          </button>
-          <figcaption className="font-mono text-[11px] text-foreground/45">
+        <figure key={shot.target} className="space-y-1.5">
+          {/* The aspect ratio is reserved rather than inherited from the image:
+              a provider screenshot arrives with no intrinsic size the browser
+              knows in advance, and an unreserved box would be zero pixels tall
+              until it loads and push the whole frame down when it does. 16/10
+              is the shape urlscan captures at. */}
+          <div className={`relative ${tone}`}>
+            <Brackets />
+            <button
+              type="button"
+              onClick={() => setInspecting(shot)}
+              aria-label={`Inspect the screenshot of ${shot.target}`}
+              title="Inspect the screenshot"
+              className="group relative block aspect-[16/10] w-full cursor-zoom-in overflow-hidden rounded-sm border border-foreground/12 bg-muted/30"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
+              <img
+                src={shot.verdict?.screenshot}
+                alt={`Screenshot of ${shot.target}`}
+                className="size-full object-cover object-top"
+                loading="lazy"
+              />
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100 group-focus-visible:bg-foreground/30 group-focus-visible:opacity-100">
+                <Maximize2 className="size-5" />
+              </span>
+            </button>
+          </div>
+          <figcaption className="text-center font-mono text-[10px] text-muted-foreground">
             {shots.length > 1 ? `${shot.target} · ` : ""}
-            {ENGINE_NAME[shot.engine]} · click to inspect
+            {ENGINE_NAME[shot.engine]}, click to inspect
           </figcaption>
         </figure>
       ))}

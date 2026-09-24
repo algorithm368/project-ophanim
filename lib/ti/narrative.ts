@@ -983,6 +983,24 @@ function certificateSentence(d: ScanDetail): string | undefined {
 }
 
 /**
+ * The engines that called it malicious, not every engine that ran.
+ *
+ * The folded verdict is malicious when any engine said so, so naming every
+ * engine behind it put "flagged by urlscan.io and Cloudflare" in a ticket when
+ * Cloudflare had said the opposite. A split verdict is recorded as a
+ * disagreement, which is where the actual callers are.
+ */
+function flaggedBy(merged: MergedScan, names: string[]): string[] {
+  const split = merged.disagreements.find((d) => d.field === "Verdict");
+  if (!split) return names;
+  return [
+    ...new Set(
+      split.values.filter((v) => v.value === "malicious").map((v) => ENGINE_NAME[v.engine]),
+    ),
+  ];
+}
+
+/**
  * 4 to 6. What the scanners concluded, where they disagreed, and who did not
  * finish.
  *
@@ -1001,7 +1019,7 @@ function scanVerdicts(merged: MergedScan): string[] {
     const categories = d.verdicts.overall.categories?.length
       ? ` as ${joinList(d.verdicts.overall.categories)}`
       : "";
-    sentences.push(`It was flagged${categories} by ${joinList(names)}.`);
+    sentences.push(`It was flagged${categories} by ${joinList(flaggedBy(merged, names))}.`);
   } else {
     const subject =
       names.length === 1 ? "the scanner that ran" : "scanner";
@@ -1050,22 +1068,4 @@ export function buildScanNarrative(merged: MergedScan): string[] {
     ...scanProvenance(merged),
     ...scanVerdicts(merged),
   ];
-}
-
-/**
- * The one sentence of the paragraph that is a reading rather than a restatement.
- *
- * The scan page prints every fact the narrative recites as its own attributed
- * row, so printing the paragraph beside them says the domain's age twice and
- * the certificate's twice more. What survives that de-duplication is the
- * judgement: whether anyone flagged it, and what a nobody-flagged-it actually
- * means. The copy button still carries the whole paragraph, because text pasted
- * into a ticket has to stand on its own without the table beside it.
- *
- * The disagreement and unfinished-engine sentences `scanVerdicts` adds are rows
- * too, in the verdicts and trace sections, which is why only the first is kept.
- */
-export function scanJudgement(merged: MergedScan): string | undefined {
-  if (merged.engines.length === 0) return undefined;
-  return scanVerdicts(merged)[0];
 }

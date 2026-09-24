@@ -9,40 +9,38 @@ import {
   type TargetDifference,
 } from "@/lib/ti/url/active/merge";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  RecordRow,
-  RecordTable,
-  SectionHeading,
-} from "@/components/CheckResults/primitives";
+import { Tile } from "@/components/CheckResults/frame";
+import { RecordRow, RecordTable } from "@/components/CheckResults/primitives";
 
 /**
- * One addressable block of the teardown.
+ * One addressable block of the teardown, as a partition of the page's frame.
  *
  * The `id` is what the jump rail and the red flags link to, so it is also the
  * id in `redFlagsFor`: a flag that pointed at a section that does not exist
  * would be a link to the top of the page.
+ *
+ * Half width by default. The teardown is read in pairs (the page and what it
+ * pulled in, what it asks for and who owns the name), and a full-width tile of
+ * two-column rows leaves a label column and a value column with a screen of
+ * air between them.
  */
 export function ScanSection({
   id,
   title,
-  action,
+  note,
+  span = 6,
   children,
 }: Readonly<{
   id: string;
   title: string;
-  action?: ReactNode;
+  note?: ReactNode;
+  span?: 6 | 12;
   children: ReactNode;
 }>) {
   return (
-    <section id={id} className="scroll-mt-20">
-      <Card className="sketch-shadow rounded-lg border border-foreground/12">
-        <CardContent className="space-y-2">
-          <SectionHeading action={action}>{title}</SectionHeading>
-          <RecordTable>{children}</RecordTable>
-        </CardContent>
-      </Card>
-    </section>
+    <Tile id={id} span={span} title={title} note={note}>
+      <RecordTable>{children}</RecordTable>
+    </Tile>
   );
 }
 

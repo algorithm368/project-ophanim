@@ -19,3 +19,18 @@ export function pluralize(n: number, noun: string, plural = `${noun}s`): string 
 export function count(n: number, noun: string, plural = `${noun}s`): string {
   return `${n} ${pluralize(n, noun, plural)}`;
 }
+
+/**
+ * Repeated lines folded into one, with how many times each appeared, in the
+ * order each first appeared.
+ *
+ * For lists read off a page where a repeat is real but not news: a page with
+ * three canvases logs the same WebGL warning three times, and printing it three
+ * times says less than printing it once with "×3". It also gives every line a
+ * unique value, which a list keyed on its text needs.
+ */
+export function tally(items: string[]): { value: string; times: number }[] {
+  const seen = new Map<string, number>();
+  for (const item of items) seen.set(item, (seen.get(item) ?? 0) + 1);
+  return [...seen].map(([value, times]) => ({ value, times }));
+}
