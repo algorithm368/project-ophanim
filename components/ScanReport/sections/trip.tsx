@@ -40,7 +40,7 @@ export function RequestSection({
   ];
 
   return (
-    <ScanSection id="request" title="Request">
+    <ScanSection id="request" title="Path" span={12}>
       <ScanRow
         label="URLs sent"
         value={
@@ -57,11 +57,6 @@ export function RequestSection({
         missing="nothing was submitted"
       />
       <ScanRow
-        label="Engines"
-        value={merged.engines.map((e) => ENGINE_NAME[e]).join(" + ")}
-        missing="none has finished"
-      />
-      <ScanRow
         label="Visibility"
         value={visibilities.join(", ")}
         hint="A public scan is searchable by anyone, including whoever sent the phish. This app never submits one."
@@ -73,8 +68,11 @@ export function RequestSection({
             <>
               {count(hops.length, "hop")}
               <ol className="mt-1 space-y-0.5 font-mono text-[11px] text-foreground/70">
-                {hops.map((hop) => (
-                  <li key={`${hop.from}-${hop.to}`} className="break-all">
+                {/* Indexed: a redirect loop repeats the same hop, and a
+                    repeat is the finding, so it must print rather than
+                    collide. */}
+                {hops.map((hop, i) => (
+                  <li key={`${i}-${hop.from}-${hop.to}`} className="break-all">
                     {hop.from} → {hop.to}
                     {hop.status ? ` (${hop.status})` : ""}
                   </li>
@@ -106,7 +104,7 @@ export function PageSection({
   const asn = [d.asn, d.asnName].filter(Boolean).join(" ");
 
   return (
-    <ScanSection id="page" title="The page">
+    <ScanSection id="page" title="Page">
       <ScanRow
         label="HTTP status"
         value={folded(merged, "HTTP status", d.httpStatus)}
@@ -243,7 +241,7 @@ export function DomSection({
 
   if (cap.error) {
     return (
-      <ScanSection id="dom" title="What the page asks for">
+      <ScanSection id="dom" title="Forms">
         <ScanRow label="DOM" missing={`not read: ${cap.error}`} />
       </ScanSection>
     );
@@ -252,7 +250,7 @@ export function DomSection({
   const offSite = cap.forms.filter((f) => f.crossDomain);
 
   return (
-    <ScanSection id="dom" title="What the page asks for">
+    <ScanSection id="dom" title="Forms">
       <ScanRow
         label="Password field"
         value={
@@ -290,29 +288,6 @@ export function DomSection({
         value={offSite.length ? count(offSite.length, "form") : "none"}
         tone={offSite.length ? "text-red-600 dark:text-red-400" : undefined}
         hint="A form whose registrable domain differs from the page's. A different host under the same site is ordinary architecture and is not counted."
-        engines={domEngines}
-      />
-      <ScanRow
-        label="Executable links"
-        value={
-          cap.downloadLinks.length ? (
-            <span className="space-y-0.5">
-              {cap.downloadLinks.map((link) => (
-                <span
-                  key={link}
-                  className="block font-mono text-[13px] break-all"
-                >
-                  {link}
-                </span>
-              ))}
-            </span>
-          ) : (
-            "none in the page that loaded"
-          )
-        }
-        tone={
-          cap.downloadLinks.length ? "text-red-600 dark:text-red-400" : undefined
-        }
         engines={domEngines}
       />
     </ScanSection>

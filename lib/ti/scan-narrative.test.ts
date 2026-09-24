@@ -151,6 +151,25 @@ describe("buildScanNarrative", () => {
     expect(text).toMatch(/neither/i);
   });
 
+  it("names only the engines that flagged it when the verdict split", () => {
+    const text = buildScanNarrative(
+      merged({
+        detail: detail({ verdicts: { overall: { malicious: true } } }),
+        disagreements: [
+          {
+            field: "Verdict",
+            values: [
+              { engine: "urlscan", value: "malicious" },
+              { engine: "cloudflare", value: "not malicious" },
+            ],
+          },
+        ],
+      }),
+    ).join(" ");
+    expect(text).toContain("It was flagged by urlscan.io.");
+    expect(text).not.toContain("flagged by urlscan.io and Cloudflare");
+  });
+
   it("writes the disagreement out as a sentence", () => {
     const text = buildScanNarrative(
       merged({

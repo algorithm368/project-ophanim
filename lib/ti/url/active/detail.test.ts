@@ -138,4 +138,53 @@ describe("distillResult", () => {
     expect(d.absent).toContain("certificates");
     expect(d.absent).toContain("cookies");
   });
+
+  it("keeps the file the browser received, hash and all", () => {
+    // Shaped after a real scan of a bare .exe URL, 2026-09-24.
+    const url = "http://91.92.242.236/files-129312398/files/file_370ffa2745f69715.exe";
+    const d = distillResult({
+      page: { url, mimeType: "application/octet-stream" },
+      meta: {
+        processors: {
+          download: {
+            data: [
+              {
+                filename: "file_370ffa2745f69715.exe",
+                filesize: 14456176,
+                receivedBytes: 14456176,
+                url,
+                state: "completed",
+                mimeType: "application/x-dosexec",
+                mimeDescription: "PE32+ executable (GUI) x86-64, for MS Windows",
+                sha256: "f85033ce218d3018439a69ce98108a8d30043f57101d5a50f683e7636150ea1a",
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(d.downloads).toEqual([
+      {
+        filename: "file_370ffa2745f69715.exe",
+        url,
+        size: 14456176,
+        mimeType: "application/x-dosexec",
+        description: "PE32+ executable (GUI) x86-64, for MS Windows",
+        sha256: "f85033ce218d3018439a69ce98108a8d30043f57101d5a50f683e7636150ea1a",
+        state: "completed",
+      },
+    ]);
+  });
+
+  it("drops the age urlscan reports for a bare address, which has no registration", () => {
+    const d = distillResult({
+      page: { url: "http://91.92.242.236/x.exe", domain: "91.92.242.236", domainAgeDays: 0, apexDomainAgeDays: 0 },
+    });
+    expect(d.domainAgeDays).toBeUndefined();
+    expect(d.apexDomainAgeDays).toBeUndefined();
+  });
+
+  it("reads a page scan, which has no download processor, as no downloads", () => {
+    expect(distillResult(RESULT).downloads).toEqual([]);
+  });
 });

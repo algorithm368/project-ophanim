@@ -107,10 +107,19 @@ describe("redFlagsFor", () => {
       );
       expect(flags[0].id).toBe("executable-download");
       expect(flags[0].label).toContain("2 links");
+      // The files are listed in the payload tile, not in the DOM rows.
+      expect(flags[0].section).toBe("payload");
     });
   });
 
   describe("a new domain", () => {
+    it("never flags a bare address, even from a batch cached with urlscan's 0", () => {
+      expect(ids(merged({ domain: "91.92.242.236", domainAgeDays: 0 }))).not.toContain("new-domain");
+      expect(
+        ids(merged({ finalUrl: "http://203.0.113.9/login", domainAgeDays: 0 })),
+      ).not.toContain("new-domain");
+    });
+
     it("flags a rounded age under the threshold", () => {
       expect(ids(merged({ domainAgeDays: NEW_DOMAIN_DAYS - 1 }))).toContain(
         "new-domain",

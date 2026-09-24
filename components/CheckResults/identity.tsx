@@ -200,8 +200,10 @@ export function RecordSkeleton() {
     return (
         <Tile span={12} title="Subject record">
             <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
-                {["w-full", "w-4/5", "w-2/3", "w-3/4", "w-1/2", "w-5/6", "w-3/5", "w-2/3"].map((w) => (
-                    <div key={w} className="py-1.5">
+                {["w-full", "w-4/5", "w-2/3", "w-3/4", "w-1/2", "w-5/6", "w-3/5", "w-2/3"].map((w, i) => (
+                    // Indexed: two rows share a width, and a width alone as
+                    // the key made React warn on every scan page load.
+                    <div key={`${i}-${w}`} className="py-1.5">
                         <span className={cn("sweep block h-3 rounded", w)} />
                     </div>
                 ))}

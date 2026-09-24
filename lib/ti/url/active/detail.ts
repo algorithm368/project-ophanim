@@ -1,3 +1,5 @@
+import { parseIP } from "../../../ip";
+
 /**
  * The distilled form of a urlscan result.
  *
@@ -25,6 +27,29 @@ export interface ScanRedirect {
   from: string;
   to: string;
   status?: number;
+}
+
+/**
+ * A file the scanner's browser actually received as a download.
+ *
+ * Present when the URL itself is a file, or when the page started a download on
+ * its own as it loaded. A link the page merely offers is not one of these: the
+ * scanner does not click, so offered links live in `ScanCapability` instead.
+ * The hash is the reason this is kept at all, since it is what lets a scanned
+ * file be looked up passively.
+ */
+export interface ScanDownload {
+  filename?: string;
+  url?: string;
+  size?: number;
+  mimeType?: string;
+  /** What the bytes are, as a file-type sniffer reads them, e.g. "PE32+
+   *  executable (GUI) x86-64, for MS Windows". Truer than the served type,
+   *  which is whatever the server chose to claim. */
+  description?: string;
+  sha256?: string;
+  /** "completed" when the whole file arrived. */
+  state?: string;
 }
 
 interface ScanCertificate {
@@ -89,6 +114,8 @@ export interface ScanDetail {
   cookies?: ScanCookie[];
   certificates?: ScanCertificate[];
   consoleMessages?: string[];
+  /** Files the browser received. urlscan only. */
+  downloads?: ScanDownload[];
 
   verdicts: {
     overall: ScanVerdictLane;
@@ -178,6 +205,31 @@ export function certTime(value: unknown): string | undefined {
   return new Date(seconds * 1000).toISOString();
 }
 
+/**
+ * The files urlscan's download processor caught.
+ *
+ * Shape verified against a real result on 2026-09-24, a scan of a bare `.exe`
+ * URL: `meta.processors.download.data` is a list of `{filename, filesize, url,
+ * mimeType, mimeDescription, sha256, state}`. A page scan carries no `download`
+ * processor at all, which reads here as no downloads.
+ */
+function downloadsIn(root: Json): ScanDownload[] {
+  const rows = obj(obj(obj(root.meta).processors).download).data;
+  if (!Array.isArray(rows)) return [];
+  return rows.slice(0, MAX_LISTED).map((row) => {
+    const d = obj(row);
+    return {
+      filename: str(d.filename),
+      url: str(d.url),
+      size: num(d.filesize),
+      mimeType: str(d.mimeType),
+      description: str(d.mimeDescription),
+      sha256: str(d.sha256),
+      state: str(d.state),
+    };
+  });
+}
+
 export function distillResult(raw: unknown): ScanDetail {
   const root = obj(raw);
   const page = obj(root.page);
@@ -193,6 +245,7 @@ export function distillResult(raw: unknown): ScanDetail {
   const redirectsRaw = Array.isArray(data.redirects) ? data.redirects : [];
 
   const linkDomains = capped(lists.linkDomains);
+  const ipHost = parseIP(str(page.domain) ?? "") !== null;
 
   const detail: ScanDetail = {
     finalUrl: str(page.url),
@@ -208,8 +261,11 @@ export function distillResult(raw: unknown): ScanDetail {
     domain: str(page.domain),
     apexDomain: str(page.apexDomain),
 
-    domainAgeDays: num(page.domainAgeDays),
-    apexDomainAgeDays: num(page.apexDomainAgeDays),
+    // urlscan reports an age of 0 for a bare address, which has no
+    // registration at all. Carried through, that read as "the domain was
+    // registered today" on every IP-hosted URL, a red flag about nothing.
+    domainAgeDays: ipHost ? undefined : num(page.domainAgeDays),
+    apexDomainAgeDays: ipHost ? undefined : num(page.apexDomainAgeDays),
     tlsIssuer: str(page.tlsIssuer),
     tlsValidFrom: str(page.tlsValidFrom),
     tlsValidDays: num(page.tlsValidDays),
@@ -262,6 +318,7 @@ export function distillResult(raw: unknown): ScanDetail {
       .slice(0, MAX_LISTED)
       .map((entry) => str(obj(obj(entry).message).text) ?? str(obj(entry).text))
       .filter((m): m is string => Boolean(m)),
+    downloads: downloadsIn(root),
 
     verdicts: {
       overall: lane(verdicts.overall) ?? { malicious: false },

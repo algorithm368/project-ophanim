@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { count, pluralize } from "@/lib/text";
+import { count, pluralize, tally } from "@/lib/text";
 
 describe("pluralize", () => {
   it("keeps the singular for exactly one", () => {
@@ -26,5 +26,19 @@ describe("count", () => {
 
   it("carries the irregular plural through", () => {
     expect(count(2, "country", "countries")).toBe("2 countries");
+  });
+});
+
+describe("tally", () => {
+  it("folds repeats into one line each, counted, in first-seen order", () => {
+    expect(tally(["b", "a", "b", "c", "b"])).toEqual([
+      { value: "b", times: 3 },
+      { value: "a", times: 1 },
+      { value: "c", times: 1 },
+    ]);
+  });
+
+  it("returns nothing for nothing", () => {
+    expect(tally([])).toEqual([]);
   });
 });

@@ -91,6 +91,35 @@ describe("mergeScans", () => {
     expect(merged.detail.verdicts.overall.malicious).toBe(true);
   });
 
+  it("keeps the brands, categories and tags an engine named", () => {
+    // These were dropped: the seeded `verdicts` object was never replaced by
+    // the first-non-empty loop, so a page urlscan called a Microsoft phish
+    // merged to "no brand named".
+    const [merged] = mergeScans([
+      scan({
+        engine: "urlscan",
+        detail: detail({
+          verdicts: {
+            overall: { malicious: true, score: 100, brands: ["Microsoft"], categories: ["phishing"] },
+            engines: { malicious: true, enginesTotal: 3, maliciousTotal: 1 },
+          },
+        }),
+      }),
+      scan({
+        engine: "cloudflare",
+        detail: detail({
+          verdicts: { overall: { malicious: false, categories: ["phishing", "newly seen"] } },
+        }),
+      }),
+    ]);
+    const overall = merged.detail.verdicts.overall;
+    expect(overall.malicious).toBe(true);
+    expect(overall.score).toBe(100);
+    expect(overall.brands).toEqual(["Microsoft"]);
+    expect(overall.categories).toEqual(["phishing", "newly seen"]);
+    expect(merged.detail.verdicts.engines?.enginesTotal).toBe(3);
+  });
+
   it("does not call a value missing from one engine a disagreement", () => {
     // Silence is not a competing claim.
     const [merged] = mergeScans([

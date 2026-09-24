@@ -407,7 +407,7 @@ const FREE_SUBDOMAIN = new Set([
 ]);
 
 /** Nameservers that mean a registrar is holding the name, not serving it. */
-const PARKING_NS = /dns-parking|sedoparking|parkingcrew|bodis|afternic|above\.com|parklogic|cashparking|domaincontrol\.com$/i;
+export const PARKING_NS = /dns-parking|sedoparking|parkingcrew|bodis|afternic|above\.com|parklogic|cashparking|domaincontrol\.com$/i;
 
 /**
  * Category names that are a filter list rather than a description.

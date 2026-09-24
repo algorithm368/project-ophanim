@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IOCType } from "@/lib/ioc";
 import { pollIntervalFor } from "@/lib/scan-poll";
-import { count } from "@/lib/text";
 import { checkUrlFor } from "@/lib/ti/endpoints";
 import {
   subjectTargetFor,
@@ -11,18 +10,23 @@ import {
 } from "@/lib/ti/subject-target";
 import { mergeTargets, type MergedIndicator } from "@/lib/ti/url/active/merge";
 import { redFlagsFor, type RedFlag } from "@/lib/ti/url/active/red-flags";
+import { classifyScan, type ScanClass } from "@/lib/ti/url/active/scan-class";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
 import type { CheckResult, DomainCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { SectionHeading } from "@/components/CheckResults/primitives";
+import { Frame, Tile } from "@/components/CheckResults/frame";
 import { SectionNav, type NavItem } from "@/components/CheckResults/section-nav";
 import { IdentityCard as SubjectRecordCard } from "@/components/CheckResults/identity";
 import { ActiveModeButton, ArmedPanel } from "./active-mode";
-import { ScanAnswer } from "./answer";
-import { ScanCapture } from "./capture";
+import { BallotsTile } from "./ballots";
+import {
+  RedFlagsTile,
+  ScanHeroTile,
+  ScanProvenanceTile,
+  ScanRailTile,
+} from "./entry";
+import { PayloadTile } from "./payload";
 import { ScanSearchBar } from "./search";
 import {
   DomSection,
@@ -53,18 +57,21 @@ type SubjectState =
 // indefinitely.
 const SUBJECT_TIMEOUT_MS = 60_000;
 
-/** The teardown's sections, in the order the scanner met them, then the passive
- *  record. The ids are what `redFlagsFor` links to and what the rail scrolls
- *  to, so the three lists are one list. */
+/** The entry's tiles, in page order, then the passive record. The ids are what
+ *  `redFlagsFor` links to and what the rail scrolls to, so the three lists are
+ *  one list. Tiles that render nothing (no flags, no files, one engine) are
+ *  pruned from the rail by `SectionNav` itself. */
 const SECTIONS: NavItem[] = [
-  { id: "capture", label: "Capture" },
-  { id: "request", label: "Request" },
+  { id: "flags", label: "Flags" },
+  { id: "request", label: "Path" },
+  { id: "payload", label: "Payload" },
   { id: "page", label: "Page" },
   { id: "network", label: "Network" },
-  { id: "dom", label: "DOM" },
+  { id: "dom", label: "Forms" },
   { id: "identity", label: "Identity" },
   { id: "certs", label: "Certs" },
   { id: "verdicts", label: "Verdicts" },
+  { id: "ballots", label: "Ballots" },
   { id: "trace", label: "Trace" },
   { id: "subject", label: "Subject" },
 ];
@@ -148,34 +155,6 @@ function ScanProgress({ batch }: Readonly<{ batch: ActiveScanBatch }>) {
   );
 }
 
-/** The one line above the teardown that is about the submission rather than
- *  about the page: how much was sent, what path was scanned, and what earlier
- *  readings said. A phishing site changes fast, so "scanned before, and it said
- *  something different then" is evidence in its own right. */
-function SubmissionLine({
-  targets,
-  context,
-  previous,
-}: Readonly<{
-  targets: string[];
-  context?: string;
-  previous?: { at: string; malicious: boolean }[];
-}>) {
-  const parts = [
-    `${count(targets.length, "URL")} sent`,
-    context ? `scanned path ${context}` : undefined,
-    previous?.length
-      ? `scanned before: ${previous
-          .map(
-            (p) =>
-              `${new Date(p.at).toLocaleDateString()} → ${p.malicious ? "malicious" : "not flagged"}`,
-          )
-          .join(" · ")}`
-      : undefined,
-  ].filter(Boolean);
-  return <p className="text-xs text-foreground/55">{parts.join(" · ")}</p>;
-}
-
 /** The page before anything has been scanned: what would be visited, and the
  *  one control that spends the quota. */
 function NotScannedPanel({
@@ -196,12 +175,11 @@ function NotScannedPanel({
   onEngage: () => void;
 }>) {
   return (
-    <Card className="sketch-shadow rounded-lg border border-foreground/12">
-      <CardContent className="space-y-5">
-        <SectionHeading>Active scan</SectionHeading>
+    <Frame>
+      <Tile span={12} title="Active scan" note="not scanned yet" className="space-y-4">
         <p className="text-xs text-foreground/55">
-          Not scanned yet. Everything on /check is passive, this page is the one
-          thing that reaches out and touches the indicator.
+          Everything on /check is passive, this page is the one thing that
+          reaches out and touches the indicator.
         </p>
         {message && <p className="text-sm text-orange-500">{message}</p>}
         {confirming ? (
@@ -221,56 +199,90 @@ function NotScannedPanel({
             <ActiveModeButton disabled={running} onClick={onArm} />
           </div>
         )}
-      </CardContent>
-    </Card>
+      </Tile>
+    </Frame>
   );
 }
 
-/** Every section of the teardown, in the order the scanner met them. Split out
- *  so `ScanReport` itself stays a state container rather than also being the
- *  document. */
-function Teardown({
+/**
+ * The scan as one frame: the head row, the flags, then the teardown.
+ *
+ * The head row is the passive page's own (picture, name, provenance) so the two
+ * modes read as two entries in one book. Below it the teardown keeps the order
+ * the scanner met things in, the path it took, what it was handed, the page and
+ * what the page pulled in, what it asks for and who owns the name, what each
+ * engine concluded, and what was left behind. Split out so `ScanReport` stays a
+ * state container rather than also being the document.
+ */
+function Entry({
+  indicator,
   merged,
   batch,
   flags,
+  klass,
   now,
+  targets,
+  context,
+  pending,
+  busy,
+  onRescan,
 }: Readonly<{
+  indicator: string;
   merged: MergedIndicator;
   batch: ActiveScanBatch;
   flags: RedFlag[];
+  klass: ScanClass | undefined;
   now: number;
+  targets: string[];
+  context?: string;
+  pending: boolean;
+  busy: boolean;
+  onRescan: () => void;
 }>) {
   const scans = batch.scans;
+  // Nothing loaded, so every tile between the path and the trace would be a
+  // column of "not reported". The path says what was sent and the trace says
+  // why nothing came back, which is all there is.
+  const empty = klass?.kind === "no-answer";
   return (
-    <>
-      <ScanAnswer merged={merged} batch={batch} flags={flags} now={now} />
-
-      {/* Both phases: the rail draws the left column's edge, and a rail that
-          appears only once the scan lands slides the whole content column
-          sideways when it does. */}
-      <SectionNav items={SECTIONS} />
-
-      <section id="capture" className="scroll-mt-20">
-        <ScanCapture merged={merged} scans={scans} />
-      </section>
+    <Frame>
+      <ScanRailTile merged={merged} scans={scans} klass={klass} pending={pending} />
+      <ScanHeroTile merged={merged} indicator={indicator} klass={klass} />
+      <ScanProvenanceTile
+        batch={batch}
+        merged={merged}
+        targets={targets}
+        now={now}
+        context={context}
+        busy={busy}
+        onRescan={onRescan}
+      />
+      <RedFlagsTile flags={flags} />
       <RequestSection merged={merged} scans={scans} batch={batch} />
-      <PageSection merged={merged} scans={scans} />
-      <NetworkSection merged={merged} scans={scans} />
-      <DomSection merged={merged} scans={scans} />
-      <IdentitySection merged={merged} scans={scans} />
-      <CertificateSection merged={merged} scans={scans} />
-      <VerdictSection merged={merged} scans={scans} />
+      {!empty && (
+        <>
+          <PayloadTile merged={merged} klass={klass} />
+          <PageSection merged={merged} scans={scans} />
+          <NetworkSection merged={merged} scans={scans} />
+          <DomSection merged={merged} scans={scans} />
+          <IdentitySection merged={merged} scans={scans} />
+          <CertificateSection merged={merged} scans={scans} />
+          <VerdictSection merged={merged} scans={scans} />
+          <BallotsTile scans={scans} />
+        </>
+      )}
       <TraceSection merged={merged} scans={scans} />
-    </>
+    </Frame>
   );
 }
 
 /**
  * The active scan as a page.
  *
- * A teardown, not a triage: the point of coming here is to read everything the
- * scanner collected, so nothing is behind a disclosure triangle and the
- * sections run in the order the scan happened rather than in the order the two
+ * An entry in the same book as /check, answering its own first question: what a
+ * victim who followed the link would have been handed. Below the head row it is
+ * still a teardown, not a triage: nothing is behind a disclosure triangle, and
+ * the tiles run in the order the scan happened rather than in the order the two
  * APIs happen to return things.
  *
  * The reading is folded across every URL that was submitted. A bare IP is sent
@@ -428,6 +440,13 @@ export function ScanReport({
     () => (merged ? redFlagsFor(merged, now) : []),
     [merged, now],
   );
+  // Nothing to classify while every engine is still out: "No answer" is a
+  // finding, and saying it before anyone has answered would be a false one.
+  const waiting = pending && (merged?.engines.length ?? 0) === 0;
+  const klass = useMemo(
+    () => (merged && !waiting ? classifyScan(merged, now, batch?.previous) : undefined),
+    [merged, waiting, now, batch?.previous],
+  );
 
   return (
     <div className="space-y-5">
@@ -435,29 +454,29 @@ export function ScanReport({
 
       {batch && merged ? (
         <>
-          {/* A rescan spends quota, so it stays a deliberate button rather than
-              something a reload does. */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <SubmissionLine
-              targets={targets}
-              context={subject.status === "ready" ? subject.context : undefined}
-              previous={batch.previous}
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={running || pending}
-              onClick={() => void submit(true)}
-            >
-              {running ? "Submitting" : "Rescan"}
-            </Button>
-          </div>
-
           {message && <p className="text-sm text-orange-500">{message}</p>}
           {pending && <ScanProgress batch={batch} />}
 
-          <Teardown merged={merged} batch={batch} flags={flags} now={now} />
+          <Entry
+            indicator={indicator}
+            merged={merged}
+            batch={batch}
+            flags={flags}
+            klass={klass}
+            now={now}
+            targets={targets}
+            context={subject.status === "ready" ? subject.context : undefined}
+            pending={pending}
+            busy={running || pending}
+            // A rescan spends quota, so it stays a deliberate button rather
+            // than something a reload does.
+            onRescan={() => void submit(true)}
+          />
+
+          {/* Both phases: the rail draws the left column's edge, and a rail
+              that appears only once the scan lands slides the whole content
+              column sideways when it does. */}
+          <SectionNav items={SECTIONS} />
         </>
       ) : (
         <NotScannedPanel

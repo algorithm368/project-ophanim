@@ -1,7 +1,7 @@
 "use client";
 
-import { count } from "@/lib/text";
-import { formatDate, midSentence } from "@/lib/ti/narrative";
+import { count, tally } from "@/lib/text";
+import { formatDate } from "@/lib/ti/narrative";
 import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import type { ScanVerdictLane } from "@/lib/ti/url/active/detail";
 import type { MergedIndicator } from "@/lib/ti/url/active/merge";
@@ -157,9 +157,10 @@ export function CertificateSection({
         value={
           d.certificates?.length ? (
             <span className="space-y-0.5">
-              {d.certificates.map((cert) => (
+              {/* Indexed: one certificate can be listed for two hosts. */}
+              {d.certificates.map((cert, i) => (
                 <span
-                  key={`${cert.subject}-${cert.validFrom}`}
+                  key={`${i}-${cert.subject}-${cert.validFrom}`}
                   className="block font-mono text-[11px] break-all text-foreground/75"
                 >
                   {[cert.subject, cert.issuer, cert.validFrom, cert.validTo]
@@ -207,10 +208,10 @@ function laneTally(lane: ScanVerdictLane | undefined): string | undefined {
 /**
  * What each scanner concluded, on adjacent lines.
  *
- * Adjacent so agreement or disagreement is visible without comparing by eye,
- * and the disagreements are printed under them rather than folded away: two
- * engines reading one URL and seeing different things means one of them is
- * wrong, which is worth more than either reading on its own.
+ * Adjacent so agreement or disagreement is visible without comparing by eye.
+ * Where the two engines disagree is not repeated here: the ballots tile prints
+ * every engine's answer on every compared field, which shows the agreement as
+ * well as the split, and a second list of the split alone said it twice.
  */
 export function VerdictSection({
   merged,
@@ -221,7 +222,7 @@ export function VerdictSection({
   const overall = d.verdicts.overall;
 
   return (
-    <ScanSection id="verdicts" title="What the scanners say">
+    <ScanSection id="verdicts" title="Verdicts">
       {finished.map((scan) => {
         const reading = scan.detail!;
         const lane = reading.verdicts.overall;
@@ -280,21 +281,6 @@ export function VerdictSection({
         engines={by(scans, "contentCategories")}
       />
 
-      {/* Tagged with the URL each was about. Two engines disagreeing about
-          port 80 and the same two disagreeing about port 443 are two findings,
-          and untagged they print as one finding stated twice with its values
-          swapped, which reads as a rendering bug rather than as evidence. */}
-      {merged.disagreements.map((disagreement) => (
-        <ScanRow
-          key={`${disagreement.target}-${disagreement.field}`}
-          label="⚠ disagreement"
-          tone="text-amber-600 dark:text-amber-400"
-          engines={merged.targets.length > 1 ? [disagreement.target] : []}
-          value={`On ${midSentence(disagreement.field)}: ${disagreement.values
-            .map((v) => `${ENGINE_NAME[v.engine]} saw ${v.value}`)
-            .join(", ")}${disagreement.note ? `. ${disagreement.note}` : ""}`}
-        />
-      ))}
     </ScanSection>
   );
 }
@@ -326,7 +312,7 @@ export function TraceSection({
   const missing = notCollected(merged);
 
   return (
-    <ScanSection id="trace" title="Trace">
+    <ScanSection id="trace" title="Trace" span={12}>
       <ScanRow
         label="Cookies"
         value={
@@ -347,13 +333,17 @@ export function TraceSection({
         label="Console"
         value={
           d.consoleMessages?.length ? (
+            // Folded rather than listed: a page logs the same warning once per
+            // canvas or frame, and the text is the key, so a repeat printed
+            // twice was also a duplicate React key.
             <span className="space-y-0.5">
-              {d.consoleMessages.slice(0, 6).map((message) => (
+              {tally(d.consoleMessages).slice(0, 6).map(({ value, times }) => (
                 <span
-                  key={message}
+                  key={value}
                   className="block font-mono text-[11px] break-all text-foreground/70"
                 >
-                  {message}
+                  {value}
+                  {times > 1 && <span className="text-foreground/45"> ×{times}</span>}
                 </span>
               ))}
             </span>
