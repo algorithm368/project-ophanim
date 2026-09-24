@@ -312,6 +312,39 @@ describe("classifyScan, the UAT cases", () => {
   });
 });
 
+describe("classifyScan, the captions' edges", () => {
+  it("lists two files and counts the rest", () => {
+    const c = classifyScan(
+      merged({}, { downloadLinks: ["https://x.test/a.exe", "https://x.test/b.exe", "https://x.test/c.exe"] }),
+      NOW,
+    );
+    expect(c.caption).toBe("offers a.exe, b.exe, and 1 more");
+  });
+
+  it("gives a login page's age in months when it is under a year", () => {
+    const c = classifyScan(merged({ domainAgeDays: 95 }, { passwordField: true, forms: [SAME_SITE] }), NOW);
+    expect(c.caption).toBe("form posts to the same site, domain registered 3 months ago");
+  });
+
+  it("takes Cloudflare's Parked filing as parked, with no nameserver needed", () => {
+    const c = classifyScan(merged({ contentCategories: ["Parked & For Sale Domains"] }), NOW);
+    expect(c).toMatchObject({ kind: "parked", caption: "filed as Parked by Cloudflare" });
+  });
+
+  it("names the other categories and where a filing was inherited from", () => {
+    const c = classifyScan(
+      merged({ contentCategories: ["Technology", "Business"], categoryInheritedFrom: "example.test" }),
+      NOW,
+    );
+    expect(c).toMatchObject({ label: "Technology", caption: "business, via example.test" });
+  });
+
+  it("clips a long title", () => {
+    const m = merged({ title: "x".repeat(80) });
+    expect(describeScan(m, classifyScan(m, NOW))).toContain(`"${"x".repeat(59)}…"`);
+  });
+});
+
 describe("classifyScan, the rungs past the UAT", () => {
   it("a server listing its own files is an open directory", () => {
     const c = classifyScan(merged({ title: "Index of /bins/" }), NOW);
@@ -405,6 +438,45 @@ describe("describeScan", () => {
       targets: ["http://203.0.113.50/"],
     });
     expect(describe_(m)).toBe("A bare web server at 203.0.113.50, with no site deployed on it.");
+  });
+
+  it("names each kind of page by what it is", () => {
+    const cases: [MergedIndicator, string][] = [
+      [merged({ title: "Docs" }, { downloadLinks: ["https://x.test/a.zip"] }), 'A download lure page titled "Docs" on site.test.'],
+      [merged({ title: "Sign in" }, { passwordField: true, forms: [SAME_SITE] }), 'A sign-in page titled "Sign in" on site.test.'],
+      [merged({ title: "Index of /bins/" }), "An open directory listing on site.test."],
+      [merged({ nameservers: ["ns1.sedoparking.com"] }), "A parked domain, site.test."],
+      [merged({ httpStatus: "503" }), "A web server at site.test answering only with errors."],
+      [merged({ title: "Learn", contentCategories: ["Education"] }), 'An education site titled "Learn" on site.test.'],
+    ];
+    for (const [m, sentence] of cases) expect(describeScan(m, classifyScan(m, NOW))).toBe(sentence);
+  });
+
+  it("names a served file by what runs it", () => {
+    const noun = (description: string | undefined, mime: string, url: string) => {
+      const m = merged(
+        { finalUrl: url, mimeType: mime, downloads: description ? [{ url, description }] : undefined },
+        {},
+        { targets: [url] },
+      );
+      return describeScan(m, classifyScan(m, NOW));
+    };
+    expect(noun("ELF 64-bit LSB executable", "application/octet-stream", "http://x.test/bot")).toBe(
+      "A Linux program, bot, delivered straight from x.test.",
+    );
+    expect(noun("Mach-O 64-bit executable", "application/octet-stream", "http://x.test/m")).toMatch(/^A macOS program/);
+    expect(noun(undefined, "application/vnd.android.package-archive", "http://x.test/a.apk")).toMatch(/^An Android app/);
+    expect(noun(undefined, "application/java-archive", "http://x.test/p.jar")).toMatch(/^A Java program/);
+    expect(noun(undefined, "application/zip", "http://x.test/a.zip")).toMatch(/^An archive, a\.zip/);
+    expect(noun(undefined, "application/x-msi", "http://x.test/setup")).toMatch(/^A program, setup/);
+    expect(noun(undefined, "image/png", "http://x.test/pic.png")).toMatch(/^A file, pic\.png/);
+  });
+
+  it("strips the registry handle and country off the network owner", () => {
+    const m = merged({ title: "Hi", asnName: "CLOUDFLARENET - Cloudflare, Inc., US", country: "DE" });
+    expect(describeScan(m, classifyScan(m, NOW))).toBe(
+      'A web page titled "Hi" on site.test. It is served from Cloudflare, Inc. in Germany.',
+    );
   });
 
   it("says nothing when nothing answered, since the caption already does", () => {
