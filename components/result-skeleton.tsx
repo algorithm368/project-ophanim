@@ -43,6 +43,10 @@ export function ResultSkeleton() {
   // guess.
   const lookup = route?.mode !== "active";
   const indicator = route?.indicator;
+  // `/check/<url>` redirects to the scan page, so a url never gets a lookup
+  // shape of its own; the generic one holds its place until the redirect lands.
+  const detected = indicator ? detectIOC(indicator) : null;
+  const kind = detected && detected !== "url" ? detected : undefined;
 
   return (
     <div className={lookup ? "mx-auto w-full max-w-7xl px-4 py-6" : undefined}>
@@ -54,7 +58,7 @@ export function ResultSkeleton() {
           // result replaces placeholders rather than replacing a layout.
           <FrameSkeleton
             indicator={indicator}
-            kind={indicator ? (detectIOC(indicator) ?? undefined) : undefined}
+            kind={kind}
           />
         ) : (
           <div className="rounded-lg border border-foreground/12 p-4">

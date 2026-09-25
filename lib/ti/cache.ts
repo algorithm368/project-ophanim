@@ -1,12 +1,11 @@
 import { Redis } from "@upstash/redis";
-import type { IOCType } from "@/lib/ioc";
+import type { LookupType } from "@/lib/ioc";
 import type {
   AnyCheckResult,
   CheckResult,
   DomainCheckResult,
   HashCheckResult,
 } from "./types";
-import type { UrlCheckResult } from "./url/types";
 import type { ActiveScanBatch } from "./url/active/types";
 
 /**
@@ -24,7 +23,6 @@ const DOMAIN_KEY_PREFIX = "ti:domain:";
 const HASH_KEY_PREFIX = "ti:hash:";
 // URL entries are versioned from the start, since the layered envelope is new
 // and its shape is the thing most likely to move.
-const URL_KEY_PREFIX = "ti:url:v1:";
 // The active lane keys separately from the passive result on purpose: a scan
 // arrives after the fact and must not rewrite a verdict already cached or
 // already written to the history timeline.
@@ -210,22 +208,6 @@ export function setCachedDomainResult(
   return setCached(DOMAIN_KEY_PREFIX, domain, result);
 }
 
-/** Returns the cached result for a URL, or null on miss / when caching is off.
- *  The key is the canonical URL, so one resource has one entry. */
-export function getCachedUrlResult(
-  url: string,
-): Promise<UrlCheckResult | null> {
-  return getCached<UrlCheckResult>(URL_KEY_PREFIX, url);
-}
-
-/** Stores a URL result with the default TTL. Failures are swallowed. */
-export function setCachedUrlResult(
-  url: string,
-  result: UrlCheckResult,
-): Promise<void> {
-  return setCached(URL_KEY_PREFIX, url, result);
-}
-
 /** Returns the stored active-scan batch for an indicator, or null on miss. */
 export function getCachedScanBatch(
   indicator: string,
@@ -264,16 +246,13 @@ export function setCachedHashResult(
  * Two pages need this dispatch, `/check/[ioc]` for the permalink it renders and
  * `/scan/[indicator]` for its subject's identity record, and a private copy in
  * either is a copy that can be given a new kind without the other learning
- * about it. The one it was already missing is `url`: the earlier inline ladder
- * fell through to the IP prefix for a url indicator, so a url permalink read a
- * key the url route never writes and missed every time.
+ * about it.
  */
 export function getCachedResultFor(
-  kind: IOCType,
+  kind: LookupType,
   indicator: string,
-): Promise<AnyCheckResult | UrlCheckResult | null> {
+): Promise<AnyCheckResult | null> {
   if (kind === "domain") return getCachedDomainResult(indicator);
   if (kind === "hash") return getCachedHashResult(indicator);
-  if (kind === "url") return getCachedUrlResult(indicator);
   return getCachedResult(indicator);
 }

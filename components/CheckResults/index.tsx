@@ -8,11 +8,9 @@ import {
     type DomainCheckResult,
     type HashCheckResult,
 } from "@/lib/ti/types";
-import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
-import type { IOCType } from "@/lib/ioc";
+import type { LookupType } from "@/lib/ioc";
 import type { PartialLookup } from "@/lib/ti/partial";
 import { PivotContext } from "./primitives";
-import { LayerStack } from "./layers";
 import { Frame } from "./frame";
 import {
     BallotsTile,
@@ -166,77 +164,6 @@ function DomainResults({
     );
 }
 
-const URL_SECTIONS: NavItem[] = [
-    { id: "layers", label: "Layers" },
-    { id: "research", label: "Research" },
-    { id: "sources", label: "Sources" },
-];
-
-/**
- * A URL result leads with the layer stack rather than a single hero, because
- * the headline is meaningless without the layer it came from. Sources are
- * grouped per layer for the same reason: forty rows in one list would hide
- * which of the three indicators each row is actually about.
- */
-function UrlResults({
-    result,
-    onRefresh,
-    research,
-}: Readonly<{
-    result: UrlCheckResult | null;
-    onRefresh: () => void;
-    research: ResearchStreamState;
-}>) {
-    const streaming = result === null;
-    const LAYER_TITLE = {
-        url: "the URL",
-        domain: "the host",
-        ip: "the address",
-    } as const;
-    return (
-        <div className="mt-5 space-y-5">
-            {/* LayerStack renders its own skeleton while streaming: it is the
-                hero for a URL result, and there is no verdict to hold a
-                separate pending hero's place for until a layer lands. */}
-            <Section id="layers">
-                <LayerStack result={result} onRefresh={onRefresh} streaming={streaming} />
-            </Section>
-            {/* Both phases: the rail draws the left column's edge, and a rail
-                that appears only with results slides the whole content column
-                sideways when the result lands. */}
-            <SectionNav items={URL_SECTIONS} />
-            {result && (
-                <Frame>
-                    <LiveIntelTile research={research} kind="domain" />
-                    <LinksTile indicator={researchTarget(result).indicator} kind="domain" />
-                </Frame>
-            )}
-            <Section id="sources">
-                {/* `result.layers` doesn't exist while streaming; render
-                    nothing here until the result lands rather than crashing. */}
-                {result && (
-                    <div className="space-y-8">
-                        {result.layers
-                            .filter((layer) => layer.sources.length > 0)
-                            .map((layer) => (
-                                <div key={layer.kind}>
-                                    <p className="mb-3 font-mono text-[11px] tracking-[0.14em] text-foreground/55 uppercase">
-                                        Sources for {LAYER_TITLE[layer.kind]}
-                                    </p>
-                                    <SourceBreakdown
-                                        sources={layer.sources}
-                                        indicator={layer.indicator}
-                                        kind={layer.kind}
-                                    />
-                                </div>
-                            ))}
-                    </div>
-                )}
-            </Section>
-        </div>
-    );
-}
-
 function HashResults({
     result,
     partial,
@@ -299,37 +226,33 @@ export default function CheckResults({
     onPivot,
     research,
 }: Readonly<{
-    result: AnyCheckResult | UrlCheckResult | null;
+    result: AnyCheckResult | null;
     /** Set while the panel is still answering; null once `result` arrives. */
     partial: PartialLookup | null;
     indicator: string;
     /** Which per-type view to render. Needed because the type guards below
      *  have nothing to read while `result` is still null. */
-    kind: IOCType | "url";
+    kind: LookupType;
     onRefresh: () => void;
     /** Launch a fresh check for a related indicator clicked within the result. */
     onPivot?: (value: string) => void;
     /** Progressive live-research state, fetched in parallel with the main check. */
     research: ResearchStreamState;
 }>) {
-    // A URL result is checked first: it is the most specific shape, and the
-    // other guards would not recognize it. The guards still run when a result
-    // is present, so a mismatched `kind` cannot render the wrong view.
+    // The guards still run when a result is present, so a mismatched `kind`
+    // cannot render the wrong view.
     //
     // An if/else ladder rather than chained ternaries: `no-nested-ternary` is
     // an error in this project, not a warning.
-    let shape: IOCType | "url";
+    let shape: LookupType;
     if (result === null) shape = kind;
-    else if (isUrlResult(result)) shape = "url";
     else if (isHashResult(result)) shape = "hash";
     else if (isDomainResult(result)) shape = "domain";
     else shape = "ip";
 
     const common = { partial, indicator, onRefresh, research };
     let body: React.ReactNode;
-    if (shape === "url") {
-        body = <UrlResults result={result as UrlCheckResult | null} {...common} />;
-    } else if (shape === "hash") {
+    if (shape === "hash") {
         body = <HashResults result={result as HashCheckResult | null} {...common} />;
     } else if (shape === "domain") {
         body = <DomainResults result={result as DomainCheckResult | null} {...common} />;

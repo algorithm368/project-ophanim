@@ -10,9 +10,10 @@
 import { parseIP, type ParsedIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
 import { parseHash } from "@/lib/hash";
-import { detectIOC, extractIps, type IOCType } from "@/lib/ioc";
+import { detectIOC, extractIps, type IOCType, type LookupType } from "@/lib/ioc";
 import { readNdjson } from "@/lib/ndjson";
 import { ENDPOINTS } from "@/lib/ti/endpoints";
+import { modeHref } from "@/lib/route-mode";
 import {
   type AnyCheckResult,
   isDomainResult,
@@ -23,7 +24,6 @@ import {
   type SourceMeta,
   type SourceResult,
 } from "@/lib/ti/types";
-import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
 import { parseUrl } from "@/lib/url";
 import type { Mode } from "./types";
 
@@ -36,7 +36,7 @@ export const STREAM_INACTIVITY_MS = 20000;
 export const NAV_ABORT = "nav-abort";
 
 /** Validate input before hitting the network, returning a friendly error or null. */
-export function validateInput(value: string, mode: Mode): string | null {
+export function validateInput(value: string, mode: LookupType): string | null {
   if (mode === "ip") {
     const parsed = parseIP(value);
     if (!parsed) {
@@ -53,10 +53,6 @@ export function validateInput(value: string, mode: Mode): string | null {
     if (parsed.isReserved) {
       return `${parsed.scopeNote}. This is a special-use name and can't be checked.`;
     }
-  } else if (mode === "url") {
-    if (!parseUrl(value)) {
-      return `"${value}" isn't a checkable URL. Paste an http or https link.`;
-    }
   } else if (!parseHash(value)) {
     return `"${value}" isn't a valid file hash. Paste an MD5, SHA-1, or SHA-256 digest.`;
   }
@@ -65,10 +61,10 @@ export function validateInput(value: string, mode: Mode): string | null {
 
 /**
  * The exact value the lookup runs on: the refanged input reduced to its
- * canonical IOC — the parsed IP (RFC 5952 form for v6), the apex domain (so a
- * pasted URL becomes just its host), or the normalized hash. Falls back to the
- * input until a type is recognized. Used both for the "we'll check …" hint and
- * the permalink.
+ * canonical IOC — the parsed IP (RFC 5952 form for v6), the apex domain, the
+ * normalized hash, or the canonical URL a scan page is keyed by. Falls back to
+ * the input until a type is recognized. Used both for the "we'll check …" hint
+ * and the permalink.
  */
 export function canonicalFor(value: string, detected: Mode | null): string {
   if (detected === "ip") return parseIP(value)?.ip ?? value;
@@ -78,47 +74,27 @@ export function canonicalFor(value: string, detected: Mode | null): string {
   return value;
 }
 
-/**
- * What the live-research lane should ask about for a pending indicator. No
- * research provider declares support for a url kind, so a URL researches its
- * host as a domain, which is the pivot an analyst wants anyway: certificates,
- * archived snapshots, and prior scans of the site.
- */
+/** What the live-research lane should ask about for a pending indicator. */
 export function researchTargetFor(
   value: string,
 ): { indicator: string; kind: IOCType } | null {
   const kind = detectIOC(value);
-  if (!kind) return null;
-  if (kind === "url") {
-    const host = parseUrl(value)?.host;
-    return host ? { indicator: host, kind: "domain" } : null;
-  }
+  if (!kind || kind === "url") return null;
   return { indicator: value, kind };
 }
 
 /** The indicator a result is about, whichever kind it is. */
-export function indicatorOf(result: AnyCheckResult | UrlCheckResult): string {
-  if (isUrlResult(result)) return result.url;
+export function indicatorOf(result: AnyCheckResult): string {
   if (isHashResult(result)) return result.hash;
   if (isDomainResult(result)) return result.domain;
   return result.ip;
 }
 
-/**
- * What the live-research lane should ask about for a settled result.
- *
- * A URL researches its host as a domain: no provider supports a url kind, and
- * the host is the pivot an analyst wants anyway, certificates and archived
- * snapshots and prior scans of the site. Null when a URL will not parse, since
- * there is then no host to research.
- */
-export function researchTargetOf(
-  result: AnyCheckResult | UrlCheckResult,
-): { indicator: string; kind: IOCType } | null {
-  if (isUrlResult(result)) {
-    const host = parseUrl(result.url)?.host;
-    return host ? { indicator: host, kind: "domain" } : null;
-  }
+/** What the live-research lane should ask about for a settled result. */
+export function researchTargetOf(result: AnyCheckResult): {
+  indicator: string;
+  kind: IOCType;
+} {
   if (isHashResult(result)) return { indicator: result.hash, kind: "hash" };
   if (isDomainResult(result))
     return { indicator: result.domain, kind: "domain" };
@@ -141,8 +117,9 @@ type StreamEvent = {
 };
 
 export type Prepared =
-  | { ok: true; detected: Mode; canonical: string; endpoint: string }
-  | { ok: false; message: string };
+  | { kind: "lookup"; detected: LookupType; canonical: string; endpoint: string }
+  | { kind: "scan"; href: string }
+  | { kind: "invalid"; message: string };
 
 /**
  * Everything that must hold before a lookup is worth starting.
@@ -151,20 +128,27 @@ export type Prepared =
  * so the right checker runs regardless of which one is selected. In-scope but
  * uncheckable input (private IPs, reserved names) is caught here too, so the
  * user gets specific feedback immediately instead of a server round-trip.
+ *
+ * A URL is not looked up here at all. It goes to its scan page, which is the
+ * only reading of a URL the app has; the host's reputation is one pivot away
+ * from there.
  */
 export function prepareCheck(value: string): Prepared {
   const detected = detectIOC(value);
   if (!detected) {
     return {
-      ok: false,
+      kind: "invalid",
       message: `"${value}" doesn't look like an IPv4 address, domain, or file hash. Try one of the examples below.`,
     };
   }
+  if (detected === "url") {
+    return { kind: "scan", href: modeHref("active", canonicalFor(value, detected)) };
+  }
   const invalid = validateInput(value, detected);
-  if (invalid) return { ok: false, message: invalid };
+  if (invalid) return { kind: "invalid", message: invalid };
 
   return {
-    ok: true,
+    kind: "lookup",
     detected,
     canonical: canonicalFor(value, detected),
     endpoint: ENDPOINTS[detected].path,

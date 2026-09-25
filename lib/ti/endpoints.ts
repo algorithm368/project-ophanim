@@ -1,4 +1,4 @@
-import type { IOCType } from "@/lib/ioc";
+import type { LookupType } from "@/lib/ioc";
 
 /**
  * Where each kind of indicator is checked, and what its query parameter is
@@ -13,15 +13,14 @@ import type { IOCType } from "@/lib/ioc";
  * The parameter names match what each route's `validate` reads, so a GET built
  * from this map is one the route accepts.
  */
-export const ENDPOINTS: Record<IOCType, { path: string; param: string }> = {
+export const ENDPOINTS: Record<LookupType, { path: string; param: string }> = {
   ip: { path: "/api/check", param: "ip" },
   domain: { path: "/api/check-domain", param: "domain" },
   hash: { path: "/api/check-hash", param: "hash" },
-  url: { path: "/api/check-url", param: "url" },
 };
 
 /** The GET URL that returns one indicator's normalized result. */
-export function checkUrlFor(kind: IOCType, indicator: string): string {
+export function checkUrlFor(kind: LookupType, indicator: string): string {
   const { path, param } = ENDPOINTS[kind];
   return `${path}?${param}=${encodeURIComponent(indicator)}`;
 }

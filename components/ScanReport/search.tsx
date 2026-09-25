@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { modeHref } from "@/lib/route-mode";
+import { modeHref, passiveHref } from "@/lib/route-mode";
 import { isScanProblem, readScanInput } from "@/lib/scan-input";
 import { SearchBox } from "@/components/Checker/search-box";
 
@@ -66,7 +66,7 @@ export function ScanSearchBar({ indicator }: Readonly<{ indicator: string }>) {
         <p className="px-1 text-xs text-foreground/60">
           {problem}{" "}
           <a
-            href={modeHref("passive", query.trim())}
+            href={passiveHref(query.trim())}
             className="underline underline-offset-2 hover:text-foreground"
           >
             Check it passively

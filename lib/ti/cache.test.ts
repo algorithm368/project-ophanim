@@ -319,7 +319,6 @@ describe("key namespaces", () => {
     { label: "IP", prefix: "ti:ip:v2:", get: "getCachedResult", set: "setCachedResult" },
     { label: "domain", prefix: "ti:domain:", get: "getCachedDomainResult", set: "setCachedDomainResult" },
     { label: "hash", prefix: "ti:hash:", get: "getCachedHashResult", set: "setCachedHashResult" },
-    { label: "URL", prefix: "ti:url:v1:", get: "getCachedUrlResult", set: "setCachedUrlResult" },
     { label: "scan batch", prefix: "ti:urlscan:v1:", get: "getCachedScanBatch", set: "setCachedScanBatch" },
   ] as const;
 
@@ -349,15 +348,12 @@ describe("key namespaces", () => {
   });
 });
 
-// The dispatch two pages share. It replaced an if/else ladder inlined in
-// /check/[ioc], whose url branch fell through to the IP prefix, so a url
-// permalink read a key the url route never writes and missed every time.
+// The dispatch two pages share: each kind reads the namespace its route writes.
 describe("getCachedResultFor", () => {
   const BY_KIND = [
     { kind: "ip", prefix: "ti:ip:v2:" },
     { kind: "domain", prefix: "ti:domain:" },
     { kind: "hash", prefix: "ti:hash:" },
-    { kind: "url", prefix: "ti:url:v1:" },
   ] as const;
 
   it.each(BY_KIND)("reads $kind under $prefix", async ({ kind, prefix }) => {

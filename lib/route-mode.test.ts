@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modeHref, modeRouteFor } from "@/lib/route-mode";
+import { modeHref, modeRouteFor, passiveHref } from "@/lib/route-mode";
 
 describe("modeRouteFor", () => {
   it("reads the passive and the active page", () => {
@@ -69,5 +69,23 @@ describe("modeHref", () => {
         });
       }
     }
+  });
+});
+
+describe("passiveHref", () => {
+  it("carries an ip, domain, or hash across unchanged", () => {
+    expect(passiveHref("8.8.8.8")).toBe("/check/8.8.8.8");
+    expect(passiveHref("example.org")).toBe("/check/example.org");
+  });
+
+  // Passive mode has no reading of a URL, and /check/<url> redirects back to
+  // the scan page, so linking there would go in a circle.
+  it("carries a url across as its host", () => {
+    expect(passiveHref("https://evil.test/login?x=1")).toBe("/check/evil.test");
+    expect(passiveHref("http://1.2.3.4/a")).toBe("/check/1.2.3.4");
+  });
+
+  it("leaves input it cannot read alone", () => {
+    expect(passiveHref("not an indicator")).toBe("/check/not%20an%20indicator");
   });
 });

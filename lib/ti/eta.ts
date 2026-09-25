@@ -39,14 +39,8 @@ export function longestTimeout(sources: readonly TimedSource[]): number {
  * is zero: there is nothing left to wait for.
  *
  * `settledIds` is a multiset (one id per settled source, duplicates kept), not
- * a `Set`: a URL check's panel repeats a handful of ids across its domain and
- * IP layers (#48), so a plain Set-membership test would mark both of a shared
- * id's panel entries done the moment either layer's copy landed, undercounting
- * what is actually still outstanding. Pairing counts instead of testing
- * membership handles the duplicate correctly without needing the panel to
- * know which layer each entry belongs to — moot anyway, since two entries
- * sharing an id share the same registered timeout, so which specific one
- * gets paired off never changes the answer.
+ * a `Set`, so a panel that repeats an id counts each entry as outstanding
+ * until its own answer lands.
  */
 export function etaBudgetMs(
   sources: readonly TimedSource[],

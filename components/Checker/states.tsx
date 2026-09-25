@@ -26,16 +26,15 @@ const HASH_EMPTY_COPY =
 // every IOC so the tool doesn't read as IP-only; once detection has picked a
 // type, it says what that particular lookup will actually return.
 //
-// `url` reads the hash copy, which is what the if/else chain this replaced did
-// (its last branch caught both) and is kept unchanged here rather than quietly
-// corrected. A detected URL deserves its own sentence.
+// A URL is the exception: passive mode does not look one up, so its copy says
+// where it goes instead.
 const EMPTY_STATE_COPY: Record<Mode | "none", string> = {
   none: "Paste an IP address, domain, or file hash above, we'll detect the type, then tell you what it is, where it lives, and whether any threat-intel source has flagged it, summarized into one risk score.",
   ip: "Enter an IPv4 address above and we'll tell you what kind of address it is, where it's located, and whether any threat-intel source has flagged it, summarized into one risk score.",
   domain:
     "Enter a domain above and we'll tell you when it was registered, where it resolves, and whether any threat-intel source has flagged it, summarized into one risk score.",
   hash: HASH_EMPTY_COPY,
-  url: HASH_EMPTY_COPY,
+  url: "A URL is not looked up passively. Press Enter to open its scan page, where the app visits it and reports what it found.",
 };
 
 export function EmptyState({ detected }: Readonly<{ detected: Mode | null }>) {

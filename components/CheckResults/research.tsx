@@ -10,8 +10,6 @@ import {
     isDomainResult,
     isHashResult,
 } from "@/lib/ti/types";
-import { isUrlResult, type UrlCheckResult } from "@/lib/ti/url/types";
-import { parseUrl } from "@/lib/url";
 import type { IOCType } from "@/lib/ioc";
 import {
     archiveFrameUrl,
@@ -653,22 +651,11 @@ export function LinksTile({
 
 /**
  * What this result researches, and as what kind.
- *
- * A URL researches its host as a domain: no provider supports a url kind, and
- * this keeps the card's header and links agreeing with the stream the page
- * actually requested. URL is checked first because it is the most specific
- * shape and the other guards would not recognize it.
  */
-export function researchTarget(result: AnyCheckResult | UrlCheckResult): {
+export function researchTarget(result: AnyCheckResult): {
     indicator: string;
     kind: IOCType;
 } {
-    if (isUrlResult(result)) {
-        return {
-            indicator: parseUrl(result.url)?.host ?? result.url,
-            kind: "domain",
-        };
-    }
     if (isHashResult(result)) return { indicator: result.hash, kind: "hash" };
     if (isDomainResult(result)) {
         return { indicator: result.domain, kind: "domain" };

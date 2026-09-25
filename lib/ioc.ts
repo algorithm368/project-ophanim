@@ -5,6 +5,11 @@ import { looksLikeUrl, parseUrl } from "@/lib/url";
 
 export type IOCType = "ip" | "domain" | "hash" | "url";
 
+/** The kinds passive mode looks up. A URL is detected, but it is only ever
+ *  scanned, on `/scan/<url>`: a URL's reputation is the reputation of its host,
+ *  which the domain and IP lookups already answer. */
+export type LookupType = Exclude<IOCType, "url">;
+
 /**
  * Undo the common "defang" conventions analysts use so an IOC isn't clickable
  * when shared in tickets, chat, or email: e.g. `evil[.]com`, `185.220.101[.]1`,

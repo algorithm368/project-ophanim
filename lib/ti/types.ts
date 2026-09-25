@@ -372,24 +372,6 @@ export interface SourceResult extends SourceFinding {
   source: SourceMeta;
   enabled: boolean;
   durationMs: number;
-  /** Which composition layer produced this row (a URL check's "url" / "domain"
-   *  / "ip", see LayerKind in lib/ti/url/types.ts — kept as a bare string here
-   *  to avoid a circular import). Undefined for a single-indicator check.
-   *  Exists because a URL check's domain and IP layers can register sources
-   *  under the same id (virustotal, otx, threatfox, mnemonic-pdns appear in
-   *  both registries), so `source.id` alone is not identity for a row: two
-   *  layers' worth of rows can collide under it. Use sourceRowKey for
-   *  anything that needs a row's identity (a map key, a React key); the bare
-   *  id stays right for anything genuinely about the source rather than the
-   *  row, like a per-source deep-link lookup. */
-  layer?: string;
-}
-
-/** A row's identity: the source id, qualified by layer when one is set, so a
- *  URL check's domain and IP layers registering the same source id (see
- *  SourceResult.layer) don't collide in a map key or a React key. */
-export function sourceRowKey(s: SourceResult): string {
-  return s.layer ? `${s.layer}:${s.source.id}` : s.source.id;
 }
 
 export interface CheckStats {

@@ -93,11 +93,6 @@ type DotSlot = { name?: string; result?: SourceResult };
  * which then visibly reshuffled into registry order when the completed hero
  * took over. Without a panel (the completed hero, which has the real sources
  * already in registry order) it keeps the order it was handed and pads.
- *
- * A URL check runs three layers, and four source ids appear in two of them.
- * Both slots read the same settled result, which is why this looks a source up
- * rather than consuming it: the strip keeps its full width, and neither slot
- * is left pending forever.
  */
 function dotSlots(
     sources: SourceResult[],
@@ -148,8 +143,8 @@ export function SourceDots({
             <div className="flex flex-wrap gap-1" aria-hidden>
                 {dotSlots(sources, total, panel).map((slot, i) => (
                     <span
-                        // Position is the identity here: two layers of a URL check
-                        // can share a source id, so an id key would collide.
+                        // Position is the identity here: a pending slot has
+                        // no source to take a key from.
                         key={i}
                         title={slot.name}
                         className={cn(
