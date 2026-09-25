@@ -4,7 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Radar, Search } from "lucide-react";
 import { detectIOC } from "@/lib/ioc";
-import { modeHref, modeRouteFor, type ReadingMode } from "@/lib/route-mode";
+import {
+  modeHref,
+  modeRouteFor,
+  passiveHref,
+  type ReadingMode,
+} from "@/lib/route-mode";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 
 const SEGMENTS: { mode: ReadingMode; label: string; Icon: typeof Radar }[] = [
@@ -99,7 +104,11 @@ export function ModeSwitch() {
         return (
           <Link
             key={segment}
-            href={modeHref(segment, indicator)}
+            href={
+              segment === "passive" && indicator
+                ? passiveHref(indicator)
+                : modeHref(segment, indicator)
+            }
             aria-label={name}
             className={`${SEGMENT_CLASS} text-muted-foreground hover:bg-muted hover:text-foreground`}
           >

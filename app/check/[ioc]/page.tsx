@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { cache, Suspense } from "react";
 import Checker from "@/components/Checker";
 import { ResultSkeleton } from "@/components/result-skeleton";
 import { detectIOC } from "@/lib/ioc";
+import { modeHref } from "@/lib/route-mode";
 import { getCachedResultFor } from "@/lib/ti/cache";
 import { getHistory } from "@/lib/ti/history";
 import type { AnyCheckResult } from "@/lib/ti/types";
-import type { UrlCheckResult } from "@/lib/ti/url/types";
 
 interface PageProps {
   params: Promise<{ ioc: string }>;
@@ -21,7 +22,7 @@ const VERDICT_LABEL: Record<string, string> = {
 
 /** Everything this page reads out of Redis, in one pass. */
 interface CachedPage {
-  result: AnyCheckResult | UrlCheckResult | null;
+  result: AnyCheckResult | null;
 }
 
 /** Read everything cached for an indicator. Memoized per request so
@@ -34,7 +35,7 @@ interface CachedPage {
  *  wanted. */
 const fetchCached = cache(async (decoded: string): Promise<CachedPage> => {
   const kind = detectIOC(decoded);
-  if (!kind) return { result: null };
+  if (!kind || kind === "url") return { result: null };
 
   // `kind` and the route factory's `label` are the same strings, which is what
   // keeps this reading the keys recordHistory() writes. The history read is
@@ -79,6 +80,9 @@ async function CachedChecker({ decoded }: Readonly<{ decoded: string }>) {
 export default async function CheckPage({ params }: Readonly<PageProps>) {
   const { ioc } = await params;
   const decoded = decodeURIComponent(ioc);
+  // A URL has no passive reading. Old links to one land on its scan page, which
+  // shows past scans without starting a new one.
+  if (detectIOC(decoded) === "url") redirect(modeHref("active", decoded));
   // Only `params` is awaited here. The cache read happens inside the boundary
   // below, so the shell reaches the browser without waiting on Redis. A cached
   // permalink still renders its result server-side; an uncached one falls

@@ -98,6 +98,16 @@ export function DetectionHint({
   }
 
   const DetectedIcon = MODE_META[detected].icon;
+  // Passive mode has no reading of a URL: submitting one opens its scan page.
+  if (detected === "url") {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
+        <DetectedIcon className="size-4" />
+        Detected a URL
+        <span className="text-muted-foreground">, opens an active scan</span>
+      </span>
+    );
+  }
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
       <DetectedIcon className="size-4" />

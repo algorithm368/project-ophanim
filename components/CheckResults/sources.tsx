@@ -2,11 +2,7 @@
 
 import { memo, useState } from "react";
 import { ChevronRight, ExternalLink } from "lucide-react";
-import {
-    sourceRowKey,
-    type SourceMeta,
-    type SourceResult,
-} from "@/lib/ti/types";
+import type { SourceMeta, SourceResult } from "@/lib/ti/types";
 import { algoFromLength } from "@/lib/hash";
 import { cn } from "@/lib/utils";
 import { Tile } from "./frame";
@@ -215,11 +211,7 @@ export const SourceBreakdown = memo(function SourceBreakdown({
                         <div className="border-t border-foreground/12">
                             {group.map((s) => (
                                 <SourceRow
-                                    // Not the bare id: a URL check's domain
-                                    // and IP layers can register the same
-                                    // source id, and two rows sharing a React
-                                    // key silently collapse to one (#48).
-                                    key={sourceRowKey(s)}
+                                    key={s.source.id}
                                     result={s}
                                     indicator={indicator}
                                     kind={kind}

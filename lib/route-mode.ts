@@ -10,6 +10,8 @@
  * one place that knows the path shape, and because a wrong answer sends the
  * analyst to the wrong reading.
  */
+import { detectIOC } from "@/lib/ioc";
+import { parseUrl } from "@/lib/url";
 
 export type ReadingMode = "passive" | "active";
 
@@ -69,4 +71,17 @@ export function modeHref(mode: ReadingMode, indicator?: string): string {
   const base = mode === "passive" ? "" : `/${SEGMENT_OF_MODE.active}`;
   if (!indicator) return base || "/";
   return `/${SEGMENT_OF_MODE[mode]}/${encodeURIComponent(indicator)}`;
+}
+
+/**
+ * Where the passive reading of an indicator lives.
+ *
+ * Passive mode has no reading of a URL (`/check/<url>` redirects back to the
+ * scan page), so a URL crosses over as its host, whose reputation is the
+ * passive question a URL raises.
+ */
+export function passiveHref(indicator: string): string {
+  const host =
+    detectIOC(indicator) === "url" ? parseUrl(indicator)?.host : undefined;
+  return modeHref("passive", host ?? indicator);
 }

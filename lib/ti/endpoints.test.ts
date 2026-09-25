@@ -7,7 +7,6 @@ describe("ENDPOINTS", () => {
       "domain",
       "hash",
       "ip",
-      "url",
     ]);
   });
 
@@ -20,7 +19,6 @@ describe("ENDPOINTS", () => {
       param: "domain",
     });
     expect(ENDPOINTS.hash).toEqual({ path: "/api/check-hash", param: "hash" });
-    expect(ENDPOINTS.url).toEqual({ path: "/api/check-url", param: "url" });
   });
 });
 
@@ -32,12 +30,11 @@ describe("checkUrlFor", () => {
     );
   });
 
-  // A url indicator carries slashes, a query of its own, and possibly a "#".
-  // Unencoded, its query string merges into ours and the route sees a
-  // truncated indicator.
+  // Unencoded, a "&" or "#" in the indicator would merge into our own query
+  // string and the route would see a truncated indicator.
   it("percent-encodes the indicator", () => {
-    expect(checkUrlFor("url", "https://evil.test/a?b=1&c=2")).toBe(
-      "/api/check-url?url=https%3A%2F%2Fevil.test%2Fa%3Fb%3D1%26c%3D2",
+    expect(checkUrlFor("domain", "a&b#c")).toBe(
+      "/api/check-domain?domain=a%26b%23c",
     );
   });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { etaBudgetMs, etaLabel } from "@/lib/ti/eta";
 import type { PartialLookup } from "@/lib/ti/partial";
+import type { LookupType } from "@/lib/ioc";
 import { cn } from "@/lib/utils";
 import { Frame, Tile } from "./frame";
 import { SourceDots } from "./verdict";
@@ -36,7 +37,7 @@ export function FrameSkeleton({
     /** Live progress, once the stream has started. Absent on the inert shell a
      *  route paints before it has read anything at all. */
     partial?: PartialLookup | null;
-    kind?: "ip" | "domain" | "hash" | "url";
+    kind?: LookupType;
 }>) {
     return (
         <Frame>
@@ -334,8 +335,6 @@ function useEta(partial: PartialLookup): string {
     const [startedAt] = useState(() => Date.now());
     const [now, setNow] = useState(() => Date.now());
 
-    // A multiset, not deduped: see etaBudgetMs for why a URL check's repeated
-    // ids need every settled occurrence counted, not just whether one landed.
     const settledIds = partial.sources.map((s) => s.source.id);
     const budgetMs = etaBudgetMs(partial.metas, settledIds);
     // Nothing left to count down to once the last source is in.

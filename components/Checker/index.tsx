@@ -2,11 +2,17 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type AnyCheckResult, sourceRowKey } from "@/lib/ti/types";
+import { useRouter } from "next/navigation";
+import type { AnyCheckResult } from "@/lib/ti/types";
 import type { ParsedIP } from "@/lib/ip";
-import { detectIOC, refangIOC, iocFromPath } from "@/lib/ioc";
+import {
+  detectIOC,
+  refangIOC,
+  iocFromPath,
+  type IOCType,
+  type LookupType,
+} from "@/lib/ioc";
 import type { GeoRow } from "@/lib/ti/geo";
-import type { UrlCheckResult } from "@/lib/ti/url/types";
 import { buildPartial } from "@/lib/ti/partial";
 import { useResearchStream } from "@/components/CheckResults/use-research";
 import {
@@ -16,7 +22,7 @@ import {
   SearchBox,
 } from "./search-box";
 import { BulkProgress, EmptyState, ErrorState } from "./states";
-import type { CheckError, Mode, Progress } from "./types";
+import type { CheckError, Progress } from "./types";
 import {
   bulkTargets,
   canonicalFor,
@@ -45,19 +51,20 @@ export default function Checker({
   initialQuery?: string;
   /** A server-fetched cached result for a permalink (/check/<ioc>). When present
    *  it is shown immediately on first paint, skipping the client lookup. */
-  initialResult?: AnyCheckResult | UrlCheckResult | null;
+  initialResult?: AnyCheckResult | null;
 }>) {
-  const [mode, setMode] = useState<Mode>(
-    () => detectIOC(initialQuery ?? "") ?? "ip",
+  const router = useRouter();
+  const [mode, setMode] = useState<LookupType>(
+    () => lookupTypeOf(detectIOC(initialQuery ?? "")) ?? "ip",
   );
   const [query, setQuery] = useState(initialQuery ?? "");
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState("");
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<CheckError | null>(null);
-  const [result, setResult] = useState<
-    AnyCheckResult | UrlCheckResult | null
-  >(initialResult ?? null);
+  const [result, setResult] = useState<AnyCheckResult | null>(
+    initialResult ?? null,
+  );
   const [bulkRows, setBulkRows] = useState<GeoRow[] | null>(null);
   const [bulkPending, setBulkPending] = useState(0);
   const [isBulk, setIsBulk] = useState(false);
@@ -70,9 +77,7 @@ export default function Checker({
   // that appears in /check/<ioc> (the decoded path segment). Lets Back/Forward
   // restore a prior result instantly with no network; seeded from initialResult
   // and written on every completed lookup.
-  const resultsCache = useRef<Map<string, AnyCheckResult | UrlCheckResult>>(
-    new Map(),
-  );
+  const resultsCache = useRef<Map<string, AnyCheckResult>>(new Map());
   // The in-flight lookup's AbortController, so a history navigation can cancel it.
   const abortRef = useRef<AbortController | null>(null);
 
@@ -146,7 +151,8 @@ export default function Checker({
       const detected = detectIOC(refanged);
       const canonical = canonicalFor(refanged, detected);
       setQuery(canonical);
-      if (detected) setMode(detected);
+      const lookupType = lookupTypeOf(detected);
+      if (lookupType) setMode(lookupType);
 
       const cached = resultsCache.current.get(canonical);
       if (cached) {
@@ -215,7 +221,7 @@ export default function Checker({
   function onQueryChange(value: string) {
     setQuery(value);
     if (error?.kind === "input") setError(null);
-    const detected = detectIOC(value);
+    const detected = lookupTypeOf(detectIOC(value));
     if (detected && detected !== mode) setMode(detected);
   }
 
@@ -265,7 +271,11 @@ export default function Checker({
     }
 
     const prep = prepareCheck(value);
-    if (!prep.ok) {
+    if (prep.kind === "scan") {
+      router.push(prep.href);
+      return;
+    }
+    if (prep.kind === "invalid") {
       setError({ kind: "input", message: prep.message });
       setResult(null);
       return;
@@ -307,13 +317,10 @@ export default function Checker({
         {
           chunk: watchdog.bump,
           start: (total, metas) => setProgress({ total, metas, settled: {} }),
-          // Keyed by sourceRowKey, not the bare id: a URL check's domain and
-          // IP layers can register the same source id, and an id-keyed
-          // record loses one of the two rows to the other (#48).
           source: (sr) =>
             setProgress((p) =>
               p
-                ? { ...p, settled: { ...p.settled, [sourceRowKey(sr)]: sr } }
+                ? { ...p, settled: { ...p.settled, [sr.source.id]: sr } }
                 : p,
             ),
         },
@@ -349,9 +356,6 @@ export default function Checker({
   // IOC, or — while a check is still running — the canonical value being looked
   // up (so research streams concurrently with the main TI fan-out, not after).
   // Bulk geo lookups have no single indicator, so the lane stays idle there.
-  // A URL result researches its *host* as a domain: no research provider
-  // supports a url kind, and the host is the pivot an analyst wants anyway
-  // (certificates, archived snapshots, prior scans of the site).
   const settled = result ? researchTargetOf(result) : null;
   const inFlight =
     loading && !isBulk && pending ? researchTargetFor(pending) : null;
@@ -495,11 +499,6 @@ export default function Checker({
           partial={partial}
           indicator={pending || query}
           // `mode` is the type of the in-flight/displayed check itself.
-          // `activeKind` is a different thing: it is what the *research*
-          // lane should ask about, which is deliberately "domain" for a URL
-          // (no research provider understands a url kind). Passing that here
-          // made a streaming URL check render as a domain check until the
-          // result landed and the type guards took over.
           kind={mode}
           onRefresh={refresh}
           onPivot={pivot}
@@ -508,4 +507,10 @@ export default function Checker({
       )}
     </div>
   );
+}
+
+/** The lookup a detected IOC runs, or null for a URL, which passive mode sends
+ *  to its scan page rather than looking up. */
+function lookupTypeOf(detected: IOCType | null): LookupType | null {
+  return detected === "url" ? null : detected;
 }
