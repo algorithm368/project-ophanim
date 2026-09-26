@@ -121,12 +121,16 @@ export function BallotsTile({ scans }: Readonly<{ scans: ActiveScan[] }>) {
     0,
   );
 
+  let splitNote = `${splits} splits`;
+  if (splits === 0) splitNote = "the engines agree";
+  else if (splits === 1) splitNote = "1 split";
+
   return (
     <Tile
       span={12}
       id="ballots"
       title="Ballots"
-      note={splits === 0 ? "the engines agree" : `${splits} ${splits === 1 ? "split" : "splits"}`}
+      note={splitNote}
       className="space-y-5"
     >
       {ballots.map((b) => (

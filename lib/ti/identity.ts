@@ -85,11 +85,14 @@ export type IdentityRecord = {
 
 const NONE = "none published";
 
+/** A claim's value; empty or false reads as the absence. */
+type ClaimValue = string | undefined | false;
+
 /** One row. An empty value becomes the absence, which is itself a fact. */
 function f(
   key: string,
   label: string,
-  value: string | undefined | false,
+  value: ClaimValue,
   extra: Omit<IdentityClaim, "key" | "label" | "value"> = {},
 ): IdentityClaim {
   return value ? { key, label, value, ...extra } : { key, label, value: NONE, absent: true };
@@ -108,7 +111,7 @@ const list = (values: string[]): string => [...new Set(values.filter(Boolean))].
 
 /** Drop the empties and join what is left with commas, so a missing part
  *  shortens a value instead of leaving a dangling separator. */
-const parts = (...values: (string | undefined | false)[]): string =>
+const parts = (...values: (ClaimValue)[]): string =>
   values.filter((v): v is string => Boolean(v)).join(", ");
 
 const day = (iso: string | undefined): string | undefined => iso?.slice(0, 10);
@@ -135,7 +138,7 @@ export function countryName(code: string | undefined): string | undefined {
  *  product, e.g. "GitHub (Do Not Inspect)", which is an instruction to a TLS
  *  proxy and not part of the name. */
 export function cleanAppName(name: string | undefined): string | undefined {
-  const trimmed = name?.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const trimmed = name?.replace(/\([^()]*\)\s*$/, "").trim();
   return trimmed || undefined;
 }
 
@@ -368,8 +371,8 @@ function signatureWord(signed: boolean | undefined, signer: string | undefined):
  * there.
  */
 const got = (
-  value: string | undefined | false,
-  sub?: string | undefined | false,
+  value: ClaimValue,
+  sub?: ClaimValue,
 ): { value: string; sub?: string } | undefined =>
   value ? { value, sub: sub || undefined } : undefined;
 

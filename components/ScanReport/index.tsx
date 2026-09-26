@@ -389,16 +389,16 @@ export function ScanReport({
     let timer: ReturnType<typeof setTimeout>;
     let cancelled = false;
 
+    const settled = () => {
+      if (cancelled) return;
+      setNow(Date.now());
+      tick();
+    };
+    const fire = () => {
+      if (!cancelled) void poll().finally(settled);
+    };
     function tick() {
-      timer = setTimeout(() => {
-        if (cancelled) return;
-        void poll().finally(() => {
-          if (!cancelled) {
-            setNow(Date.now());
-            tick();
-          }
-        });
-      }, pollIntervalFor(Date.now() - startedAt));
+      timer = setTimeout(fire, pollIntervalFor(Date.now() - startedAt));
     }
     tick();
 
