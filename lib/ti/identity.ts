@@ -226,7 +226,7 @@ function ipFields(r: CheckResult): IdentityClaim[] {
     }),
     f("filed", "Registry country", countryName(filed), { notable: clash || undefined }),
     f("asn", "Network", asnLine(geo?.asn?.trim(), asnOrg)),
-    f("isp", "Provider", isp && (!asnOrg || isp.toLowerCase() !== asnOrg.toLowerCase()) && isp),
+    f("isp", "Provider", isp && asnOrg?.toLowerCase() !== isp.toLowerCase() && isp),
     f("org", "Organisation", geo?.org && geo.org !== isp && geo.org !== asnOrg && geo.org),
     f("block", "Block", parts(str(rdap?.networkName), str(rdap?.range))),
     f("allocated", "Allocated", day(str(rdap?.registeredAt))),
