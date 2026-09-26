@@ -36,10 +36,9 @@ export function subjectTargetFor(
   if (kind === "url") {
     const parsed = parseUrl(indicator);
     if (!parsed) return null;
+    const query = parsed.query ? "?" + parsed.query : "";
     const context =
-      parsed.path !== "/" || parsed.query
-        ? `${parsed.path}${parsed.query ? `?${parsed.query}` : ""}`
-        : undefined;
+      parsed.path !== "/" || query ? parsed.path + query : undefined;
     return {
       subjectKind: parsed.isIpHost ? "ip" : "domain",
       subject: parsed.host,
