@@ -82,9 +82,17 @@ const DOCUMENT_MIME = /^(text\/|application\/(xhtml\+xml|xml|json|javascript))/i
 
 const EXECUTABLE_DESC = /executable|PE32|\bELF\b|Mach-O|MS-DOS|\bDLL\b|installer|Dalvik|script text/i;
 const EXECUTABLE_MIME = /x-dosexec|x-msdownload|x-executable|x-elf|x-mach-binary|x-sharedlib|android\.package-archive|x-msi\b|x-sh\b|x-bat\b/i;
-const EXECUTABLE_EXT = /\.(exe|msi|scr|dll|com|pif|bat|cmd|ps1|vbs|vbe|js|jse|wsf|hta|jar|apk|dmg|pkg|app|deb|rpm|lnk|elf|bin|sh)$/i;
+const EXECUTABLE_EXT = new Set(
+  "exe msi scr dll com pif bat cmd ps1 vbs vbe js jse wsf hta jar apk dmg pkg app deb rpm lnk elf bin sh".split(" "),
+);
 const ARCHIVE_MIME = /zip|x-rar|x-7z|gzip|x-tar|x-iso9660|x-apple-diskimage|vnd\.ms-cab/i;
 const ARCHIVE_EXT = /\.(zip|rar|7z|gz|tgz|tar|iso|img|cab)$/i;
+
+/** The lowercased text after a name's last dot, or "" when it has none. */
+function extensionOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
+}
 
 /** The last path segment of a URL, decoded, or undefined for a bare host. */
 export function fileNameOf(url: string | undefined): string | undefined {
@@ -112,7 +120,7 @@ export function fileKind(
 ): "Executable file" | "Archive" | "File" {
   if (description && EXECUTABLE_DESC.test(description)) return "Executable file";
   if (mime && EXECUTABLE_MIME.test(mime)) return "Executable file";
-  if (name && EXECUTABLE_EXT.test(name)) return "Executable file";
+  if (name && EXECUTABLE_EXT.has(extensionOf(name))) return "Executable file";
   if (mime && ARCHIVE_MIME.test(mime)) return "Archive";
   if (name && ARCHIVE_EXT.test(name)) return "Archive";
   return "File";
@@ -255,8 +263,8 @@ const parked: Rung = ({ m }) => {
 const DEFAULT_TITLES: [RegExp, string][] = [
   [/welcome to nginx/i, "nginx welcome page"],
   [/welcome to openresty/i, "OpenResty welcome page"],
-  [/apache2? .*default page|^it works!?$/i, "Apache default page"],
-  [/^iis windows|internet information services/i, "IIS default page"],
+  [/(?:apache2? .*default page)|(?:^it works!?$)/i, "Apache default page"],
+  [/(?:^iis windows)|internet information services/i, "IIS default page"],
   [/test page for the (apache|nginx|http)/i, "server test page"],
 ];
 
@@ -431,7 +439,7 @@ function whatItIs(m: MergedIndicator, klass: ScanClass, host: string): string {
         ? `A bare web server at ${host}, with no site deployed on it.`
         : `A web server at ${host} answering only with errors.`;
     case "categorised":
-      return `${article(`${klass.label.toLowerCase()} site`)}${titled} on ${host}.`;
+      return `${article(klass.label.toLowerCase() + " site")}${titled} on ${host}.`;
     default:
       return `A web page${titled} on ${host}.`;
   }

@@ -407,7 +407,7 @@ const FREE_SUBDOMAIN = new Set([
 ]);
 
 /** Nameservers that mean a registrar is holding the name, not serving it. */
-export const PARKING_NS = /dns-parking|sedoparking|parkingcrew|bodis|afternic|above\.com|parklogic|cashparking|domaincontrol\.com$/i;
+export const PARKING_NS = /dns-parking|sedoparking|parkingcrew|bodis|afternic|above\.com|parklogic|cashparking|(?:domaincontrol\.com$)/i;
 
 /**
  * Category names that are a filter list rather than a description.
@@ -535,7 +535,7 @@ const established: DomainRung = ({ ctx, rank }) => {
   return {
     label: "Established",
     short: "Established",
-    caption: y >= 1 ? `registered ${y} year${y === 1 ? "" : "s"} ago${ranked}` : `registered under a year ago${ranked}`,
+    caption: `registered ${y >= 1 ? yearsAgo(y) : "under a year ago"}${ranked}`,
     phrase: "an established domain",
     tail: "",
     desc: y >= 1 ? `Registered ${y}+ year(s) ago.` : "Registered under a year ago.",
@@ -630,18 +630,19 @@ function fileCaption(ctx: HashContext | undefined): string {
  * happens next, and the family stays one line below it where a reader who does
  * know the name still finds it.
  */
-const typedThreat: HashRung = ({ ctx, threat }) =>
-  threat
-    ? {
-        label: sentence(threat),
-        short: sentence(threat),
-        caption: fileCaption(ctx),
-        phrase: `${threat}${ctx?.malwareFamily ? `, identified as ${ctx.malwareFamily}` : ""}`,
-        tail: "",
-        desc: `Classified as ${threat}${ctx?.malwareFamily ? ` (${ctx.malwareFamily})` : ""}.`,
-        sources: ["detection categories"],
-      }
-    : null;
+const typedThreat: HashRung = ({ ctx, threat }) => {
+  if (!threat) return null;
+  const family = ctx?.malwareFamily;
+  return {
+    label: sentence(threat),
+    short: sentence(threat),
+    caption: fileCaption(ctx),
+    phrase: threat + (family ? ", identified as " + family : ""),
+    tail: "",
+    desc: "Classified as " + threat + (family ? " (" + family + ")" : "") + ".",
+    sources: ["detection categories"],
+  };
+};
 
 /** Engines agree it is bad and none of them says what kind. Worth its own rung:
  *  an unclassified detection is the shape of something new, and "Win32 EXE" as
@@ -743,4 +744,9 @@ export function hashEvidence(
     known: sources.some((s) => s.status === "ok" && s.score !== undefined),
     threat,
   };
+}
+
+/** "1 year ago", "3 years ago". */
+function yearsAgo(y: number): string {
+  return y === 1 ? "1 year ago" : `${y} years ago`;
 }

@@ -190,13 +190,14 @@ describe("attribution", () => {
   });
 });
 
+const cap = (over: Partial<ScanCapability> = {}): ScanCapability => ({
+  passwordField: false,
+  forms: [],
+  downloadLinks: [],
+  ...over,
+});
+
 describe("mergeScans capability", () => {
-  const cap = (over: Partial<ScanCapability> = {}): ScanCapability => ({
-    passwordField: false,
-    forms: [],
-    downloadLinks: [],
-    ...over,
-  });
 
   it("says the DOM was not read rather than reporting nothing found", () => {
     // The difference the spec insists on: "form analysis unavailable", never
@@ -420,12 +421,6 @@ describe("mergeTargets", () => {
   });
 
   it("sees a password field either URL rendered", () => {
-    const cap = (over: Partial<ScanCapability>): ScanCapability => ({
-      passwordField: false,
-      forms: [],
-      downloadLinks: [],
-      ...over,
-    });
     const merged = mergeTargets([
       httpScan({ detail: detail(), capability: cap({}) }),
       httpsScan({ detail: detail(), capability: cap({ passwordField: true }) }),

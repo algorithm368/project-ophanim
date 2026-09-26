@@ -88,7 +88,8 @@ console.log("  red flags:", flags.length ? flags : "(none)");
 const rows = await page.$$eval("main table tr", (els) => els.length);
 console.log("  ledger rows:", rows);
 
-await page.screenshot({ path: join(OUT, `${slug}.png`), fullPage: true });
-console.log(`  saved ${join(OUT, `${slug}.png`)}`);
+const shot = join(OUT, `${slug}.png`);
+await page.screenshot({ path: shot, fullPage: true });
+console.log(`  saved ${shot}`);
 
 await browser.close();

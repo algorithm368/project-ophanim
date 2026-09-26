@@ -51,12 +51,12 @@ describe("subjectTargetFor", () => {
   });
 
   it("has no subject for a hash", () => {
-    expect(subjectTargetFor("44d88612fea8a8f36de82e1278abb02f", "hash")).toBe(
-      null,
-    );
+    expect(
+      subjectTargetFor("44d88612fea8a8f36de82e1278abb02f", "hash"),
+    ).toBeNull();
   });
 
   it("has no subject for a url that will not parse", () => {
-    expect(subjectTargetFor("http://", "url")).toBe(null);
+    expect(subjectTargetFor("http://", "url")).toBeNull();
   });
 });

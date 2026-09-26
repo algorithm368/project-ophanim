@@ -67,9 +67,7 @@ export function describeTenancy(domains: string[]): SourceFinding {
   const capped = domains.length > MAX_DOMAINS;
   return {
     status: "ok",
-    summary: `${atCeiling ? "More than " : ""}${domains.length} ${
-      domains.length === 1 ? "domain shares" : "domains share"
-    } this IP${capped ? ` (showing ${MAX_DOMAINS})` : ""}`,
+    summary: tenancySummary(domains.length, atCeiling, capped),
     details: {
       domainCount: domains.length,
       // The count above is a floor when this is set, not a measurement.
@@ -121,3 +119,10 @@ export const reverseIpSource: TiSource = {
     }
   },
 };
+
+function tenancySummary(count: number, atCeiling: boolean, capped: boolean): string {
+  const floor = atCeiling ? "More than " : "";
+  const noun = count === 1 ? "domain shares" : "domains share";
+  const shown = capped ? " (showing " + MAX_DOMAINS + ")" : "";
+  return `${floor}${count} ${noun} this IP${shown}`;
+}

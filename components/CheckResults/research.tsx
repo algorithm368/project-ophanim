@@ -560,6 +560,7 @@ export function LiveIntelTile({
 
     if (!loading && visible.length === 0 && !error) return null;
 
+    const laneCount = visible.length === 1 ? "1 lane" : `${visible.length} lanes`;
     return (
         <Tile
             span={5}
@@ -569,7 +570,7 @@ export function LiveIntelTile({
                 loading ? (
                     <Loader2 className="size-3 animate-spin" />
                 ) : (
-                    `${visible.length} ${visible.length === 1 ? "lane" : "lanes"}`
+                    laneCount
                 )
             }
         >

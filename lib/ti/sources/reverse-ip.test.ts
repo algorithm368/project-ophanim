@@ -26,7 +26,7 @@ describe("describeTenancy", () => {
     const f = describeTenancy(names(120));
     expect(f.summary).toBe("120 domains share this IP (showing 40)");
     expect(f.details).toMatchObject({ atCeiling: false });
-    expect((f.details?.domains as string[]).length).toBe(40);
+    expect(f.details?.domains as string[]).toHaveLength(40);
     expect(f.relations).toHaveLength(40);
   });
 

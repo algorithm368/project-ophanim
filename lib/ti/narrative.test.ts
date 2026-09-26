@@ -207,19 +207,21 @@ describe("threatSentences — category attribution (issue #2)", () => {
   });
 });
 
+/** The narrative for a clean domain of a given age, and nothing else. */
+function domainAged(ageDays: number): string {
+  const result: DomainCheckResult = {
+    domain: "example.com",
+    checkedAt: "2026-05-28T00:00:00Z",
+    riskScore: 0,
+    verdict: "clean",
+    context: { ageDays },
+    sources: [],
+    stats: makeStats(),
+  };
+  return buildDomainNarrative(result).join(" ");
+}
+
 describe("buildDomainNarrative — age accuracy (issue #1)", () => {
-  function domainAged(ageDays: number): string {
-    const result: DomainCheckResult = {
-      domain: "example.com",
-      checkedAt: "2026-05-28T00:00:00Z",
-      riskScore: 0,
-      verdict: "clean",
-      context: { ageDays },
-      sources: [],
-      stats: makeStats(),
-    };
-    return buildDomainNarrative(result).join(" ");
-  }
 
   it("describes a ~3-month-old domain in months, not '1 year'", () => {
     const text = domainAged(90);
@@ -596,31 +598,19 @@ describe("threatSentences — no gap note", () => {
 });
 
 describe("buildDomainNarrative — maturity wording tiers (issue #6)", () => {
-  function aged(ageDays: number): string {
-    const result: DomainCheckResult = {
-      domain: "example.com",
-      checkedAt: "2026-05-28T00:00:00Z",
-      riskScore: 0,
-      verdict: "clean",
-      context: { ageDays },
-      sources: [],
-      stats: makeStats(),
-    };
-    return buildDomainNarrative(result).join(" ");
-  }
 
   it("does not call a 45-day-old domain 'established'", () => {
-    const text = aged(45);
+    const text = domainAged(45);
     expect(text).toContain("It was registered 45 days ago");
     expect(text).not.toContain("established");
   });
 
   it("calls a sub-30-day domain newly registered", () => {
-    expect(aged(20)).toContain("newly registered domain");
+    expect(domainAged(20)).toContain("newly registered domain");
   });
 
   it("calls a multi-year domain established", () => {
-    expect(aged(800)).toContain("established domain");
+    expect(domainAged(800)).toContain("established domain");
   });
 });
 

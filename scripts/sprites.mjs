@@ -27,11 +27,10 @@ function cell(label, spec) {
   return `<figure><div class="row">${row}</div><figcaption>${label}</figcaption></figure>`;
 }
 
-const specs = [];
-for (const body of BODY_KEYS) {
-  specs.push([body, { body, flagged: false }]);
-  specs.push([`${body} + horns`, { body, flagged: true }]);
-}
+const specs = BODY_KEYS.flatMap((body) => [
+  [body, { body, flagged: false }],
+  [`${body} + horns`, { body, flagged: true }],
+]);
 
 const html = (theme) => `<!doctype html><html><head><meta charset="utf-8"><style>
   body { margin:0; padding:32px; font:12px ui-monospace,monospace;

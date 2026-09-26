@@ -271,18 +271,20 @@ export function VerdictSection({
       />
       <ScanRow
         label="Filed as"
-        value={
-          d.contentCategories?.length
-            ? d.contentCategories.join(", ") +
-              (d.categoryInheritedFrom ? `, via ${d.categoryInheritedFrom}` : "")
-            : undefined
-        }
+        value={filedAs(d)}
         hint="What the site is about, not a verdict. A login form on a domain filed as Parked is the mismatch worth seeing."
         engines={by(scans, "contentCategories")}
       />
 
     </ScanSection>
   );
+}
+
+/** The content categories, and whose filing they inherited when not the host's own. */
+function filedAs(d: MergedIndicator["detail"]): string | undefined {
+  if (!d.contentCategories?.length) return undefined;
+  const via = d.categoryInheritedFrom ? `, via ${d.categoryInheritedFrom}` : "";
+  return d.contentCategories.join(", ") + via;
 }
 
 /** What nobody collected, named rather than left as an empty section. */
