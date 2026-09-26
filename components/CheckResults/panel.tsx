@@ -451,7 +451,7 @@ function DetectorRow({ row }: Readonly<{ row: DetectorRow }>) {
                     row.score === null && "font-normal text-muted-foreground",
                 )}
             >
-                {row.score === null ? "—" : row.score}
+                {row.score ?? "—"}
             </span>
             <span
                 title={row.why}
