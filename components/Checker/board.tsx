@@ -17,8 +17,10 @@ export function Board({
   aside: React.ReactNode;
 }>) {
   return (
-    <div className="grid w-full flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_330px]">
-      <div className="flex flex-col justify-center px-4 py-12 md:px-10">
+    // Same column as the banner (max-w-7xl, px-4), so the headline starts under
+    // the wordmark and the rail ends under the banner's controls on any width.
+    <div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_330px]">
+      <div className="flex flex-col justify-center px-4 py-12 md:pr-10">
         <div className="w-full max-w-[560px]">
           <h1 className="text-3xl leading-[1.1] font-bold tracking-[-0.02em] sm:text-[2rem]">
             Check an IP,

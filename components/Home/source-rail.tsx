@@ -35,7 +35,7 @@ function RailShell({ children, footer }: Readonly<{ children: React.ReactNode; f
   return (
     <aside
       aria-label="Source health"
-      className="relative border-t border-border bg-[oklch(0.955_0_0)] font-mono md:border-t-0 md:border-l dark:bg-[oklch(0.15_0_0)]"
+      className="relative border-t border-border bg-[oklch(0.955_0_0)] font-mono md:border-t-0 md:border-x dark:bg-[oklch(0.15_0_0)]"
     >
       <div className="flex flex-col md:absolute md:inset-0">
         <div className="flex items-baseline justify-between border-b border-border px-4 py-3">
