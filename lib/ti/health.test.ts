@@ -74,6 +74,16 @@ describe("gradeSource", () => {
     expect(h.lastAt).toBe(1000);
   });
 
+  it("says a single-algorithm source with no data takes only that hash", () => {
+    const h = grade([], { meta: meta({ algorithms: ["sha256"] }), type: "hash" });
+    expect(h).toMatchObject({ grade: "no-data", note: "SHA-256 only" });
+  });
+
+  it("adds no note once such a source has enough runs to grade", () => {
+    expect(grade(runs(10), { meta: meta({ algorithms: ["sha256"] }) }).note).toBeUndefined();
+    expect(grade([], { meta: meta({ algorithms: ["md5", "sha1"] }) }).note).toBeUndefined();
+  });
+
   it("has null share and median with no counted runs", () => {
     const h = grade([]);
     expect(h).toMatchObject({ grade: "no-data", okShare: null, medianMs: null, runs: 0, lastAt: null });

@@ -47,6 +47,7 @@ export const metadefenderHashSource: TiSource = {
     category: "reputation",
     requiresKey: false,
     weight: 0.9,
+    algorithms: ["sha256"],
   },
   isEnabled: () => true,
   async check(hash, signal): Promise<SourceFinding> {

@@ -144,6 +144,7 @@ export const hybridAnalysisSource: TiSource = {
     weight: 0.85,
     keyEnv: "HYBRID_ANALYSIS_API_KEY",
     timeoutMs: 12000,
+    algorithms: ["sha256"],
   },
   isEnabled: () => Boolean(process.env.HYBRID_ANALYSIS_API_KEY),
   async check(hash, signal): Promise<SourceFinding> {

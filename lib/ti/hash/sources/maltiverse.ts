@@ -83,6 +83,7 @@ export const maltiverseSource: TiSource = {
     weight: 0.7,
     keyEnv: "MALTIVERSE_API_KEY",
     timeoutMs: 12000,
+    algorithms: ["sha256"],
   },
   isEnabled: () => true,
   async check(hash, signal): Promise<SourceFinding> {

@@ -1,3 +1,4 @@
+import { HASH_ALGO_LABEL } from "@/lib/hash";
 import { PER_SOURCE_TIMEOUT_MS } from "./orchestrate";
 import type { SourceMeta, SourceStatus } from "./types";
 
@@ -32,6 +33,9 @@ export interface SourceHealth {
   runs: number;
   lastError?: string;
   lastAt: number | null;
+  /** Why a source with no data has none, when it is known: one that takes a
+   *  single hash algorithm sits out every other lookup ("SHA-256 only"). */
+  note?: string;
 }
 
 /** Fewer counted runs than this and a percentage would be noise. */
@@ -73,7 +77,7 @@ export function gradeSource({
   entries,
 }: {
   /** Only what grading reads, so a scan engine can be graded as well. */
-  meta: Pick<SourceMeta, "id" | "name" | "timeoutMs">;
+  meta: Pick<SourceMeta, "id" | "name" | "timeoutMs" | "algorithms">;
   type: string;
   enabled: boolean;
   entries: HealthEntry[];
@@ -83,11 +87,14 @@ export function gradeSource({
   const okShare = counted.length ? ok.length / counted.length : null;
   const medianMs = median(ok.map((e) => e.ms));
   const timeoutMs = meta.timeoutMs ?? PER_SOURCE_TIMEOUT_MS;
+  const grade = gradeOf(enabled, counted.length, okShare, medianMs, timeoutMs);
+  const only = meta.algorithms?.length === 1 ? meta.algorithms[0] : null;
   return {
     id: meta.id,
     name: meta.name,
     type,
-    grade: gradeOf(enabled, counted.length, okShare, medianMs, timeoutMs),
+    grade,
+    ...(grade === "no-data" && only ? { note: `${HASH_ALGO_LABEL[only]} only` } : {}),
     okShare,
     medianMs,
     runs: counted.length,

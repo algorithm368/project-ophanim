@@ -35,7 +35,7 @@ function Row({ row }: Readonly<{ row: SourceHealth }>) {
       <span className={cn("truncate", off && "text-muted-foreground")}>{row.name}</span>
       <span className="text-[10px] text-muted-foreground">{TYPE_TAG[row.type] ?? row.type}</span>
       {off ? (
-        <span className="col-span-2 text-right text-muted-foreground">{row.grade === "no-key" ? "no key" : "no data"}</span>
+        <span className="col-span-2 text-right text-muted-foreground">{row.grade === "no-key" ? "no key" : (row.note ?? "no data")}</span>
       ) : (
         <>
           <span className="text-right text-muted-foreground tabular-nums">{ms(row.medianMs)}</span>

@@ -1,4 +1,4 @@
-import type { HashCheckResult, SourceResult, TiSource } from "../types";
+import type { HashCheckResult, SourceMeta, SourceResult, TiSource } from "../types";
 import { HASH_ALGO_LABEL, type HashAlgorithm } from "@/lib/hash";
 import { hashSources } from "./registry";
 import { runAll } from "../orchestrate";
@@ -47,6 +47,15 @@ export function supportsAlgorithm(
   );
 }
 
+/** Why a source sat out. One that takes a single algorithm says which, and
+ *  what to paste instead, which is the more useful of the two. */
+export function skipSummary(meta: SourceMeta, algorithm: HashAlgorithm): string {
+  const only = meta.algorithms?.length === 1 ? HASH_ALGO_LABEL[meta.algorithms[0]] : null;
+  return only
+    ? `${only} only, paste a ${only} hash to query ${meta.name}`
+    : `Does not support ${HASH_ALGO_LABEL[algorithm]}`;
+}
+
 export async function checkHash(
   hash: string,
   algorithm: HashAlgorithm,
@@ -66,7 +75,7 @@ export async function checkHash(
     source: source.meta,
     enabled: true,
     status: "skipped",
-    summary: `Does not support ${HASH_ALGO_LABEL[algorithm]}`,
+    summary: skipSummary(source.meta, algorithm),
     durationMs: 0,
   }));
   for (const result of skipped) onSettled?.(result);
