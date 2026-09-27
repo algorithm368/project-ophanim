@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { recordHealth } from "./health-store";
 import { getHistory, MAX_SNAPSHOTS, recordHistory } from "./history";
 import type { HistorySnapshot, SourceResult, TiSource, Verdict } from "./types";
 
@@ -124,10 +125,12 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
 
     try {
       const result = await config.run(value);
-      // setCached is independent of the history write; overlap them.
+      // setCached, the history write and the health write are independent;
+      // overlap them.
       const [, written] = await Promise.all([
         config.setCached(value, result),
         recordHistory(config.label, histKey, snapshotOf(result)),
+        recordHealth(config.label, result.sources),
       ]);
       const history = await nextHistory(priorHistory, written, histKey);
       return Response.json({ ...result, cached: false, history });
@@ -170,10 +173,12 @@ export function makeIndicatorRoute<V, R extends IndicatorResult>(
             done += 1;
             send({ type: "source", result: r, done, total });
           });
-          // setCached is independent of the history write; overlap them.
+          // setCached, the history write and the health write are independent;
+          // overlap them.
           const [, written] = await Promise.all([
             config.setCached(value, result),
             recordHistory(config.label, histKey, snapshotOf(result)),
+            recordHealth(config.label, result.sources),
           ]);
           const history = await nextHistory(priorHistory, written, histKey);
           send({ type: "done", result: { ...result, cached: false, history } });
