@@ -79,11 +79,13 @@ colour alone.
 ## Behaviour
 
 - **Submitting a lookup.** `Checker` already stays on `/`, pushes
-  `/check/<ioc>` into the URL and renders the result in place. At rest it now
-  renders the cover frame; once a lookup starts it renders what `/check` renders
-  (compact search bar, `FrameSkeleton`, then the result frame). The cover and
-  the result frame share geometry, so the swap reads as the panel filling in.
-  The health tile and the rail summary are not rendered in any non-idle state.
+  `/check/<ioc>` into the URL and renders the result in place. That flow is
+  unchanged. `Checker` gains one optional prop, `idle`, a node it renders in
+  place of its search card and idle card while nothing has been looked up.
+  Only `app/page.tsx` passes it (the cover). Once a lookup starts, `Checker`
+  renders exactly what it renders today. The cover and the result frame share
+  geometry, so the swap reads as the panel filling in. The health tile and the
+  rail summary are not rendered in any non-idle state.
 - **Loading.** The frame, sprite and search render immediately. The right rail
   count and the health tile sit inside one `Suspense` boundary whose fallback is
   the `sweep` placeholder at final size, so a slow Redis never delays the search
@@ -131,16 +133,25 @@ colour alone.
 - The summary for the rail is derived from the same graded list, so the rail
   and the tile can never disagree.
 
-## Also in this change
+## Boundary: `/` only
 
-`Frame` (`components/CheckResults/frame.tsx`) draws its gaps and outline with
-`border-foreground/12` / `bg-foreground/12` instead of `--border`, so in dark
-mode its rules stay dimmer than the palette B border. Switch both to the border
-token. This touches `/check` as well, deliberately.
+This change is the homepage and nothing else. `/check/<ioc>`, `/scan` and
+`/scan/<indicator>` must render and behave exactly as before.
+
+- `app/check/**`, `app/scan/**`, `components/CheckResults/**`,
+  `components/ScanReport/**` and `components/ScanSearch.tsx` are not edited.
+  The cover imports `Frame`, `Tile` and `Sprite` from `CheckResults` as they
+  are, including `Frame`'s current `foreground/12` rules.
+- `components/Checker/index.tsx` is edited only to add the optional `idle`
+  prop. `/check/<ioc>` does not pass it, so its render path is untouched.
+- `lib/ti/route-handler.ts` gains the `recordHealth` write. That is backend
+  plumbing every lookup passes through (the homepage cannot measure health
+  otherwise); it changes no response and nothing either page renders.
 
 ## Out of scope
 
-`/scan` and its landing page; any change to `/check` beyond the frame border;
+Any change to `/check` or `/scan`, including the dimmer `Frame` rules noted
+above;
 recent lookups, flagged lists and stats; probing sources actively; a dedicated
 `/sources` page.
 
@@ -156,8 +167,9 @@ recent lookups, flagged lists and stats; probing sources actively; a dedicated
   a cache hit records none.
 - These cover the new `lib/` lines for Sonar's 80% new-coverage gate.
 - UI, at 1280 px in light and dark: homepage at rest, homepage with health
-  held pending, homepage after submitting a lookup (health gone),
-  `/check/8.8.8.8` (frame border).
+  held pending, homepage after submitting a lookup (health gone).
+- `/check/8.8.8.8` and `/scan` shot before and after the change and compared:
+  they must be pixel-identical, apart from live data.
 - `scripts/verify-loading.mjs` against a production build: zero layout shift
   on the homepage when health resolves.
 - `bun run typecheck`, `bun run lint`, `bun run test` all pass.
