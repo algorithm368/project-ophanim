@@ -1,11 +1,11 @@
-# The homepage as a bestiary cover, with source health
+# The homepage as a departures board, with source health
 
-Status: 2026-09-27. Designed in interview against a rendered wireframe, not yet
+Status: 2026-09-27. Designed in interview against rendered mockups, not yet
 built. Branch `homepage-bestiary-cover`, which also carries the dark palette
-lift (palette B) this design is drawn in.
+lift (palette B) this design is drawn in. The mockup it was picked from is
+`.superpowers/brainstorm/60620-1790515380/content/homepage-v2.html`, option D.
 
-Related: `2026-09-13-bestiary-panel-design.md` (the `/check` frame this page
-borrows), `2026-06-10-monochrome-formal-redesign-design.md` (the skin: grey
+Related: `2026-06-10-monochrome-formal-redesign-design.md` (the skin: grey
 throughout, colour only for verdict and status).
 
 ## The ask
@@ -16,16 +16,17 @@ complaints raised about it hold:
 
 1. It feels empty. The idle card is boilerplate.
 2. It shows no live data.
-3. It does not look like `/check`, which is now a bestiary entry.
+3. It looks unfinished next to `/check`.
 4. The hierarchy is weak; the search is not clearly the focal point.
 
 ## Decisions
 
 Settled in interview:
 
-1. **Layout is the "bestiary cover"** (chosen over a console board and a
-   focused centred search). The homepage at rest is the same `Frame` / `Tile`
-   grid as `/check`, so it is the same object, not a lookalike.
+1. **Layout is the "departures board"**: a split screen, a large headline and
+   search on the left, a narrow dark rail listing every source on the right.
+   Chosen in round 2 over a situation board, a command prompt and a dossier.
+   Round 1's "bestiary cover" (reusing the `/check` frame) was rejected.
 2. **The one live data set is source health.** Recent lookups, recently
    flagged and workspace stats were offered and declined.
 3. **Health is measured passively**, from lookups the team is already running.
@@ -34,42 +35,46 @@ Settled in interview:
 4. **Source health appears on the homepage at rest only.** Never on
    `/check/<ioc>`, never on `/scan` or `/scan/<indicator>`, and it leaves the
    homepage once a lookup result is on screen.
-5. The idle card and its IP / DOMAIN / HASH explainer list are deleted. The
-   detection hint and the "try" chips cover the same ground.
+5. **`/` only.** `/check` and `/scan` are not edited (see Boundary).
+6. The idle card and its IP / DOMAIN / HASH explainer list are deleted.
 
 ## Page layout
 
 ```
-┌ rail 3 ──────┬ hero 6 ─────────────────────────┬ rail 3 ─────────┐
-│  [unknown    │ AWAITING INDICATOR               │ SOURCES         │
-│   sprite,    │ Check an IP, domain, or file hash│ 37 / 40         │
-│   grey]      │ [ search box ................ ⌕] │ answering       │
-│ UNIDENTIFIED │ detect hint · TRY 8.8.8.8 ...    │ normally        │
-│              │                                  │ ● 2 slow        │
-│              │                                  │ ● 1 failing     │
-│              │                                  │ ○ 3 no key      │
-├ 12 ──────────┴──────────────────────────────────┴─────────────────┤
-│ SOURCE HEALTH           last 50 runs per source · newest 3 min ago│
-│ AlienVault OTX  IP   ▓▓▓▓▓░░  71%  4.1s  │ URLhaus  DOM ▓░░ 12% err│
-│ ... two columns, worst first ...                                  │
-└───────────────────────────────────────────────────────────────────┘
+┌ banner (unchanged) ───────────────────────────────────────────────────────┐
+├ left, fills remaining width ─────────────────────┬ right rail, 330 px ─────┤
+│                                                  │ SOURCES      p50 · ok   │
+│  Check an IP,                                    │ ● URLhaus     —    12%  │
+│  domain, or file hash.                           │ ● OTX        4.1s  71%  │
+│                                                  │ ● Triage     0.9s  80%  │
+│  Every source is asked in parallel, then the     │ ● Shodan IDB 210ms 100% │
+│  answers are folded into one verdict.            │ ...                     │
+│                                                  │ ○ Hybrid An.  no key    │
+│  [ ⌕ Paste an indicator .................. ↵ ]  │                         │
+│  TRY  8.8.8.8  google.com  eicar test hash       │ (scrolls on its own)    │
+│  detection hint                                  │                         │
+└──────────────────────────────────────────────────┴─────────────────────────┘
 ```
 
-- **Left rail (span 3, `tone="rail"`)**: the existing `unknown` sprite spec
-  from `lib/ti/sprite.ts`, in `text-muted-foreground` (no verdict, so no
-  colour), captioned `UNIDENTIFIED`. Same box and centring as `RailTile`, so
-  the sprite sits where the result's sprite will.
-- **Hero (span 6)**: eyebrow `AWAITING INDICATOR`, heading "Check an IP,
-  domain, or file hash", the existing search box, detection hint and try chips.
-  This is the focal point: the largest type on the page and the only input.
-- **Right rail (span 3, `tone="rail"`, title `SOURCES`)**: the health summary.
-  Headline `healthy / total`, the line "answering normally", then one line per
-  non-healthy grade that has a nonzero count.
-- **Health tile (span 12, title `SOURCE HEALTH`)**: one row per source in two
-  columns, worst first. Row: source name, type tag (`IP` / `DOM` / `HASH`), a
-  bar of the `ok` share, the percentage, the median latency, and the last error
-  message as the row's `title` (hover). The header's right side reads
-  "last 50 runs per source · newest <relative time>".
+- **Height.** The split fills the viewport below the banner
+  (`min-h-[calc(100dvh-<banner>)]`), so the page never scrolls at rest; the
+  rail scrolls inside itself.
+- **Left.** Vertically centred, max width about 560 px. Headline "Check an IP,
+  domain, or file hash." (the largest type on the page, sans, bold, tight
+  tracking), a one-line subline in `text-muted-foreground`, then the existing
+  search box, try chips and detection hint from `components/Checker`. This is
+  the focal point.
+- **Right rail.** A darker surface than the page (one step below
+  `--background`, still chroma 0), a hairline left border, monospace
+  throughout. Header row: `SOURCES` on the left, `p50 · ok` on the right.
+  Then one row per registered source (all three registries, about 59), worst
+  first. Row: grade marker, source name, type tag (`IP` / `DOM` / `HASH`) in
+  `text-muted-foreground`, median latency, `ok` share. The last error message
+  is the row's `title` (hover). No-key and no-data rows are dimmed and show
+  `no key` / `no data` in place of the numbers. A footer line reads
+  "last 50 runs per source, newest <relative time>".
+- **Below `md`** the rail stacks under the search at its natural height.
+  Desktop is the verified target.
 
 Colour is used only for the grade (the status family the skin already allows):
 green healthy, amber slow / degraded, red failing, hollow grey marker for no key
@@ -82,16 +87,14 @@ colour alone.
   `/check/<ioc>` into the URL and renders the result in place. That flow is
   unchanged. `Checker` gains one optional prop, `idle`, a node it renders in
   place of its search card and idle card while nothing has been looked up.
-  Only `app/page.tsx` passes it (the cover). Once a lookup starts, `Checker`
-  renders exactly what it renders today. The cover and the result frame share
-  geometry, so the swap reads as the panel filling in. The health tile and the
-  rail summary are not rendered in any non-idle state.
-- **Loading.** The frame, sprite and search render immediately. The right rail
-  count and the health tile sit inside one `Suspense` boundary whose fallback is
-  the `sweep` placeholder at final size, so a slow Redis never delays the search
-  and nothing shifts when health arrives.
-- **Without Redis.** The rail shows `—` and the health tile a single line,
-  "Health tracking needs the Redis cache." The page otherwise works.
+  Only `app/page.tsx` passes it (the split screen). Once a lookup starts,
+  `Checker` renders exactly what it renders today, and the rail is gone.
+- **Loading.** The left side renders immediately. The rail's rows sit inside a
+  `Suspense` boundary whose fallback is the rail at full size with `sweep`
+  rows, so a slow Redis never delays the search and nothing shifts when health
+  arrives.
+- **Without Redis.** The rail shows its header and a single line, "Health
+  tracking needs the Redis cache." The page otherwise works.
 
 ## Data: recording health
 
@@ -112,7 +115,7 @@ colour alone.
 - **Read.** `app/page.tsx` becomes an async server component. Inside the
   Suspense boundary a server component calls `getSourceHealth()`, which reads
   every registered source's list (IP, domain and hash registries) in one
-  pipeline: about 40 `LRANGE`s per homepage view. Well within Upstash's free
+  pipeline: about 59 `LRANGE`s per homepage view. Well within Upstash's free
   500K commands a month at team scale.
 - **Grade.** A pure function in `lib/ti/health.ts`, over one source's entries
   plus its `SourceMeta` and `isEnabled()`. Rules are checked top to bottom
@@ -123,15 +126,13 @@ colour alone.
   | `no-key` | `isEnabled()` is false (key-gated, env var unset) |
   | `no-data` | fewer than 5 counted runs |
   | `failing` | `ok` share < 50% |
-  | `degraded` | `ok` share 50 to < 90%, or `rate_limited` is the most common non-`ok` status |
+  | `degraded` | `ok` share 50 to < 90% (rate limits count as not `ok`) |
   | `slow` | `ok` share ≥ 90% and median `ok` latency > half the source's timeout (`meta.timeoutMs ?? PER_SOURCE_TIMEOUT_MS`, which `orchestrate.ts` exports for this) |
   | `healthy` | otherwise |
 
   `skipped` runs are not counted at all (the source declined the input, e.g. a
   SHA-1 on a SHA-256-only source). Sort order: failing, degraded, slow,
   healthy, no-data, no-key; within a grade, lower `ok` share first, then name.
-- The summary for the rail is derived from the same graded list, so the rail
-  and the tile can never disagree.
 
 ## Boundary: `/` only
 
@@ -140,8 +141,7 @@ This change is the homepage and nothing else. `/check/<ioc>`, `/scan` and
 
 - `app/check/**`, `app/scan/**`, `components/CheckResults/**`,
   `components/ScanReport/**` and `components/ScanSearch.tsx` are not edited.
-  The cover imports `Frame`, `Tile` and `Sprite` from `CheckResults` as they
-  are, including `Frame`'s current `foreground/12` rules.
+  The homepage imports nothing from them.
 - `components/Checker/index.tsx` is edited only to add the optional `idle`
   prop. `/check/<ioc>` does not pass it, so its render path is untouched.
 - `lib/ti/route-handler.ts` gains the `recordHealth` write. That is backend
@@ -150,23 +150,21 @@ This change is the homepage and nothing else. `/check/<ioc>`, `/scan` and
 
 ## Out of scope
 
-Any change to `/check` or `/scan`, including the dimmer `Frame` rules noted
-above;
-recent lookups, flagged lists and stats; probing sources actively; a dedicated
+Any change to `/check` or `/scan`; recent lookups, flagged lists and stats; probing sources actively; a dedicated
 `/sources` page.
 
 ## Testing
 
 - `lib/ti/health.test.ts`: every grade's boundary (exactly 50%, exactly 90%,
-  exactly half the timeout, exactly 5 runs), `skipped` excluded, rate-limit
-  dominance, per-source timeout override, sort order, summary counts.
+  exactly half the timeout, exactly 5 runs), `skipped` excluded, `rate_limited`
+  counted as not `ok`, per-source timeout override, sort order.
 - `recordHealth` with a stubbed Redis, as `history.test.ts` does: key shape,
   entry fields, error truncation, trim to 50, no-op without Redis, swallowed
   Redis error.
 - `lib/ti/route-handler.test.ts`: a fresh run records health for every source;
   a cache hit records none.
 - These cover the new `lib/` lines for Sonar's 80% new-coverage gate.
-- UI, at 1280 px in light and dark: homepage at rest, homepage with health
+- UI, at 1280 px in light and dark: homepage at rest, homepage with the rail
   held pending, homepage after submitting a lookup (health gone).
 - `/check/8.8.8.8` and `/scan` shot before and after the change and compared:
   they must be pixel-identical, apart from live data.
