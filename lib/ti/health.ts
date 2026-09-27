@@ -72,7 +72,8 @@ export function gradeSource({
   enabled,
   entries,
 }: {
-  meta: SourceMeta;
+  /** Only what grading reads, so a scan engine can be graded as well. */
+  meta: Pick<SourceMeta, "id" | "name" | "timeoutMs">;
   type: string;
   enabled: boolean;
   entries: HealthEntry[];

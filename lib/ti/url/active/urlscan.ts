@@ -13,7 +13,7 @@ const RESULT_URL = "https://urlscan.io/api/v1/result";
  * private is visible only to this account. Public is never used: it is
  * searchable by anyone, including whoever sent the phish.
  */
-const VISIBILITY_ORDER: ScanVisibility[] = ["private", "unlisted"];
+export const VISIBILITY_ORDER: ScanVisibility[] = ["private", "unlisted"];
 
 interface SubmitResponse {
   uuid?: string;
