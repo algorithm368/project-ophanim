@@ -203,7 +203,7 @@ export const SourceBreakdown = memo(function SourceBreakdown({
                             <h3 className="font-mono text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
                                 {CATEGORY_LABEL[cat] ?? cat}
                             </h3>
-                            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/70">
+                            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
                                 {group.length.toString().padStart(2, "0")}
                             </span>
                             <div className="h-px flex-1 bg-border" />

@@ -163,7 +163,7 @@ function Row({
                 className={cn(
                     "min-w-0 font-mono text-[12px] leading-5 wrap-anywhere",
                     claim.notable && "font-bold",
-                    claim.absent && "text-muted-foreground/60",
+                    claim.absent && "text-muted-foreground",
                 )}
             >
                 <Flag

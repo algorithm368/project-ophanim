@@ -52,7 +52,7 @@ export default async function ScanPage({ params }: Readonly<PageProps>) {
         </p>
         <Link
           href={`/check/${encodeURIComponent(decoded)}`}
-          className="inline-block text-sm text-foreground/60 underline underline-offset-2 hover:text-foreground"
+          className="inline-block text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
           Check it passively instead
         </Link>

@@ -28,7 +28,7 @@ export function ConfidenceLevel({
   const Icon = CONF_ICON[confidence];
   return (
     <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-      <Icon className="size-3 shrink-0 text-foreground/50" aria-hidden />
+      <Icon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
       {CONF_ABBR[confidence]}
     </span>
   );

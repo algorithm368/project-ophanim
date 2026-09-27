@@ -63,7 +63,7 @@ export function ScanSearchBar({ indicator }: Readonly<{ indicator: string }>) {
         action="Scan"
       />
       {problem && (
-        <p className="px-1 text-xs text-foreground/60">
+        <p className="px-1 text-xs text-muted-foreground">
           {problem}{" "}
           <a
             href={passiveHref(query.trim())}

@@ -345,7 +345,7 @@ export function TraceSection({
                   className="block font-mono text-[11px] break-all text-foreground/70"
                 >
                   {value}
-                  {times > 1 && <span className="text-foreground/45"> ×{times}</span>}
+                  {times > 1 && <span className="text-muted-foreground"> ×{times}</span>}
                 </span>
               ))}
             </span>
@@ -365,7 +365,7 @@ export function TraceSection({
         <ScanRow
           label="Not collected"
           value={
-            <span className="text-foreground/60">
+            <span className="text-muted-foreground">
               {missing.join(" ")} Not observed, which is not the same as observed
               to be absent.
             </span>
