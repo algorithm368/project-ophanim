@@ -5,9 +5,10 @@ import { NextRequest } from "next/server";
 // observable without Redis. recordHistory returns what it wrote, which is
 // what lets the route append locally instead of calling getHistory again;
 // getHistory is a spy so tests can assert how many round trips it took.
-const { store, getHistorySpy } = vi.hoisted(() => ({
+const { store, getHistorySpy, recordHealthSpy } = vi.hoisted(() => ({
   store: [] as Array<Record<string, unknown>>,
   getHistorySpy: vi.fn(),
+  recordHealthSpy: vi.fn(),
 }));
 vi.mock("@/lib/ti/history", () => ({
   recordHistory: async (_k: string, _v: string, snap: Record<string, unknown>) => {
@@ -17,6 +18,7 @@ vi.mock("@/lib/ti/history", () => ({
   getHistory: getHistorySpy,
   MAX_SNAPSHOTS: 30,
 }));
+vi.mock("@/lib/ti/health-store", () => ({ recordHealth: recordHealthSpy }));
 
 import { makeIndicatorRoute } from "@/lib/ti/route-handler";
 
@@ -74,6 +76,7 @@ async function readEvents(res: Response): Promise<NdjsonEvent[]> {
 beforeEach(() => {
   store.length = 0;
   getHistorySpy.mockReset().mockImplementation(async () => [...store]);
+  recordHealthSpy.mockReset().mockResolvedValue(undefined);
 });
 
 describe("makeIndicatorRoute GET caching", () => {
@@ -199,5 +202,24 @@ describe("makeIndicatorRoute streaming POST", () => {
     const res = await POST(streamPost({ ip: "1.1.1.1" }));
     const events = await readEvents(res);
     expect(events.map((e) => e.type)).toEqual(["start", "error"]);
+  });
+});
+
+describe("source health", () => {
+  it("records every source of a fresh JSON run", async () => {
+    await makeRoute().GET(get());
+    expect(recordHealthSpy).toHaveBeenCalledWith("ip", RESULT.sources);
+  });
+
+  it("records every source of a fresh streamed run", async () => {
+    await readEvents(await makeRoute().POST(streamPost({ ip: "1.1.1.1" })));
+    expect(recordHealthSpy).toHaveBeenCalledWith("ip", RESULT.sources);
+  });
+
+  it("records nothing for a cache hit, which contacted no source", async () => {
+    const route = makeRoute({ getCached: async () => RESULT });
+    await route.GET(get());
+    await readEvents(await route.POST(streamPost({ ip: "1.1.1.1" })));
+    expect(recordHealthSpy).not.toHaveBeenCalled();
   });
 });

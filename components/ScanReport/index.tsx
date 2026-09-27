@@ -89,7 +89,7 @@ const SECTIONS: NavItem[] = [
 function IdentityCard({ subject }: Readonly<{ subject: SubjectState }>) {
   if (subject.status === "failed") {
     return (
-      <p className="text-sm text-foreground/60">
+      <p className="text-sm text-muted-foreground">
         The identity lookup failed, so nothing is known here, which is not the
         same as nothing being found.
       </p>
@@ -147,7 +147,7 @@ function ScanProgress({ batch }: Readonly<{ batch: ActiveScanBatch }>) {
           />
         ))}
       </div>
-      <p className="text-xs text-foreground/60">
+      <p className="text-xs text-muted-foreground">
         Sections fill in as each engine finishes, and leaving this page does not
         cancel it.
       </p>
@@ -177,7 +177,7 @@ function NotScannedPanel({
   return (
     <Frame>
       <Tile span={12} title="Active scan" note="not scanned yet" className="space-y-4">
-        <p className="text-xs text-foreground/55">
+        <p className="text-xs text-muted-foreground">
           Everything on /check is passive, this page is the one thing that
           reaches out and touches the indicator.
         </p>

@@ -136,7 +136,7 @@ export function ScanRow({
       label={label}
       hint={hint}
       mono={mono && !empty}
-      tone={empty ? "text-foreground/45" : tone}
+      tone={empty ? "text-muted-foreground" : tone}
       note={empty || engines.length === 0 ? undefined : engines.join(" + ")}
     >
       {empty ? missing : value}

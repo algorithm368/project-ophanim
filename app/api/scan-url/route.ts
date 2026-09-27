@@ -8,6 +8,7 @@ import {
   submitCloudflareScan,
 } from "@/lib/ti/url/active/cloudflare";
 import { rememberBatch } from "@/lib/ti/url/active/scan-history";
+import { recordEngineHealth, scanOutcomes } from "@/lib/ti/url/active/engine-health";
 import {
   readScanCredentials,
   SCAN_MISSING_KEY,
@@ -121,8 +122,13 @@ async function submitScanRoute(request: NextRequest): Promise<Response> {
     scans,
   });
   // Stored even when every submission failed, so a retry is a deliberate act
-  // rather than something a page refresh does on the analyst's behalf.
-  await setCachedScanBatch(indicator, batch);
+  // rather than something a page refresh does on the analyst's behalf. A
+  // refused submission is also the only outcome a fresh batch can have yet,
+  // which is what the engine health on /scan records.
+  await Promise.all([
+    setCachedScanBatch(indicator, batch),
+    recordEngineHealth(scanOutcomes(null, scans, batch.submittedAt, Date.now())),
+  ]);
   return Response.json(batch);
 }
 
@@ -163,9 +169,14 @@ async function pollScanRoute(request: NextRequest): Promise<Response> {
   );
 
   const updated: ActiveScanBatch = { ...batch, scans };
-  if (scans.some((scan) => scan.status === "done")) {
-    await setCachedScanBatch(read.indicator, updated);
-  }
+  // Only the scans that settled on this poll: a finished batch polled again
+  // (a reload, a second tab) changes nothing and records nothing.
+  await Promise.all([
+    scans.some((scan) => scan.status === "done")
+      ? setCachedScanBatch(read.indicator, updated)
+      : null,
+    recordEngineHealth(scanOutcomes(batch.scans, scans, batch.submittedAt, Date.now())),
+  ]);
   return Response.json(updated);
 }
 

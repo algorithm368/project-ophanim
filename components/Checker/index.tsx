@@ -21,6 +21,7 @@ import {
   EXAMPLES,
   SearchBox,
 } from "./search-box";
+import { Board } from "./board";
 import { BulkProgress, EmptyState, ErrorState } from "./states";
 import type { CheckError, Progress } from "./types";
 import {
@@ -47,11 +48,15 @@ const BulkGeoResults = dynamic(loadBulkGeo, { ssr: false });
 export default function Checker({
   initialQuery,
   initialResult,
+  idleAside,
 }: Readonly<{
   initialQuery?: string;
   /** A server-fetched cached result for a permalink (/check/<ioc>). When present
    *  it is shown immediately on first paint, skipping the client lookup. */
   initialResult?: AnyCheckResult | null;
+  /** The homepage's source rail. When set, the idle page renders as the
+   *  split `Board` instead of the lookup card; only `/` passes it. */
+  idleAside?: React.ReactNode;
 }>) {
   const router = useRouter();
   const [mode, setMode] = useState<LookupType>(
@@ -396,9 +401,12 @@ export default function Checker({
     [result, progress],
   );
 
+  const boardIdle = Boolean(idleAside) && !showCompact && !isBulk && !bulkRows;
+
   const searchBox = (
     <SearchBox
       compact={showCompact}
+      joined={boardIdle}
       query={query}
       loading={loading}
       canSubmit={
@@ -415,6 +423,69 @@ export default function Checker({
     />
   );
 
+  const detectionHint = (
+    <DetectionHint
+      trimmed={trimmed}
+      bulkCount={bulkPreview?.length}
+      detected={detected}
+      canonical={canonical}
+    />
+  );
+
+  const exampleChips = (
+    <>
+      <span className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        Try
+      </span>
+      {EXAMPLE_CHIPS.map(({ value, label, icon: ChipIcon }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => {
+            setQuery(value);
+            runCheck(value);
+          }}
+          className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
+        >
+          <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
+          {label}
+        </button>
+      ))}
+    </>
+  );
+
+  const errorState = error && (
+    <ErrorState
+      error={error}
+      examples={EXAMPLES}
+      onRetry={() => runCheck(query)}
+      onExample={(s) => {
+        setQuery(s);
+        runCheck(s);
+      }}
+    />
+  );
+
+  if (boardIdle) {
+    return (
+      <Board
+        heading={
+          <>
+            Check an IP,
+            <br />
+            domain, or file hash.
+          </>
+        }
+        lede="Every source is asked in parallel, then the answers are folded into one verdict."
+        search={searchBox}
+        hint={detectionHint}
+        chips={exampleChips}
+        error={errorState}
+        aside={idleAside}
+      />
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6">
       {showCompact ? (
@@ -430,48 +501,15 @@ export default function Checker({
 
           {searchBox}
 
-          <div className="mt-3 min-h-7 text-sm">
-            <DetectionHint
-              trimmed={trimmed}
-              bulkCount={bulkPreview?.length}
-              detected={detected}
-              canonical={canonical}
-            />
-          </div>
+          <div className="mt-3 min-h-7 text-sm">{detectionHint}</div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-3">
-            <span className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-              Try
-            </span>
-            {EXAMPLE_CHIPS.map(({ value, label, icon: ChipIcon }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => {
-                  setQuery(value);
-                  runCheck(value);
-                }}
-                className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
-              >
-                <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
-                {label}
-              </button>
-            ))}
+            {exampleChips}
           </div>
         </div>
       )}
 
-      {error && (
-        <ErrorState
-          error={error}
-          examples={EXAMPLES}
-          onRetry={() => runCheck(query)}
-          onExample={(s) => {
-            setQuery(s);
-            runCheck(s);
-          }}
-        />
-      )}
+      {errorState}
 
       {loading && isBulk && <BulkProgress count={bulkPending} />}
 

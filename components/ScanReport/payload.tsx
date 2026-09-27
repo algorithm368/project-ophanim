@@ -58,7 +58,7 @@ function DownloadRow({
               </Link>
             </span>
           ) : (
-            <span className="block text-xs text-foreground/55">
+            <span className="block text-xs text-muted-foreground">
               The engine sent no hash for this file, so it cannot be looked up.
             </span>
           )}
@@ -119,7 +119,7 @@ export function PayloadTile({
             value={
               <span className="space-y-0.5">
                 <span className="block font-mono text-[12px] break-all">{link}</span>
-                <span className="block text-xs text-foreground/55">
+                <span className="block text-xs text-muted-foreground">
                   Offered as a link. The scanner does not click, so nothing was downloaded.
                 </span>
               </span>

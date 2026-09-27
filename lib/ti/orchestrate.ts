@@ -1,6 +1,8 @@
 import type { SourceResult, TiSource } from "./types";
 
-const PER_SOURCE_TIMEOUT_MS = 8000;
+// Exported for lib/ti/health.ts, which grades a source "slow" against the
+// same budget the orchestrator aborts it at.
+export const PER_SOURCE_TIMEOUT_MS = 8000;
 
 /**
  * Coerce a field that should be a string into one. Sources are meant to return

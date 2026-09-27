@@ -146,6 +146,7 @@ export function SearchBox({
   label = "IOC to check",
   placeholder = "IP, domain, or file hash",
   action = "Check",
+  joined = false,
 }: Readonly<{
   compact: boolean;
   query: string;
@@ -160,7 +161,25 @@ export function SearchBox({
   placeholder?: string;
   /** Accessible name of the submit button. */
   action?: string;
+  /** One field with the submit inside it, for the homepage board. */
+  joined?: boolean;
 }>) {
+  if (joined) {
+    return (
+      <JoinedSearchBox
+        query={query}
+        loading={loading}
+        canSubmit={canSubmit}
+        inputRef={inputRef}
+        onQueryChange={onQueryChange}
+        onClear={onClear}
+        onSubmit={onSubmit}
+        label={label}
+        placeholder={placeholder}
+        action={action}
+      />
+    );
+  }
   const height = compact ? "h-10" : "h-11";
   return (
     <form
@@ -220,6 +239,77 @@ export function SearchBox({
           <Search className="size-4" />
         )}
       </Button>
+    </form>
+  );
+}
+
+/** The landing pages' search: a single field, the submit a ↵ key inside its
+ *  right edge rather than a separate button beside it. */
+export function JoinedSearchBox({
+  query,
+  loading,
+  canSubmit,
+  inputRef,
+  onQueryChange,
+  onClear,
+  onSubmit,
+  label,
+  placeholder,
+  action,
+  icon: Icon = Search,
+}: Readonly<{
+  query: string;
+  loading: boolean;
+  canSubmit: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onQueryChange: (value: string) => void;
+  onClear: () => void;
+  onSubmit: () => void;
+  label: string;
+  placeholder: string;
+  action: string;
+  icon?: IconType;
+}>) {
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+      className="relative flex h-13 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/60"
+    >
+      <Icon className="pointer-events-none absolute left-4 size-4 text-muted-foreground" />
+      <Input
+        ref={inputRef}
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        inputMode="text"
+        autoCapitalize="none"
+        autoCorrect="off"
+        autoComplete="off"
+        spellCheck={false}
+        aria-label={label}
+        placeholder={placeholder}
+        className="h-full flex-1 rounded-none border-0 bg-transparent pr-2 pl-11 dark:bg-transparent font-mono text-[0.95rem] shadow-none focus-visible:ring-0"
+      />
+      {query && (
+        <button
+          type="button"
+          onClick={onClear}
+          aria-label="Clear input"
+          className="flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <X className="size-4" />
+        </button>
+      )}
+      <button
+        type="submit"
+        aria-label={action}
+        disabled={!canSubmit}
+        className="mx-2.5 flex h-7 min-w-8 items-center justify-center rounded border border-border px-1.5 font-mono text-xs text-muted-foreground transition-colors enabled:border-foreground/40 enabled:text-foreground enabled:hover:bg-accent"
+      >
+        {loading ? <Loader2 className="size-3.5 animate-spin" /> : "↵"}
+      </button>
     </form>
   );
 }

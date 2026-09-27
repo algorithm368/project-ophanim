@@ -57,7 +57,7 @@ function SubdomainRow({ name, apex }: Readonly<{ name: string; apex: string }>) 
         <>
             <span className="truncate">
                 {head}
-                <span className="text-muted-foreground/70">{tail}</span>
+                <span className="text-muted-foreground">{tail}</span>
             </span>
             {pivot && (
                 <Search className="size-3 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />

@@ -55,7 +55,7 @@ export function EmptyState({ detected }: Readonly<{ detected: Mode | null }>) {
       </div>
       <CardContent className="space-y-4 py-6">
         <div className="flex items-center gap-2 font-mono text-sm">
-          <span className="text-muted-foreground/50">&gt;</span>
+          <span className="text-muted-foreground">&gt;</span>
           <span className="text-foreground/80">awaiting indicator</span>
           <span className="inline-block h-[1.05em] w-[7px] animate-pulse bg-foreground/40 align-middle" />
         </div>

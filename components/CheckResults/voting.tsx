@@ -21,7 +21,7 @@ export function VoteMark({
     if (cell.status === "scatter")
         return (
             <Circle
-                className="size-2.5 text-foreground/40"
+                className="size-2.5 text-muted-foreground"
                 aria-label="scattered point"
             />
         );
@@ -32,18 +32,18 @@ export function VoteMark({
                 className="inline-flex min-w-0 items-center gap-1 text-foreground/70"
             >
                 <Asterisk
-                    className="size-3 shrink-0 text-foreground/55"
+                    className="size-3 shrink-0 text-muted-foreground"
                     aria-label={`differs: ${cell.value}`}
                 />
                 {!compact && cell.value}
             </span>
         );
     return (
-        <span className="inline-flex items-center gap-1 text-foreground/45">
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Check className="size-3.5" aria-label="agrees" />
             {cell.authority && (
                 <Star
-                    className="size-3 text-foreground/55"
+                    className="size-3 text-muted-foreground"
                     aria-label="allocation authority"
                 />
             )}

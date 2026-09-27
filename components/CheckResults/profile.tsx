@@ -92,7 +92,7 @@ function Section({
                     {title}
                 </span>
                 {count !== undefined && (
-                    <span className="font-mono text-[11px] text-muted-foreground/60">
+                    <span className="font-mono text-[11px] text-muted-foreground">
                         {count}
                     </span>
                 )}
@@ -296,7 +296,7 @@ function DllImports({ dlls }: Readonly<{ dlls: { name: string; count?: number }[
                                 )}
                                 {d.count !== undefined && (
                                     <span
-                                        className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground/70"
+                                        className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground"
                                         title={`${d.count} functions imported`}
                                     >
                                         {d.count}

@@ -83,17 +83,11 @@ export const maltiverseSource: TiSource = {
     weight: 0.7,
     keyEnv: "MALTIVERSE_API_KEY",
     timeoutMs: 12000,
+    // Sample lookups are keyed by SHA-256 only.
+    algorithms: ["sha256"],
   },
   isEnabled: () => true,
   async check(hash, signal): Promise<SourceFinding> {
-    // Maltiverse sample lookups are keyed by SHA-256 only.
-    if (hash.length !== 64) {
-      return {
-        status: "skipped",
-        summary: "SHA-256 only, paste a SHA-256 hash to query Maltiverse",
-      };
-    }
-
     const key = process.env.MALTIVERSE_API_KEY;
     const headers: Record<string, string> = key
       ? { Authorization: `Bearer ${key}` }

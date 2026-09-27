@@ -119,7 +119,7 @@ export function InspectorShell({
       {children}
 
       {footer && (
-        <p className="relative text-center font-mono text-[10px] tracking-[0.1em] text-muted-foreground/70 uppercase">
+        <p className="relative text-center font-mono text-[10px] tracking-[0.1em] text-muted-foreground uppercase">
           {footer}
         </p>
       )}
