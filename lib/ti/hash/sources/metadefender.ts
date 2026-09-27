@@ -47,16 +47,11 @@ export const metadefenderHashSource: TiSource = {
     category: "reputation",
     requiresKey: false,
     weight: 0.9,
+    // The reputation endpoint is queried by SHA-256.
     algorithms: ["sha256"],
   },
   isEnabled: () => true,
   async check(hash, signal): Promise<SourceFinding> {
-    if (hash.length !== 64) {
-      return {
-        status: "skipped",
-        summary: "SHA-256 only, paste a SHA-256 hash to query MetaDefender",
-      };
-    }
     try {
       const { ok, status, data } = await getJson<FilescanReputation>(
         `https://www.filescan.io/api/reputation/hash?sha256=${hash}`,

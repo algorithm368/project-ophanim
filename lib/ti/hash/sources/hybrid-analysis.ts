@@ -144,22 +144,14 @@ export const hybridAnalysisSource: TiSource = {
     weight: 0.85,
     keyEnv: "HYBRID_ANALYSIS_API_KEY",
     timeoutMs: 12000,
+    // The overview endpoint only accepts SHA-256; checkHash skips it for the
+    // others rather than letting it report a pass it never made.
     algorithms: ["sha256"],
   },
   isEnabled: () => Boolean(process.env.HYBRID_ANALYSIS_API_KEY),
   async check(hash, signal): Promise<SourceFinding> {
     const key = process.env.HYBRID_ANALYSIS_API_KEY;
     if (!key) return { status: "skipped" };
-
-    // The overview endpoint only accepts SHA-256. Skip (rather than report a
-    // clean "ok") for MD5/SHA-1 so the UI shows "N/A · SHA-256 only", not a
-    // green pass the source never actually made.
-    if (hash.length !== 64) {
-      return {
-        status: "skipped",
-        summary: "SHA-256 only, paste a SHA-256 hash to query Hybrid Analysis",
-      };
-    }
 
     try {
       const { ok, status, data } = await getJson<HaOverview>(
