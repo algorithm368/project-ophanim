@@ -401,9 +401,12 @@ export default function Checker({
     [result, progress],
   );
 
+  const boardIdle = Boolean(idleAside) && !showCompact && !isBulk && !bulkRows;
+
   const searchBox = (
     <SearchBox
       compact={showCompact}
+      joined={boardIdle}
       query={query}
       loading={loading}
       canSubmit={
@@ -463,7 +466,7 @@ export default function Checker({
     />
   );
 
-  if (idleAside && !showCompact && !isBulk && !bulkRows) {
+  if (boardIdle) {
     return (
       <Board
         search={searchBox}

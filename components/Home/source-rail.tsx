@@ -15,7 +15,9 @@ const MARK: Record<HealthGrade, { dot: string; text: string; hollow?: boolean }>
   failing: { dot: "bg-red-600 dark:bg-red-400", text: "text-red-700 dark:text-red-400" },
   degraded: { dot: "bg-amber-500 dark:bg-amber-400", text: "text-amber-700 dark:text-amber-400" },
   slow: { dot: "bg-amber-500 dark:bg-amber-400", text: "text-amber-700 dark:text-amber-400" },
-  healthy: { dot: "bg-emerald-600 dark:bg-emerald-400", text: "text-muted-foreground" },
+  // Grey, not green: on a board of ~55 healthy rows, colour is kept for the
+  // few that need attention. Filled, so it still differs from no-data.
+  healthy: { dot: "bg-muted-foreground/45", text: "text-muted-foreground" },
   "no-data": { dot: "", text: "text-muted-foreground", hollow: true },
   "no-key": { dot: "", text: "text-muted-foreground", hollow: true },
 };
@@ -35,15 +37,19 @@ function RailShell({ children, footer }: Readonly<{ children: React.ReactNode; f
   return (
     <aside
       aria-label="Source health"
-      className="relative border-t border-border bg-[oklch(0.955_0_0)] font-mono md:border-t-0 md:border-x dark:bg-[oklch(0.15_0_0)]"
+      className="relative border-t border-border bg-[oklch(0.955_0_0)] font-mono md:border-t-0 md:border-l dark:bg-[oklch(0.15_0_0)]"
     >
       <div className="flex flex-col md:absolute md:inset-0">
-        <div className="flex items-baseline justify-between border-b border-border px-4 py-3">
+        <div className="flex items-baseline justify-between border-b border-border py-3 pr-[calc(1rem_+_var(--bleed,0px))] pl-4">
           <span className="text-[11px] font-bold tracking-[0.14em] uppercase">Sources</span>
           <span className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">p50 · ok</span>
         </div>
         <div className="relative flex-1 overflow-y-auto">{children}</div>
-        {footer && <div className="border-t border-border px-4 py-2 text-[10.5px] text-muted-foreground">{footer}</div>}
+        {footer && (
+          <div className="border-t border-border py-2 pr-[calc(1rem_+_var(--bleed,0px))] pl-4 text-[10.5px] text-muted-foreground">
+            {footer}
+          </div>
+        )}
       </div>
     </aside>
   );
@@ -55,7 +61,7 @@ function Row({ row }: Readonly<{ row: SourceHealth }>) {
   return (
     <li
       title={row.lastError}
-      className="grid grid-cols-[10px_1fr_auto_52px_40px] items-center gap-2 border-b border-border/60 px-4 py-1.5 text-[11.5px]"
+      className="grid grid-cols-[10px_1fr_auto_52px_40px] items-center gap-2 border-b border-border/60 py-1.5 pr-[calc(1rem_+_var(--bleed,0px))] pl-4 text-[11.5px]"
     >
       <span
         aria-hidden
@@ -80,7 +86,7 @@ export function SourceRail({ board, now }: Readonly<{ board: HealthBoard | null;
   if (!board) {
     return (
       <RailShell>
-        <p className="px-4 py-3 text-[11.5px] text-muted-foreground">Health tracking needs the Redis cache.</p>
+        <p className="py-3 pr-[calc(1rem_+_var(--bleed,0px))] pl-4 text-[11.5px] text-muted-foreground">Health tracking needs the Redis cache.</p>
       </RailShell>
     );
   }
@@ -103,7 +109,7 @@ export function SourceRailSkeleton() {
     <RailShell footer={<span className="sweep block h-2 w-40 rounded" />}>
       <ul>
         {Array.from({ length: 14 }, (_, i) => (
-          <li key={i} className="flex items-center gap-2 border-b border-border/60 px-4 py-[9px]">
+          <li key={i} className="flex items-center gap-2 border-b border-border/60 py-[9px] pr-[calc(1rem_+_var(--bleed,0px))] pl-4">
             <span className="sweep block size-2 rounded-full" />
             <span className="sweep block h-2 flex-1 rounded" />
             <span className="sweep block h-2 w-16 rounded" />
