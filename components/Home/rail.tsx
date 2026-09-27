@@ -10,9 +10,9 @@ export const MARK: Record<HealthGrade, { dot: string; text: string; hollow?: boo
   failing: { dot: "bg-red-600 dark:bg-red-400", text: "text-red-700 dark:text-red-400" },
   degraded: { dot: "bg-amber-500 dark:bg-amber-400", text: "text-amber-700 dark:text-amber-400" },
   slow: { dot: "bg-amber-500 dark:bg-amber-400", text: "text-amber-700 dark:text-amber-400" },
-  // Grey, not green: on a board of ~55 healthy rows, colour is kept for the
-  // few that need attention. Filled, so it still differs from no-data.
-  healthy: { dot: "bg-muted-foreground/45", text: "text-muted-foreground" },
+  // The dot is green, the numbers stay grey, so a healthy row still reads
+  // quieter than an amber or red one.
+  healthy: { dot: "bg-emerald-600 dark:bg-emerald-400", text: "text-muted-foreground" },
   "no-data": { dot: "", text: "text-muted-foreground", hollow: true },
   "no-key": { dot: "", text: "text-muted-foreground", hollow: true },
 };
