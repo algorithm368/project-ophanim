@@ -469,6 +469,14 @@ export default function Checker({
   if (boardIdle) {
     return (
       <Board
+        heading={
+          <>
+            Check an IP,
+            <br />
+            domain, or file hash.
+          </>
+        }
+        lede="Every source is asked in parallel, then the answers are folded into one verdict."
         search={searchBox}
         hint={detectionHint}
         chips={exampleChips}

@@ -1,57 +1,22 @@
 import type { HealthBoard } from "@/lib/ti/health-store";
-import type { HealthGrade, SourceHealth } from "@/lib/ti/health";
+import type { SourceHealth } from "@/lib/ti/health";
 import { relativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
+import { MARK, ms, pct, RAIL_PAD, RailShell } from "./rail";
 
 /**
  * The homepage's departures board: every TI source, worst first, graded from
- * its last 50 real runs. Colour is the grade and nothing else; the marker's
- * shape and the numbers carry it too, so it reads in greyscale.
+ * its last 50 real runs.
  */
 
 const TYPE_TAG: Record<string, string> = { ip: "IP", domain: "DOM", hash: "HASH" };
 
-const MARK: Record<HealthGrade, { dot: string; text: string; hollow?: boolean }> = {
-  failing: { dot: "bg-red-600 dark:bg-red-400", text: "text-red-700 dark:text-red-400" },
-  degraded: { dot: "bg-amber-500 dark:bg-amber-400", text: "text-amber-700 dark:text-amber-400" },
-  slow: { dot: "bg-amber-500 dark:bg-amber-400", text: "text-amber-700 dark:text-amber-400" },
-  // Grey, not green: on a board of ~55 healthy rows, colour is kept for the
-  // few that need attention. Filled, so it still differs from no-data.
-  healthy: { dot: "bg-muted-foreground/45", text: "text-muted-foreground" },
-  "no-data": { dot: "", text: "text-muted-foreground", hollow: true },
-  "no-key": { dot: "", text: "text-muted-foreground", hollow: true },
-};
-
-function ms(v: number | null): string {
-  if (v === null) return "—";
-  return v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${Math.round(v)}ms`;
-}
-
-function pct(v: number | null): string {
-  return v === null ? "—" : `${Math.round(v * 100)}%`;
-}
-
-/** The surface both the live rail and its skeleton share, so the swap from
- *  one to the other moves nothing. */
-function RailShell({ children, footer }: Readonly<{ children: React.ReactNode; footer?: React.ReactNode }>) {
+/** The source rail's frame: its name, and the two numbers each row carries. */
+function SourceShell({ children, footer }: Readonly<{ children: React.ReactNode; footer?: React.ReactNode }>) {
   return (
-    <aside
-      aria-label="Source health"
-      className="relative border-t border-border bg-[oklch(0.955_0_0)] font-mono md:border-t-0 md:border-l dark:bg-[oklch(0.15_0_0)]"
-    >
-      <div className="flex flex-col md:absolute md:inset-0">
-        <div className="flex items-baseline justify-between border-b border-border py-3 pr-[calc(1rem_+_var(--bleed,0px))] pl-4">
-          <span className="text-[11px] font-bold tracking-[0.14em] uppercase">Sources</span>
-          <span className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">p50 · ok</span>
-        </div>
-        <div className="relative flex-1 overflow-y-auto">{children}</div>
-        {footer && (
-          <div className="border-t border-border py-2 pr-[calc(1rem_+_var(--bleed,0px))] pl-4 text-[10.5px] text-muted-foreground">
-            {footer}
-          </div>
-        )}
-      </div>
-    </aside>
+    <RailShell label="Source health" title="Sources" legend="p50 · ok" footer={footer}>
+      {children}
+    </RailShell>
   );
 }
 
@@ -61,7 +26,7 @@ function Row({ row }: Readonly<{ row: SourceHealth }>) {
   return (
     <li
       title={row.lastError}
-      className="grid grid-cols-[10px_1fr_auto_52px_40px] items-center gap-2 border-b border-border/60 py-1.5 pr-[calc(1rem_+_var(--bleed,0px))] pl-4 text-[11.5px]"
+      className={`grid grid-cols-[10px_1fr_auto_52px_40px] items-center gap-2 border-b border-border/60 py-1.5 text-[11.5px] ${RAIL_PAD}`}
     >
       <span
         aria-hidden
@@ -85,37 +50,37 @@ function Row({ row }: Readonly<{ row: SourceHealth }>) {
 export function SourceRail({ board, now }: Readonly<{ board: HealthBoard | null; now: number }>) {
   if (!board) {
     return (
-      <RailShell>
-        <p className="py-3 pr-[calc(1rem_+_var(--bleed,0px))] pl-4 text-[11.5px] text-muted-foreground">Health tracking needs the Redis cache.</p>
-      </RailShell>
+      <SourceShell>
+        <p className={`py-3 text-[11.5px] text-muted-foreground ${RAIL_PAD}`}>Health tracking needs the Redis cache.</p>
+      </SourceShell>
     );
   }
   const footer = board.newestAt
     ? `last 50 runs per source, newest ${relativeTime(board.newestAt, now)}`
     : "no runs recorded yet";
   return (
-    <RailShell footer={footer}>
+    <SourceShell footer={footer}>
       <ul>
         {board.rows.map((r) => (
           <Row key={`${r.type}:${r.id}`} row={r} />
         ))}
       </ul>
-    </RailShell>
+    </SourceShell>
   );
 }
 
 export function SourceRailSkeleton() {
   return (
-    <RailShell footer={<span className="sweep block h-2 w-40 rounded" />}>
+    <SourceShell footer={<span className="sweep block h-2 w-40 rounded" />}>
       <ul>
         {Array.from({ length: 14 }, (_, i) => (
-          <li key={i} className="flex items-center gap-2 border-b border-border/60 py-[9px] pr-[calc(1rem_+_var(--bleed,0px))] pl-4">
+          <li key={i} className={`flex items-center gap-2 border-b border-border/60 py-[9px] ${RAIL_PAD}`}>
             <span className="sweep block size-2 rounded-full" />
             <span className="sweep block h-2 flex-1 rounded" />
             <span className="sweep block h-2 w-16 rounded" />
           </li>
         ))}
       </ul>
-    </RailShell>
+    </SourceShell>
   );
 }

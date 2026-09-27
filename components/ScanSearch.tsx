@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Globe, Link2, Network, Radar, ShieldQuestion, X } from "lucide-react";
+import { Globe, Link2, Network, Radar, ShieldQuestion } from "lucide-react";
 import { modeHref } from "@/lib/route-mode";
 import {
   isScanProblem,
@@ -10,9 +10,8 @@ import {
   type ScanInput,
   type ScanInputProblem,
 } from "@/lib/scan-input";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { Board } from "@/components/Checker/board";
+import { JoinedSearchBox } from "@/components/Checker/search-box";
 
 /** One per shape of thing that can be scanned. A hash is deliberately absent:
  *  it has no address to visit, and offering it would teach the wrong thing. */
@@ -71,7 +70,8 @@ function InputHint({
 }
 
 /**
- * The active mode's search box.
+ * The active mode's landing page: the search box on the board, with the
+ * engines' health as its rail.
  *
  * The passive box on the home page and this one take the same shapes of input
  * and look the same on purpose, because the difference between them is not the
@@ -80,7 +80,7 @@ function InputHint({
  * scan page rather than starting anything, keeping the confirmation the one
  * place a scan can begin.
  */
-export function ScanSearch() {
+export function ScanSearch({ aside }: Readonly<{ aside: React.ReactNode }>) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -94,96 +94,62 @@ export function ScanSearch() {
     router.push(modeHref("active", parsed.indicator));
   }
 
-  return (
-    <div className="sketch-shadow relative rounded-lg border border-border bg-card p-4 sm:p-5">
-      <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
-        <Radar className="size-3.5" />
-        Active scan
-      </div>
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight sm:text-[1.7rem]">
-        Visit an IP, domain, or&nbsp;URL
-      </h1>
-      <p className="mb-4 text-sm text-foreground/70">
-        Everything under the passive reading comes from records other people
-        already keep. This is the one thing here that goes and looks, through
-        urlscan.io and Cloudflare, and nothing leaves this machine until you
-        confirm it on the next page.
-      </p>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          go(query);
-        }}
-        className="flex flex-col gap-3 sm:flex-row"
-      >
-        <div className="relative flex flex-1 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/50">
-          <Radar className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
-          <Input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            inputMode="text"
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="off"
-            spellCheck={false}
-            aria-label="Address to scan"
-            placeholder="IP, domain, or URL"
-            className={cn(
-              "h-11 rounded-none border-0 bg-transparent pl-9 font-mono text-sm shadow-none placeholder:text-sm focus-visible:ring-0",
-              query ? "pr-9" : "pr-3",
-            )}
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                inputRef.current?.focus();
-              }}
-              aria-label="Clear input"
-              className="absolute right-2 flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <X className="size-4" />
-            </button>
-          )}
-        </div>
-        <Button
-          type="submit"
-          aria-label="Open the scan"
-          disabled={!ready}
-          className="h-11 w-11 shrink-0 rounded-md p-0"
+  const chips = (
+    <>
+      <span className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        Try
+      </span>
+      {EXAMPLE_CHIPS.map(({ value, label, icon: ChipIcon }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => {
+            setQuery(value);
+            go(value);
+          }}
+          className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
         >
-          <Radar className="size-4" />
-        </Button>
-      </form>
+          <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
+          {label}
+        </button>
+      ))}
+    </>
+  );
 
-      {/* What would be visited, named before the analyst commits to anything.
-          An IP becomes two URLs, and seeing that here is the point. */}
-      <div className="mt-3 min-h-7 text-sm">
-        <InputHint read={read} />
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-3">
-        <span className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-          Try
-        </span>
-        {EXAMPLE_CHIPS.map(({ value, label, icon: ChipIcon }) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => {
-              setQuery(value);
-              go(value);
-            }}
-            className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
-          >
-            <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
-            {label}
-          </button>
-        ))}
-      </div>
-    </div>
+  return (
+    <Board
+      heading={
+        <>
+          Visit an IP,
+          <br />
+          domain, or URL.
+        </>
+      }
+      lede="The one thing here that goes and looks. Nothing is visited until you confirm it on the next page."
+      search={
+        <JoinedSearchBox
+          query={query}
+          loading={false}
+          canSubmit={ready}
+          inputRef={inputRef}
+          onQueryChange={setQuery}
+          onClear={() => {
+            setQuery("");
+            inputRef.current?.focus();
+          }}
+          onSubmit={() => go(query)}
+          label="Address to scan"
+          placeholder="IP, domain, or URL"
+          action="Open the scan"
+          icon={Radar}
+        />
+      }
+      chips={chips}
+      // What would be visited, named before the analyst commits to anything.
+      // An IP becomes two URLs, and seeing that here is the point.
+      hint={<InputHint read={read} />}
+      error={null}
+      aside={aside}
+    />
   );
 }

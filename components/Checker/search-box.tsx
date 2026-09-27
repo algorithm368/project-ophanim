@@ -243,9 +243,9 @@ export function SearchBox({
   );
 }
 
-/** The homepage's search: a single field, the submit a ↵ key inside its right
- *  edge rather than a separate button beside it. */
-function JoinedSearchBox({
+/** The landing pages' search: a single field, the submit a ↵ key inside its
+ *  right edge rather than a separate button beside it. */
+export function JoinedSearchBox({
   query,
   loading,
   canSubmit,
@@ -256,6 +256,7 @@ function JoinedSearchBox({
   label,
   placeholder,
   action,
+  icon: Icon = Search,
 }: Readonly<{
   query: string;
   loading: boolean;
@@ -267,6 +268,7 @@ function JoinedSearchBox({
   label: string;
   placeholder: string;
   action: string;
+  icon?: IconType;
 }>) {
   return (
     <form
@@ -276,7 +278,7 @@ function JoinedSearchBox({
       }}
       className="relative flex h-13 items-center rounded-md border border-input bg-background transition-colors focus-within:border-foreground/60"
     >
-      <Search className="pointer-events-none absolute left-4 size-4 text-muted-foreground" />
+      <Icon className="pointer-events-none absolute left-4 size-4 text-muted-foreground" />
       <Input
         ref={inputRef}
         value={query}
