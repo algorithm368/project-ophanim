@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { GeoRow } from "../geo";
 import type { ResolvedField } from "../types";
-import { countryCodeOf, originReport, sameCountryNote } from "./summary";
+import {
+  countryCodeOf,
+  originReport,
+  sameCountryNote,
+  sameLocationNotes,
+  sharedLocations,
+} from "./summary";
 
 /** A located row whose country, city/region, and network can each be set. */
 function named(
@@ -228,5 +234,67 @@ describe("originReport unlocated list", () => {
     expect(
       originReport([named("8.8.8.8", "United States", "US"), failed("203.0.113.7")]),
     ).toContain("1 address could not be geolocated: 203.0.113.7.");
+  });
+});
+
+describe("sharedLocations / sameLocationNotes", () => {
+  const at = (
+    ip: string,
+    city: string | undefined,
+    region: string | undefined,
+    country: string,
+    code: string,
+  ): GeoRow => ({
+    ip,
+    version: 4,
+    status: "ok",
+    geo: { city, region, country, countryCode: code },
+  });
+  const ash1 = at("8.8.8.8", "Ashburn", "Virginia", "United States", "US");
+  const ash2 = at("8.8.4.4", "Ashburn", "Virginia", "United States", "US");
+  const ash3 = at("8.8.8.4", "Ashburn", "Virginia", "United States", "US");
+  const sj = at("208.67.222.222", "San Jose", "California", "United States", "US");
+  const mos1 = at("77.88.8.8", "Moscow", "Moscow", "Russia", "RU");
+  const mos2 = at("77.88.8.1", "Moscow", "Moscow", "Russia", "RU");
+  const noCity = at("1.2.3.4", undefined, undefined, "United States", "US");
+  const failed: GeoRow = { ip: "203.0.113.7", version: 4, status: "error", error: "x" };
+
+  it("groups addresses by city, busiest first, singles left out", () => {
+    const groups = sharedLocations([mos1, ash1, sj, ash2, mos2, ash3]);
+    expect(groups.map((g) => g.ips)).toEqual([
+      ["8.8.8.8", "8.8.4.4", "8.8.8.4"],
+      ["77.88.8.8", "77.88.8.1"],
+    ]);
+    expect(groups[0].text).toBe(
+      "8.8.8.8, 8.8.4.4 and 8.8.8.4 resolve to the same location, Ashburn, Virginia, United States (US).",
+    );
+  });
+
+  it("drops a region that repeats the city", () => {
+    expect(sharedLocations([mos1, mos2, ash1])[0].place).toBe("Moscow, Russia (RU)");
+  });
+
+  it("never groups on a country alone", () => {
+    expect(sharedLocations([noCity, at("5.6.7.8", undefined, undefined, "United States", "US")])).toEqual([]);
+  });
+
+  it("says All when one city holds the whole batch, scoped to located ones", () => {
+    expect(sameLocationNotes([ash1, ash2])).toEqual([
+      "All 2 addresses resolve to the same location, Ashburn, Virginia, United States (US).",
+    ]);
+    expect(sameLocationNotes([ash1, ash2, failed])).toEqual([
+      "All 2 located addresses resolve to the same location, Ashburn, Virginia, United States (US).",
+    ]);
+  });
+
+  it("leads with the one-country note, then each shared city", () => {
+    expect(sameLocationNotes([ash1, ash2, sj])).toEqual([
+      "All 3 addresses resolve to the same country, United States (US).",
+      "8.8.8.8 and 8.8.4.4 resolve to the same location, Ashburn, Virginia, United States (US).",
+    ]);
+  });
+
+  it("is empty when nothing is shared", () => {
+    expect(sameLocationNotes([ash1, mos1])).toEqual([]);
   });
 });
