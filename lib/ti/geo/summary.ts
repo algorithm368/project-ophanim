@@ -1,6 +1,6 @@
 /**
  * Pure summaries of a bulk geolocation batch, rendered by
- * `components/BulkGeoResults.tsx` and copied verbatim by its Copy button.
+ * `components/BulkGeoResults/` and copied verbatim by its Copy button.
  *
  * Sibling of `lib/ti/narrative.ts`, and it inherits that file's rule: keep them
  * honest, the summary must never describe something the data doesn't support.
@@ -62,7 +62,7 @@ function addressDetail(row: GeoRow): string {
   return text;
 }
 
-interface CountryRows {
+export interface CountryRows {
   country: string;
   code: string;
   rows: GeoRow[];
@@ -70,7 +70,7 @@ interface CountryRows {
 
 /** Split a batch into located countries (most-populous first, then alphabetical)
  *  and the addresses that carried no trustworthy country. */
-function groupRows(rows: GeoRow[]): { located: CountryRows[]; unlocated: GeoRow[] } {
+export function groupRows(rows: GeoRow[]): { located: CountryRows[]; unlocated: GeoRow[] } {
   const byCode = new Map<string, CountryRows>();
   const unlocated: GeoRow[] = [];
   for (const row of rows) {
@@ -156,4 +156,72 @@ export function sameCountryNote(rows: GeoRow[]): string | null {
       ? `All ${rows.length} addresses`
       : `All ${located.length} located addresses`;
   return `${scope} resolve to the same country, ${country} (${code}).`;
+}
+
+/** Addresses that resolved to one city, and the sentence saying so. */
+export interface SharedLocation {
+  ips: string[];
+  /** `Ashburn, Virginia, United States (US)`. */
+  place: string;
+  text: string;
+}
+
+/** The reconciled city, region and country of a row, or undefined unless all
+ *  of a city and a trustworthy country code are known: "same location" is a
+ *  claim about a city, and a country alone is `sameCountryNote`'s job. */
+function cityOf(row: GeoRow): { key: string; place: string } | undefined {
+  const code = countryCodeOf(row);
+  const city = row.resolution?.city?.value ?? row.geo?.city;
+  if (!code || !city) return undefined;
+  const region = row.resolution?.region?.value ?? row.geo?.region;
+  const country = row.resolution?.country?.value ?? row.geo?.country ?? code;
+  // "Moscow, Moscow" says nothing twice; drop a region that repeats the city.
+  const parts = [city, region === city ? undefined : region, country].filter(Boolean);
+  return {
+    key: `${code}|${region ?? ""}|${city}`.toLowerCase(),
+    place: `${parts.join(", ")} (${code})`,
+  };
+}
+
+/**
+ * Groups of two or more addresses that resolve to the same city, busiest
+ * first, each with a sentence ready to paste. When one group holds every
+ * located address the sentence says "All", scoped to the located ones when
+ * some addresses had no data, the same rule `sameCountryNote` follows.
+ */
+export function sharedLocations(rows: GeoRow[]): SharedLocation[] {
+  const groups = new Map<string, { ips: string[]; place: string }>();
+  for (const row of rows) {
+    const c = cityOf(row);
+    if (!c) continue;
+    const g = groups.get(c.key);
+    if (g) g.ips.push(row.ip);
+    else groups.set(c.key, { ips: [row.ip], place: c.place });
+  }
+  const located = rows.filter((r) => countryCodeOf(r) !== undefined).length;
+  return [...groups.values()]
+    .filter((g) => g.ips.length > 1)
+    .sort((a, b) => b.ips.length - a.ips.length)
+    .map((g) => {
+      let who = joinAnd(g.ips);
+      if (g.ips.length === located) {
+        who =
+          located === rows.length
+            ? `All ${located} addresses`
+            : `All ${located} located addresses`;
+      }
+      return { ...g, text: `${who} resolve to the same location, ${g.place}.` };
+    });
+}
+
+/**
+ * Every "same geolocation" sentence the batch supports, most general first:
+ * one city for the whole batch if that holds, otherwise the one-country note
+ * (when it holds) followed by each group of addresses sharing a city.
+ */
+export function sameLocationNotes(rows: GeoRow[]): string[] {
+  const shared = sharedLocations(rows);
+  if (shared[0]?.text.startsWith("All ")) return [shared[0].text];
+  const country = sameCountryNote(rows);
+  return [...(country ? [country] : []), ...shared.map((s) => s.text)];
 }
