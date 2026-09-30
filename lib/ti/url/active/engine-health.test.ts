@@ -67,6 +67,13 @@ describe("scanOutcomes", () => {
     expect(scanOutcomes([scan("urlscan", "running")], [scan("urlscan", "running")], SUBMITTED, NOW)).toEqual([]);
   });
 
+  it("records nothing for a finish first seen long after nobody was watching", () => {
+    const nextDay = Date.parse(SUBMITTED) + 24 * 3_600_000;
+    expect(scanOutcomes([scan("urlscan", "running")], [scan("urlscan", "done")], SUBMITTED, nextDay)).toEqual([]);
+    const [late] = scanOutcomes([scan("urlscan", "running")], [scan("urlscan", "error")], SUBMITTED, nextDay);
+    expect(late.entry.s).toBe("error");
+  });
+
   it("names an error without a message and caps a long one", () => {
     const [bare] = scanOutcomes([scan("urlscan", "running")], [scan("urlscan", "error")], SUBMITTED, NOW);
     expect(bare.entry.e).toBe("Scan failed");

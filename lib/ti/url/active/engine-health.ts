@@ -20,6 +20,11 @@ export const ENGINES: ScanEngine[] = ["urlscan", "cloudflare"];
 /** A scan normally settles in about 30 seconds; past a minute it is slow.
  *  gradeSource calls a source slow past half its timeout, hence the double. */
 const SLOW_AFTER_MS = 60_000;
+/** An open scan page polls at least every six seconds (lib/scan-poll.ts), so
+ *  a finish it sees is timed to within a poll. One first seen this long after
+ *  submission was not watched: the gap is how long the tab was closed, not how
+ *  long the engine took, and recording it would grade a healthy engine slow. */
+const UNWATCHED_AFTER_MS = 5 * SLOW_AFTER_MS;
 const MAX_ERROR = 200;
 const QUOTA_URL = "https://urlscan.io/user/quotas/";
 const QUOTA_TIMEOUT_MS = 4000;
@@ -35,6 +40,7 @@ export interface EngineOutcome {
 function outcomeOf(scan: ActiveScan, submittedAt: string, now: number): HealthEntry | null {
   if (scan.status === "done") {
     const took = now - Date.parse(submittedAt);
+    if (took > UNWATCHED_AFTER_MS) return null;
     return { s: "ok", ms: Number.isFinite(took) ? Math.max(0, Math.round(took)) : 0, t: now };
   }
   if (scan.status === "error") {
