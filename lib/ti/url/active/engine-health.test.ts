@@ -14,7 +14,7 @@ const { quotaFrom, readEngineBoard, recordEngineHealth, scanOutcomes } = await i
   "@/lib/ti/url/active/engine-health"
 );
 
-const pipeline = { lpush: vi.fn(), ltrim: vi.fn(), lrange: vi.fn(), exec: vi.fn() };
+const pipeline = { lpush: vi.fn(), ltrim: vi.fn(), lrange: vi.fn(), set: vi.fn(), exec: vi.fn() };
 const redis = { pipeline: vi.fn(() => pipeline) };
 
 const SUBMITTED = "2026-09-27T12:00:00.000Z";
@@ -41,7 +41,7 @@ const QUOTA = {
 let errorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  for (const fn of [pipeline.lpush, pipeline.ltrim, pipeline.lrange]) fn.mockReset().mockReturnValue(pipeline);
+  for (const fn of [pipeline.lpush, pipeline.ltrim, pipeline.lrange, pipeline.set]) fn.mockReset().mockReturnValue(pipeline);
   pipeline.exec.mockReset().mockResolvedValue([]);
   redis.pipeline.mockReset().mockReturnValue(pipeline);
   getRedisMock.mockReset().mockReturnValue(redis);
@@ -67,11 +67,26 @@ describe("scanOutcomes", () => {
     expect(scanOutcomes([scan("urlscan", "running")], [scan("urlscan", "running")], SUBMITTED, NOW)).toEqual([]);
   });
 
+  it("records nothing for a finish first seen long after nobody was watching", () => {
+    const nextDay = Date.parse(SUBMITTED) + 24 * 3_600_000;
+    expect(scanOutcomes([scan("urlscan", "running")], [scan("urlscan", "done")], SUBMITTED, nextDay)).toEqual([]);
+    const [late] = scanOutcomes([scan("urlscan", "running")], [scan("urlscan", "error")], SUBMITTED, nextDay);
+    expect(late.entry.s).toBe("error");
+  });
+
   it("names an error without a message and caps a long one", () => {
     const [bare] = scanOutcomes([scan("urlscan", "running")], [scan("urlscan", "error")], SUBMITTED, NOW);
     expect(bare.entry.e).toBe("Scan failed");
     const [long] = scanOutcomes(null, [scan("urlscan", "error", "x".repeat(500))], SUBMITTED, NOW);
     expect(long.entry.e).toHaveLength(200);
+  });
+
+  it("marks a settle a poll saw with a claim on the scan, and a refused submit without one", () => {
+    const polled = { ...scan("urlscan", "done"), uuid: "u-1" };
+    const [seen] = scanOutcomes([{ ...polled, status: "running" }], [polled], SUBMITTED, NOW);
+    expect(seen.claim).toBe("urlscan:u-1");
+    const [refused] = scanOutcomes(null, [{ ...scan("urlscan", "error"), uuid: "u-2" }], SUBMITTED, NOW);
+    expect(refused).not.toHaveProperty("claim");
   });
 
   it("keeps a finish with an unreadable submission time rather than dropping it", () => {
@@ -85,6 +100,24 @@ describe("recordEngineHealth", () => {
     await recordEngineHealth([{ engine: "urlscan", entry: { s: "ok", ms: 1, t: 2 } }]);
     expect(pipeline.lpush).toHaveBeenCalledWith("ti:health:scan:urlscan", { s: "ok", ms: 1, t: 2 });
     expect(pipeline.ltrim).toHaveBeenCalledWith("ti:health:scan:urlscan", 0, 49);
+  });
+
+  it("records a claimed settle only for the poll that won the claim", async () => {
+    const ok = { engine: "urlscan" as const, entry: { s: "ok" as const, ms: 1, t: 2 }, claim: "urlscan:u-1" };
+    pipeline.exec.mockResolvedValueOnce(["OK"]).mockResolvedValueOnce([]).mockResolvedValueOnce([null]);
+    await recordEngineHealth([ok]);
+    await recordEngineHealth([ok]);
+    expect(pipeline.set).toHaveBeenCalledWith("ti:health:scan:claim:urlscan:u-1", 1, { nx: true, ex: 3600 });
+    expect(pipeline.lpush).toHaveBeenCalledTimes(1);
+  });
+
+  it("records nothing claimed when the claim cannot be made, but still the rest", async () => {
+    const claimedOk = { engine: "urlscan" as const, entry: { s: "ok" as const, ms: 1, t: 2 }, claim: "urlscan:u-1" };
+    const refused = { engine: "cloudflare" as const, entry: { s: "error" as const, ms: 0, t: 2 } };
+    pipeline.exec.mockRejectedValueOnce(new Error("down")).mockResolvedValueOnce([]);
+    await recordEngineHealth([claimedOk, refused]);
+    expect(pipeline.lpush).toHaveBeenCalledTimes(1);
+    expect(pipeline.lpush).toHaveBeenCalledWith("ti:health:scan:cloudflare", refused.entry);
   });
 
   it("does not open a pipeline for nothing", async () => {
