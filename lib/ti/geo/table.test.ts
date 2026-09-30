@@ -187,4 +187,15 @@ describe("export", () => {
     expect(line).toContain(`"'=HYPERLINK(""x""), Inc"`);
     expect(toCsv([])).toBe("");
   });
+
+  it("leaves negative coordinates as numbers", () => {
+    const south = ok("6.6.6.6", { lat: -33.87, lon: -73.99, isp: "-Dash ISP" });
+    const csv = toCsv(exportRecords([south]));
+    const [header, line] = csv.trimEnd().split("\n");
+    const cells = line.split(",");
+    const cols = header.split(",");
+    expect(cells[cols.indexOf("lat")]).toBe("-33.87");
+    expect(cells[cols.indexOf("lon")]).toBe("-73.99");
+    expect(cells[cols.indexOf("org")]).toBe("'-Dash ISP");
+  });
 });

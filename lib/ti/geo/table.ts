@@ -261,8 +261,9 @@ function csvCell(value: ExportRecord[string]): string {
   const s = String(value);
   // Quote anything that would break a cell, and neutralise a leading formula
   // character, since an ISP name is attacker-controlled text and this file is
-  // opened in spreadsheets.
-  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  // opened in spreadsheets. Only strings: a negative coordinate is a number,
+  // and prefixing it would turn every western or southern lat/lon into text.
+  const safe = typeof value === "string" && /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
   return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 }
 
