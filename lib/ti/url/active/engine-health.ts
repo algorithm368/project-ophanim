@@ -1,4 +1,5 @@
 import { gradeSource, type HealthEntry, type SourceHealth } from "../../health";
+import { getRedis } from "../../cache";
 import { healthKey, newestOf, pushHealth, readEntries } from "../../health-store";
 import { errorMessage, getJson } from "../../http";
 import type { ScanCredentials } from "./credentials";
@@ -30,11 +31,17 @@ const QUOTA_URL = "https://urlscan.io/user/quotas/";
 const QUOTA_TIMEOUT_MS = 4000;
 
 const HEALTH_TYPE = "scan";
+/** Long enough to outlast every poll racing over one settle. */
+const CLAIM_TTL_S = 3600;
 
 /** One engine's settled scan, ready to push onto its health list. */
 export interface EngineOutcome {
   engine: ScanEngine;
   entry: HealthEntry;
+  /** Set when the settle was seen by a poll. Two polls can both see it (two
+   *  tabs, each reading `running` from the cache before either writes back),
+   *  so only the one that claims this id records it. */
+  claim?: string;
 }
 
 function outcomeOf(scan: ActiveScan, submittedAt: string, now: number): HealthEntry | null {
@@ -64,13 +71,35 @@ export function scanOutcomes(
   after.forEach((scan, i) => {
     if (before?.[i]?.status === scan.status) return;
     const entry = outcomeOf(scan, submittedAt, now);
-    if (entry) out.push({ engine: scan.engine, entry });
+    if (!entry) return;
+    const claim = before && scan.uuid ? `${scan.engine}:${scan.uuid}` : undefined;
+    out.push({ engine: scan.engine, entry, ...(claim ? { claim } : {}) });
   });
   return out;
 }
 
+/** The outcomes this caller may record: unclaimed ones, and claimed ones it
+ *  won. A failed claim records nothing, since a lost entry costs less than a
+ *  doubled one. */
+async function claimed(outcomes: EngineOutcome[]): Promise<EngineOutcome[]> {
+  const claims = outcomes.filter((o) => o.claim);
+  const redis = getRedis();
+  if (!redis || claims.length === 0) return outcomes;
+  try {
+    const p = redis.pipeline();
+    for (const o of claims) p.set(healthKey(HEALTH_TYPE, `claim:${o.claim}`), 1, { nx: true, ex: CLAIM_TTL_S });
+    const won = (await p.exec()) as unknown[];
+    const lost = new Set(claims.filter((_, i) => won[i] !== "OK").map((o) => o.claim));
+    return outcomes.filter((o) => !o.claim || !lost.has(o.claim));
+  } catch (err) {
+    console.error("[scan] health claim failed:", errorMessage(err));
+    return outcomes.filter((o) => !o.claim);
+  }
+}
+
 export async function recordEngineHealth(outcomes: EngineOutcome[]): Promise<void> {
-  await pushHealth(outcomes.map(({ engine, entry }) => ({ key: healthKey(HEALTH_TYPE, engine), entry })));
+  const mine = await claimed(outcomes);
+  await pushHealth(mine.map(({ engine, entry }) => ({ key: healthKey(HEALTH_TYPE, engine), entry })));
 }
 
 /** One visibility's allowance on urlscan, which is where a scan is spent. */

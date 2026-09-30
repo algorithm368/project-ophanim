@@ -170,7 +170,9 @@ async function pollScanRoute(request: NextRequest): Promise<Response> {
 
   const updated: ActiveScanBatch = { ...batch, scans };
   // Only the scans that settled on this poll: a finished batch polled again
-  // (a reload, a second tab) changes nothing and records nothing.
+  // (a reload, a second tab) changes nothing and records nothing. Two polls
+  // racing over one settle both see it change; recordEngineHealth claims each
+  // settle so only one of them records it.
   await Promise.all([
     scans.some((scan) => scan.status === "done")
       ? setCachedScanBatch(read.indicator, updated)
