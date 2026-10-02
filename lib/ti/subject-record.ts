@@ -14,7 +14,7 @@ import { maliciousTags } from "./sources/shodan-internetdb";
 import { IDENTIFIERS, threatTypeOf } from "./threat-type";
 import type { ThreatTypeVerdict } from "./threat-type";
 import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
-import type { BodyKey, SpriteSpec } from "./sprite";
+import { seedOf, type BodyKey, type SpriteSpec } from "./sprite";
 
 /**
  * One assertion about the indicator, plus who made it.
@@ -526,17 +526,18 @@ function spriteFor(
   threat: Claim | null,
   flagged: boolean,
 ): SpriteSpec {
+  const seed = seedOf(subjectOf(r));
   const namedProvider = infra ? NAMED_PROVIDERS.some((p) => infra.label.includes(p)) : false;
   if (namedProvider) {
-    return { body: "hosting", flagged };
+    return { body: "hosting", flagged, seed };
   }
   const threatBody = threat
     ? THREAT_BODY.find(([re]) => re.test(threat.label))?.[1]
     : undefined;
   if (threatBody) {
-    return { body: threatBody, flagged };
+    return { body: threatBody, flagged, seed };
   }
-  return { body: infra ? "hosting" : typeBody(r), flagged };
+  return { body: infra ? "hosting" : typeBody(r), flagged, seed };
 }
 
 /**

@@ -790,7 +790,7 @@ describe("buildSubjectRecord", () => {
     expect(rec.hostedOn?.label).toBe("Amazon Web Services, eu-west-1");
     // Infra first for the picture: something physically an EC2 instance is more
     // truly an AWS box than a C2, and the C2 is the line beside it.
-    expect(rec.sprite).toEqual({ body: "hosting", flagged: false });
+    expect(rec.sprite).toMatchObject({ body: "hosting", flagged: false });
   });
 
   it("draws the threat body, not a rack, when the only infra claim is a bare generic \"Hosting\"", () => {
@@ -805,7 +805,7 @@ describe("buildSubjectRecord", () => {
     );
     expect(rec.class.label).toBe("Dridex C2");
     expect(rec.hostedOn?.label).toBe("Hosting");
-    expect(rec.sprite).toEqual({ body: "c2", flagged: false });
+    expect(rec.sprite).toMatchObject({ body: "c2", flagged: false });
   });
 
   it("never renders the same fact on two rows", () => {
@@ -819,7 +819,7 @@ describe("buildSubjectRecord", () => {
   it("puts horns on a flagged verdict and nothing on a clean one", () => {
     const flagged = ipResult([src({ id: "feodo", malicious: true })]);
     flagged.verdict = "malicious";
-    expect(buildSubjectRecord(flagged).sprite).toEqual({ body: "c2", flagged: true });
+    expect(buildSubjectRecord(flagged).sprite).toMatchObject({ body: "c2", flagged: true });
 
     const clean = ipResult([]);
     clean.verdict = "clean";
@@ -848,7 +848,7 @@ describe("buildSubjectRecord", () => {
     // the same name); the sprite side of that rule was previously untested.
     const rec = buildSubjectRecord(ipResult([], { asnOrg: "Hetzner Online GmbH" }));
     expect(rec.class.label).toBe("Hosting");
-    expect(rec.sprite).toEqual({ body: "hosting", flagged: false });
+    expect(rec.sprite).toMatchObject({ body: "hosting", flagged: false });
   });
 
   it("does not change the picture when every key-gated source fails", () => {
