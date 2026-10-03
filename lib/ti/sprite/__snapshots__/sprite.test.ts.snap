@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the seed > pins golden seeds so a reordered part list is caught 1`] = `
+[
+  [
+    0,
+    1,
+    0,
+  ],
+  [
+    3,
+    1,
+    0,
+  ],
+  [
+    3,
+    1,
+    0,
+  ],
+]
+`;

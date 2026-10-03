@@ -83,7 +83,7 @@ export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
                     <span className="absolute bottom-0 left-0 size-3 border-b-2 border-l-2 border-current" />
                     <span className="absolute right-0 bottom-0 size-3 border-r-2 border-b-2 border-current" />
                 </span>
-                <Sprite spec={record.sprite} px={128} title={record.class.label} />
+                <Sprite spec={record.sprite} px={224} title={record.class.label} />
             </div>
             <div
                 className={cn(

@@ -45,7 +45,7 @@ export function FrameSkeleton({
                 lands where its placeholder was. */}
             <Tile span={3} tone="rail" className="flex flex-col items-center justify-center gap-3 p-4">
                 <div className="grid min-h-24 place-items-center p-2">
-                    <span className="sweep block size-[128px] rounded" />
+                    <span className="sweep block size-[224px] rounded" />
                 </div>
                 <span className="sweep block h-3 w-20 rounded" />
             </Tile>
