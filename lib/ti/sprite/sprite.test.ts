@@ -117,6 +117,71 @@ describe("finished bodies", () => {
   });
 });
 
+/**
+ * The house style, taken from the anonymizer (see the spec's "House style").
+ * These are what make 23 bodies drawn at different times read as one family.
+ */
+describe("house style", () => {
+  const ink = (g: string[], x: number, y: number) => isInk(g[y]?.[x]);
+
+  it.each(FINISHED)("%s steps its outline in 2x2 blocks", (key) => {
+    const g = BODIES[key].grid;
+    const ragged: string[] = [];
+    for (let y = 0; y < SPRITE_SIZE; y += 2) {
+      for (let x = 0; x < SPRITE_SIZE; x += 2) {
+        const n = [ink(g, x, y), ink(g, x + 1, y), ink(g, x, y + 1), ink(g, x + 1, y + 1)].filter(Boolean).length;
+        if (n !== 0 && n !== 4) ragged.push(`r${y}c${x}`);
+      }
+    }
+    expect(ragged).toEqual([]);
+  });
+
+  it.each(FINISHED)("%s has a dark body with a solid edge", (key) => {
+    const g = BODIES[key].grid;
+    let total = 0;
+    let dark = 0;
+    const softEdge: string[] = [];
+    g.forEach((row, y) => [...row].forEach((c, x) => {
+      if (!isInk(c)) return;
+      total++;
+      if (c === "#") dark++;
+      const edge = !ink(g, x - 1, y) || !ink(g, x + 1, y) || !ink(g, x, y - 1) || !ink(g, x, y + 1);
+      if (edge && c !== "#") softEdge.push(`r${y}c${x}`);
+    }));
+    expect(softEdge).toEqual([]);
+    expect(dark / total).toBeGreaterThanOrEqual(0.55);
+  });
+
+  it.each(FINISHED)("%s has a face plate that every face part lands on", (key) => {
+    const def = BODIES[key];
+    const plate = def.grid.join("").split("").filter((c) => c === "-").length;
+    expect(plate).toBeGreaterThanOrEqual(60);
+    const offPlate = new Set<string>();
+    for (const seed of SEEDS.slice(0, 200)) {
+      for (const p of placements({ body: key, flagged: false, seed })) {
+        p.part.grid.forEach((row, dy) => {
+          const cells = p.mirror ? [...row].reverse() : [...row];
+          cells.forEach((c, dx) => {
+            if (c === ".") return;
+            const under = def.grid[p.y + dy]?.[p.x + dx];
+            if (under !== "-" && under !== "=") offPlate.add(`r${p.y + dy}c${p.x + dx}`);
+          });
+        });
+      }
+    }
+    expect([...offPlate]).toEqual([]);
+  });
+
+  it.each(FINISHED)("%s stands on the shared floor and eye line", (key) => {
+    const def = BODIES[key];
+    const rows = def.grid.map((r) => [...r].some(isInk));
+    expect(rows.lastIndexOf(true)).toBe(29);
+    expect(rows.indexOf(true)).toBeLessThanOrEqual(6);
+    expect(def.anchors.eyes.y).toBeGreaterThanOrEqual(11);
+    expect(def.anchors.eyes.y).toBeLessThanOrEqual(15);
+  });
+});
+
 describe("the seed", () => {
   it("is stable, case-insensitive and trims", () => {
     expect(seedOf("Evil.COM ")).toBe(seedOf("evil.com"));

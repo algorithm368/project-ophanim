@@ -84,6 +84,30 @@ than shipped.
 Precedence in `spriteFor`, unchanged in shape: named provider (IP only) >
 threat body > identity body > the type's default.
 
+## House style (added 2026-10-03, after the first art pass)
+
+The first pass was drawn by three workers with no shared rules, and the set did
+not read as one family: some bodies were detailed at 1px, others flat blocks;
+some dark, some mid-tone, one outline-only; shading in different directions;
+different heights and eye lines. The user picked **the anonymizer** as the
+reference style. Its rules, each enforced by a test in `sprite.test.ts`
+("house style"):
+
+1. **Chunky silhouette.** The outline steps in aligned 2x2 blocks, the same
+   resolution as the anonymizer. Only tones *inside* the body (the face-plate
+   rim, a token detail) may change at 1px.
+2. **Dark body.** Every ink pixel touching the outside is `#`, and at least 55%
+   of the body's ink is `#`. Secondary token detail on the body uses `=`.
+3. **Face plate.** One light plate of `-` (with an optional `=` rim) holds the
+   face, at least 60 pixels. Every eye, mouth and mark placement paints only on
+   plate cells (`-` or `=`), never on the dark body, which is what makes the
+   seeded faces readable.
+4. **Shared footing.** The lowest ink row is 29 for every body, the top within
+   rows 0 to 6, and the eye line between rows 11 and 15, so creatures stand on
+   one floor and look out at one height in the bestiary.
+5. **Detail budget.** One signature token plus at most one secondary detail. No
+   texture, dither, or pattern fill.
+
 ## Engine
 
 ### Grid format
