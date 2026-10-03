@@ -34,12 +34,15 @@ function svg(spec, px) {
 }
 
 function cell(body) {
-  const base = { body, flagged: false, seed: SIBLINGS[0] };
+  const base = { body, flagged: false, mood: "calm", seed: SIBLINGS[0] };
   const sizes = [128, 64, 32, 16].map((px) => `<span>${svg(base, px)}</span>`).join("");
-  const sibs = SIBLINGS.map((seed) => `<span>${svg({ body, flagged: false, seed }, 64)}</span>`).join("");
-  const flagged = `<span class="bad">${svg({ ...base, flagged: true }, 64)}</span>`;
+  // Three calm siblings, then the first one wary (suspicious: horns) and
+  // hostile (malicious: horns, red), which is how the verdict reads on a face.
+  const sibs = SIBLINGS.slice(0, 3).map((seed) => `<span>${svg({ ...base, seed }, 64)}</span>`).join("");
+  const wary = `<span class="warn">${svg({ ...base, mood: "wary", flagged: true }, 64)}</span>`;
+  const hostile = `<span class="bad">${svg({ ...base, mood: "hostile", flagged: true }, 64)}</span>`;
   const tag = BODIES[body].placeholder ? " (placeholder)" : "";
-  return `<figure><div class="row">${sizes}</div><div class="row">${sibs}${flagged}</div>
+  return `<figure><div class="row">${sizes}</div><div class="row">${sibs}${wary}${hostile}</div>
     <figcaption>${body}${tag}</figcaption></figure>`;
 }
 
@@ -50,11 +53,12 @@ const html = (theme) => `<!doctype html><html><head><meta charset="utf-8"><style
   .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:36px 28px; }
   .row { display:flex; align-items:flex-end; gap:14px; margin-bottom:10px; }
   .bad { color:${theme === "dark" ? "#f87171" : "#dc2626"}; }
+  .warn { color:${theme === "dark" ? "#fbbf24" : "#d97706"}; }
   figure { margin:0; }
   figcaption { opacity:.6; letter-spacing:.06em; text-transform:uppercase; }
   h1 { font-size:13px; letter-spacing:.14em; text-transform:uppercase; margin:0 0 24px; }
 </style></head><body>
-  <h1>sprite contact sheet, ${theme}: 128 / 64 / 32 / 16 px, then 4 siblings + flagged</h1>
+  <h1>sprite contact sheet, ${theme}: 128 / 64 / 32 / 16 px, then 3 calm siblings, wary, hostile</h1>
   <div class="grid">${keys.map(cell).join("")}</div>
 </body></html>`;
 

@@ -43,7 +43,7 @@ export const DOMAIN_BODIES: Record<DomainBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 12, spread: 2 }, mouth: { y: 17 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
   // The tower: a spire, a setback, a long shaft and a plinth with a `=`
   // course, the full 32 rows, the tallest silhouette in the set. Popularity
@@ -85,7 +85,7 @@ export const DOMAIN_BODIES: Record<DomainBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 13, spread: 2 }, mouth: { y: 18 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
   // The cracked egg: a head rising out of the lower half of a shell whose
   // broken rim sticks up past the head on both sides. Newly registered, still
@@ -169,7 +169,7 @@ export const DOMAIN_BODIES: Record<DomainBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 12, spread: 2 }, mouth: { y: 17 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
   // The envelope: a wide letter whose flap folds down into the head as
   // one big V, notched into the top edge so the fold shows in the outline as
@@ -252,7 +252,7 @@ export const DOMAIN_BODIES: Record<DomainBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 15, spread: 2 }, mouth: { y: 20 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
   // The crowd: one creature with two smaller ones peeking up behind its
   // shoulders, each head cut off from its shoulder by a notch, and a `=` seam
@@ -294,6 +294,6 @@ export const DOMAIN_BODIES: Record<DomainBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 13, spread: 2 }, mouth: { y: 18 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
 };

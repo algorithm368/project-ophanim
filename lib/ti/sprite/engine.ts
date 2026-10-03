@@ -34,6 +34,25 @@ export const BODY_KEYS = [...IP_BODY_KEYS, ...DOMAIN_BODY_KEYS, ...FILE_BODY_KEY
 export type Slot = "eyes" | "mouth" | "mark";
 
 /**
+ * How the creature looks out at you, which follows the verdict: calm when
+ * clean or unknown, wary when something is off, hostile when it is malicious.
+ * See `moodFor`.
+ */
+export const MOODS = ["calm", "wary", "hostile"] as const;
+export type Mood = (typeof MOODS)[number];
+
+export type Verdict = "clean" | "low" | "suspicious" | "malicious" | "unknown";
+
+/** The face follows the verdict. Low and suspicious share "wary": both say
+ *  something is off without anyone calling it malicious, which is the one
+ *  thing that earns bared teeth. */
+export function moodFor(verdict: Verdict): Mood {
+  if (verdict === "malicious") return "hostile";
+  if (verdict === "low" || verdict === "suspicious") return "wary";
+  return "calm";
+}
+
+/**
  * Where the parts go. Every body is laid out about a vertical midline at
  * `mid` (default 16, the line between columns 15 and 16).
  *
@@ -53,9 +72,10 @@ export type Anchors = {
 export type BodyDef = {
   grid: string[];
   anchors: Anchors;
-  /** Slots this body's signature owns: the part is pinned instead of seeded,
-   *  e.g. the scanner's single aperture eye. An index into that slot's list. */
-  fixed?: Partial<Record<Slot, number>>;
+  /** Slots this body's signature owns, pinned instead of seeded. `null` leaves
+   *  the slot empty (a plate with no room for a mark); a per-mood set keeps
+   *  the expression while fixing the shape, e.g. the scanner's one pupil. */
+  fixed?: Partial<Record<Slot, Record<Mood, PartDef> | null>>;
   /** Still the upscaled stand-in, not finished art. Excluded from the
    *  distinctness test; none may remain when the set ships. */
   placeholder?: true;
@@ -63,7 +83,7 @@ export type BodyDef = {
 
 export type PartDef = { grid: string[] };
 
-export type SpriteSpec = { body: BodyKey; flagged: boolean; seed: number };
+export type SpriteSpec = { body: BodyKey; flagged: boolean; mood: Mood; seed: number };
 export type Rect = { x: number; y: number; w: number };
 export type Layer = { tone: Tone; opacity: number; rects: Rect[] };
 

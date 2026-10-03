@@ -3,14 +3,18 @@ import {
   BODIES,
   BODY_KEYS,
   HORN_ZONE,
-  PARTS,
+  EYES,
+  MARKS,
+  MOODS,
+  MOUTHS,
   SPRITE_SIZE,
   composeGrid,
   hamming,
   isInk,
   paintPart,
   parseGrid,
-  partChoice,
+  moodFor,
+  partFor,
   placements,
   seedOf,
   silhouette16,
@@ -68,9 +72,10 @@ describe("every body", () => {
     }
   });
 
-  it.each(BODY_KEYS)("%s pins only parts that exist", (key) => {
-    for (const [slot, i] of Object.entries(BODIES[key].fixed ?? {})) {
-      expect(PARTS[slot as keyof typeof PARTS][i]).toBeDefined();
+  it.each(BODY_KEYS)("%s pins a part for every mood, or none", (key) => {
+    for (const pinned of Object.values(BODIES[key].fixed ?? {})) {
+      if (pinned === null) continue;
+      for (const mood of MOODS) expect(pinned[mood]?.grid.length).toBeGreaterThan(0);
     }
   });
 });
@@ -79,7 +84,7 @@ describe("finished bodies", () => {
   it.each(FINISHED)("%s never has a part paint outside its outline", (key) => {
     const def = BODIES[key];
     for (const seed of SEEDS) {
-      for (const p of placements({ body: key, flagged: false, seed })) {
+      for (const p of MOODS.flatMap((mood) => placements({ body: key, flagged: false, mood, seed }))) {
         const scratch = def.grid.map((r) => [...r]);
         expect(paintPart(scratch, def.grid, p.part.grid, p.x, p.y, p.mirror)).toBe(0);
       }
@@ -87,7 +92,7 @@ describe("finished bodies", () => {
   });
 
   it.each(FINISHED)("%s produces visibly different siblings", (key) => {
-    const interiors = new Set(SEEDS.slice(0, 64).map((seed) => composeGrid({ body: key, flagged: false, seed }).join("")));
+    const interiors = new Set(SEEDS.slice(0, 64).map((seed) => composeGrid({ body: key, flagged: false, mood: "calm", seed }).join("")));
     const free = (["eyes", "mouth", "mark"] as const).filter((s) => BODIES[key].fixed?.[s] === undefined).length;
     expect(interiors.size).toBeGreaterThanOrEqual(free >= 2 ? 16 : 4);
   });
@@ -95,7 +100,7 @@ describe("finished bodies", () => {
   it.each(FINISHED)("%s keeps its outline whatever the seed", (key) => {
     const bare = BODIES[key].grid.map((r) => [...r].map((c) => (isInk(c) ? "#" : ".")).join(""));
     for (const seed of SEEDS.slice(0, 64)) {
-      const g = composeGrid({ body: key, flagged: false, seed });
+      const g = composeGrid({ body: key, flagged: false, mood: MOODS[seed % 3], seed });
       // Knockouts may open holes inside, but nothing may appear outside.
       g.forEach((row, y) => [...row].forEach((c, x) => {
         if (isInk(c)) expect(bare[y][x]).toBe("#");
@@ -158,7 +163,7 @@ describe("house style", () => {
     expect(plate).toBeGreaterThanOrEqual(60);
     const offPlate = new Set<string>();
     for (const seed of SEEDS.slice(0, 200)) {
-      for (const p of placements({ body: key, flagged: false, seed })) {
+      for (const p of MOODS.flatMap((mood) => placements({ body: key, flagged: false, mood, seed }))) {
         p.part.grid.forEach((row, dy) => {
           const cells = p.mirror ? [...row].reverse() : [...row];
           cells.forEach((c, dx) => {
@@ -188,26 +193,59 @@ describe("the seed", () => {
     expect(seedOf("evil.com")).not.toBe(seedOf("evil.net"));
   });
 
-  it("spreads neighbouring indicators across every slot", () => {
-    for (const slot of ["eyes", "mouth", "mark"] as const) {
-      const seen = new Set(SEEDS.slice(0, 200).map((s) => partChoice({ grid: [], anchors: { eyes: { y: 0, spread: 0 } } }, s, slot)));
-      expect(seen.size).toBe(PARTS[slot].length);
+  const bare = { grid: [], anchors: { eyes: { y: 0, spread: 0 } } };
+
+  it("spreads neighbouring indicators across every variant of every slot", () => {
+    for (const mood of MOODS) {
+      const lists = { eyes: EYES[mood], mouth: MOUTHS[mood], mark: MARKS };
+      for (const slot of ["eyes", "mouth", "mark"] as const) {
+        const seen = new Set(SEEDS.slice(0, 200).map((seed) => partFor(bare, { mood, seed }, slot)));
+        expect(seen.size).toBe(lists[slot].length);
+      }
     }
   });
 
   it("pins golden seeds so a reordered part list is caught", () => {
-    const def = { grid: [], anchors: { eyes: { y: 0, spread: 0 } } };
     const s = seedOf("8.8.8.8");
-    expect(s).toBe(seedOf("8.8.8.8"));
-    expect([partChoice(def, s, "eyes"), partChoice(def, s, "mouth"), partChoice(def, s, "mark")]).toMatchSnapshot();
+    const index = (mood: (typeof MOODS)[number]) => [
+      EYES[mood].indexOf(partFor(bare, { mood, seed: s }, "eyes")!),
+      MOUTHS[mood].indexOf(partFor(bare, { mood, seed: s }, "mouth")),
+      MARKS.indexOf(partFor(bare, { mood, seed: s }, "mark")),
+    ];
+    expect(MOODS.map(index)).toMatchSnapshot();
+  });
+});
+
+describe("the face follows the verdict", () => {
+  it("is calm when clean or unknown, wary when off, hostile when malicious", () => {
+    expect(moodFor("clean")).toBe("calm");
+    expect(moodFor("unknown")).toBe("calm");
+    expect(moodFor("low")).toBe("wary");
+    expect(moodFor("suspicious")).toBe("wary");
+    expect(moodFor("malicious")).toBe("hostile");
+  });
+
+  it.each(FINISHED)("%s shows a different face in each mood", (key) => {
+    const seed = SEEDS[2];
+    const faces = new Set(MOODS.map((mood) => composeGrid({ body: key, flagged: false, mood, seed }).join("")));
+    expect(faces.size).toBe(3);
+  });
+
+  it("never gives a hostile face a missing mouth", () => {
+    expect(MOUTHS.hostile).not.toContain(null);
+  });
+
+  it("draws every face part without knocking holes in the plate", () => {
+    const parts = [...MOODS.flatMap((m) => [...EYES[m], ...MOUTHS[m]]), ...MARKS];
+    for (const p of parts) if (p) expect(p.grid.join("")).not.toContain("o");
   });
 });
 
 describe("horns", () => {
   it.each(BODY_KEYS)("%s gains pixels and loses none when flagged", (key: BodyKey) => {
     const seed = SEEDS[0];
-    const plain = composeGrid({ body: key, flagged: false, seed });
-    const horned = composeGrid({ body: key, flagged: true, seed });
+    const plain = composeGrid({ body: key, flagged: false, mood: "hostile", seed });
+    const horned = composeGrid({ body: key, flagged: true, mood: "hostile", seed });
     expect(horned.slice(HORN_ZONE.rows)).toEqual(plain.slice(HORN_ZONE.rows));
     expect(horned.join("")).not.toBe(plain.join(""));
     plain.forEach((row, y) => [...row].forEach((c, x) => {
@@ -230,7 +268,7 @@ describe("toLayers", () => {
   });
 
   it.each(BODY_KEYS)("round-trips %s to the same drawing", (key) => {
-    const spec = { body: key, flagged: true, seed: SEEDS[1] };
+    const spec = { body: key, flagged: true, mood: "wary" as const, seed: SEEDS[1] };
     expect(layersToGrid(spriteLayers(spec))).toEqual(composeGrid(spec));
   });
 });

@@ -15,7 +15,7 @@ import { maliciousTags } from "./sources/shodan-internetdb";
 import { IDENTIFIERS, threatTypeOf } from "./threat-type";
 import type { ThreatTypeVerdict } from "./threat-type";
 import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
-import { seedOf, type BodyKey, type SpriteSpec } from "./sprite";
+import { moodFor, seedOf, type BodyKey, type SpriteSpec } from "./sprite";
 
 /**
  * One assertion about the indicator, plus who made it.
@@ -608,6 +608,7 @@ function spriteFor(
   flagged: boolean,
 ): SpriteSpec {
   const seed = seedOf(subjectOf(r));
+  const mood = moodFor(r.verdict);
   // A domain's infra claim is "Behind Cloudflare": where it is hosted, not
   // what it is, and true of most names on the web. Letting it draw the hosting
   // golem would put a rack on nearly every domain and leave the domain bodies
@@ -617,15 +618,15 @@ function spriteFor(
     ? NAMED_PROVIDERS.some((p) => ipInfra.label.includes(p))
     : false;
   if (namedProvider) {
-    return { body: "hosting", flagged, seed };
+    return { body: "hosting", flagged, mood, seed };
   }
   const threatBody = threat
     ? THREAT_BODY.find(([re]) => re.test(threat.label))?.[1]
     : undefined;
   if (threatBody) {
-    return { body: threatBody, flagged, seed };
+    return { body: threatBody, flagged, mood, seed };
   }
-  return { body: ipInfra ? "hosting" : typeBody(r), flagged, seed };
+  return { body: ipInfra ? "hosting" : typeBody(r), flagged, mood, seed };
 }
 
 /**

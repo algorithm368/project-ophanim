@@ -235,7 +235,7 @@ export const FILE_BODIES: Record<FileBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 12, spread: 2 }, mouth: { y: 16 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
   // archive: a crate cinched by a strap that juts past both sides. Mid-tone seams
   // along the strap's edges set it apart from the crate as a band.
@@ -275,7 +275,7 @@ export const FILE_BODIES: Record<FileBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 12, spread: 2 }, mouth: { y: 17 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
   // malware: a trojan horse, the chess knight's head facing left on a plinth.
   // The only profile in the set, so `mid` moves back to the cheek and the muzzle

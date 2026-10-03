@@ -13,35 +13,40 @@ import {
   type Slot,
   type SpriteSpec,
 } from "./engine";
-import { HORN, PARTS } from "./parts";
+import { EYES, HORN, MARKS, MOUTHS } from "./parts";
 
 export * from "./engine";
-export { EYES, HORN, HORN_ZONE, MARKS, MOUTHS, PARTS } from "./parts";
+export { EYES, HORN, HORN_ZONE, MARKS, MOUTHS, PUPILS } from "./parts";
 
 export const BODIES: Record<BodyKey, BodyDef> = { ...IP_BODIES, ...DOMAIN_BODIES, ...FILE_BODIES };
 
-/** The variant index each slot resolves to for this body and seed. */
-export function partChoice(def: BodyDef, seed: number, slot: Slot): number {
-  const fixed = def.fixed?.[slot];
-  return fixed ?? pick(seed, slot, PARTS[slot].length);
+/** The part a slot resolves to for this body, mood and seed: the body's pin
+ *  when it has one, otherwise the seed's pick from that mood's set. */
+export function partFor(def: BodyDef, spec: Pick<SpriteSpec, "mood" | "seed">, slot: Slot): PartDef | null {
+  const pinned = def.fixed?.[slot];
+  if (pinned !== undefined) return pinned && pinned[spec.mood];
+  const list = { eyes: EYES[spec.mood], mouth: MOUTHS[spec.mood], mark: MARKS }[slot];
+  return list[pick(spec.seed, slot, list.length)];
 }
 
+type Placement = { part: PartDef; x: number; y: number; mirror: boolean };
+
 /** Every part placement for a spec, in paint order. Exposed so the tests can
- *  check each one stays inside the body. */
-export function placements(spec: SpriteSpec): { part: PartDef; x: number; y: number; mirror: boolean }[] {
+ *  check each one stays on the face plate. */
+export function placements(spec: SpriteSpec): Placement[] {
   const def = BODIES[spec.body];
   const mid = def.anchors.mid ?? SPRITE_SIZE / 2;
-  const out: { part: PartDef; x: number; y: number; mirror: boolean }[] = [];
+  const out: Placement[] = [];
   const centred = (slot: "mark" | "mouth") => {
     const at = def.anchors[slot];
-    const part = PARTS[slot][partChoice(def, spec.seed, slot)];
+    const part = partFor(def, spec, slot);
     if (!at || !part) return;
     const w = part.grid[0].length;
     out.push({ part, x: mid - Math.floor(w / 2), y: at.y, mirror: false });
   };
   centred("mark");
   centred("mouth");
-  const eye = PARTS.eyes[partChoice(def, spec.seed, "eyes")];
+  const eye = partFor(def, spec, "eyes");
   if (eye) {
     const w = eye.grid[0].length;
     const { y, spread } = def.anchors.eyes;

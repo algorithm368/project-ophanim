@@ -1,3 +1,4 @@
+import { PUPILS } from "../parts";
 import { bodyGrid, type BodyDef, type IpBodyKey } from "../engine";
 
 /** ip bodies. See docs/superpowers/specs/2026-10-03-sprite-engine-design.md for each one's signature token. */
@@ -77,7 +78,7 @@ export const IP_BODIES: Record<IpBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 14, spread: 2 }, mouth: { y: 19 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
   // mobile: wide bat ears, tapers to a point.
   mobile: {
@@ -116,7 +117,7 @@ export const IP_BODIES: Record<IpBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 13, spread: 2 }, mouth: { y: 19 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
   // unknown: scalloped, ill-defined hem.
   unknown: {
@@ -193,7 +194,7 @@ export const IP_BODIES: Record<IpBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 13, spread: 0 }, mark: { y: 19 } },
-    fixed: { eyes: 0, mouth: 0 },
+    fixed: { eyes: PUPILS, mouth: null },
   },
   // c2: walker on braced legs, ears.
   c2: {
@@ -270,6 +271,6 @@ export const IP_BODIES: Record<IpBodyKey, BodyDef> = {
       ................................
     `),
     anchors: { eyes: { y: 13, spread: 2 }, mouth: { y: 19 } },
-    fixed: { mark: 0 },
+    fixed: { mark: null },
   },
 };
