@@ -13,6 +13,7 @@ import {
   isInk,
   paintPart,
   parseGrid,
+  partSheet,
   moodFor,
   partFor,
   placements,
@@ -51,6 +52,27 @@ describe("parseGrid", () => {
   it("rejects ragged rows and wrong sizes", () => {
     expect(() => parseGrid("##\n#")).toThrow(/one width/);
     expect(() => parseGrid("##\n##", { size: 3 })).toThrow(/3x3/);
+  });
+});
+
+describe("partSheet", () => {
+  it("splits a side-by-side sheet into one part per column", () => {
+    expect(partSheet(`
+      #.  ###
+      ##  ...
+    `)).toEqual([{ grid: ["#.", "##"] }, { grid: ["###"] }]);
+  });
+
+  it("keeps a part's leading blank rows, which place it", () => {
+    expect(partSheet(`
+      ..
+      ##
+    `)).toEqual([{ grid: ["..", "##"] }]);
+  });
+
+  it("rejects ragged sheets and foreign characters", () => {
+    expect(() => partSheet("## ##\n##")).toThrow(/columns/);
+    expect(() => partSheet("#X")).toThrow();
   });
 });
 

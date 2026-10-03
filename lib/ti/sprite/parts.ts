@@ -1,4 +1,4 @@
-import { partGrid, type Mood, type PartDef } from "./engine";
+import { partGrid, partSheet, type Mood, type PartDef } from "./engine";
 
 /**
  * The sibling slots. A body's silhouette is its class; the face is its mood
@@ -26,217 +26,52 @@ import { partGrid, type Mood, type PartDef } from "./engine";
  *  rightmost column is the inner corner, so a hostile eye's brow descends
  *  toward it. */
 export const EYES: Record<Mood, PartDef[]> = {
-  calm: [
-    // round
-    {
-      grid: partGrid(`
-        .##.
-        ####
-        ####
-        .##.
-      `),
-    },
-    // round, lit
-    {
-      grid: partGrid(`
-        .##.
-        #-##
-        ####
-        .##.
-      `),
-    },
-    // tall bean
-    {
-      grid: partGrid(`
-        ##
-        ##
-        ##
-        ##
-      `),
-    },
-    // content, closed in an arc
-    {
-      grid: partGrid(`
-        ....
-        .##.
-        #..#
-        ....
-      `),
-    },
-    // wide and level
-    {
-      grid: partGrid(`
-        ....
-        ####
-        ####
-        ....
-      `),
-    },
-  ],
-  wary: [
-    // narrowed
-    {
-      grid: partGrid(`
-        ....
-        ####
-        .##.
-        ....
-      `),
-    },
-    // brow raised over a small eye
-    {
-      grid: partGrid(`
-        ####
-        ....
-        .##.
-        .##.
-      `),
-    },
-    // heavy lid
-    {
-      grid: partGrid(`
-        ####
-        ####
-        .##.
-        ....
-      `),
-    },
-    // squint
-    {
-      grid: partGrid(`
-        ....
-        ....
-        ####
-        ....
-      `),
-    },
-  ],
-  hostile: [
-    // Three wide, not four: on a narrow plate two four-wide slants met in the
-    // middle and read as one V, a frown with no eyes in it.
-    // slanted, brow falling to the inner corner
-    {
-      grid: partGrid(`
-        #..
-        ##.
-        ###
-      `),
-    },
-    // slanted slit
-    {
-      grid: partGrid(`
-        ##.
-        ###
-        .##
-      `),
-    },
-    // glaring, lit
-    {
-      grid: partGrid(`
-        #..
-        ##.
-        #-#
-        ###
-      `),
-    },
-    // scowl
-    {
-      grid: partGrid(`
-        ##.
-        ###
-        ###
-      `),
-    },
-  ],
+  // round, round and lit, tall bean, content (closed in an arc), wide and level
+  calm: partSheet(`
+    .##.  .##.  ##  ....  ....
+    ####  #-##  ##  .##.  ####
+    ####  ####  ##  #..#  ####
+    .##.  .##.  ##  ....  ....
+  `),
+  // narrowed, brow raised over a small eye, heavy lid, squint
+  wary: partSheet(`
+    ....  ####  ####  ....
+    ####  ....  ####  ....
+    .##.  .##.  .##.  ####
+    ....  .##.  ....  ....
+  `),
+  // Three wide, not four: on a narrow plate two four-wide slants met in the
+  // middle and read as one V, a frown with no eyes in it.
+  // slanted (brow falling to the inner corner), slanted slit, glaring and lit, scowl
+  hostile: partSheet(`
+    #..  ##.  #..  ##.
+    ##.  ###  ##.  ###
+    ###  .##  #-#  ###
+    ...  ...  ###  ...
+  `),
 };
 
 /** Centred on the midline. `null` is a deliberate "no mouth" variant, which
  *  only a calm face may have: a hostile creature always shows its teeth. */
 export const MOUTHS: Record<Mood, (PartDef | null)[]> = {
+  // none, smile, small, round
   calm: [
     null,
-    // smile
-    {
-      grid: partGrid(`
-        #....#
-        .####.
-      `),
-    },
-    // small
-    {
-      grid: partGrid(`
-        ......
-        .####.
-      `),
-    },
-    // round
-    {
-      grid: partGrid(`
-        ..##..
-        ..##..
-      `),
-    },
+    ...partSheet(`
+      #....#  ......  ..##..
+      .####.  .####.  ..##..
+    `),
   ],
-  wary: [
-    // flat
-    {
-      grid: partGrid(`
-        ......
-        ######
-      `),
-    },
-    // wavering
-    {
-      grid: partGrid(`
-        .#..#.
-        #.##.#
-      `),
-    },
-    // pulled to one side
-    {
-      grid: partGrid(`
-        ......
-        ..####
-      `),
-    },
-    // pursed
-    {
-      grid: partGrid(`
-        ..##..
-        ......
-      `),
-    },
-  ],
-  hostile: [
-    // fangs
-    {
-      grid: partGrid(`
-        ######
-        .#..#.
-      `),
-    },
-    // clenched teeth
-    {
-      grid: partGrid(`
-        ######
-        #.##.#
-      `),
-    },
-    // tusks
-    {
-      grid: partGrid(`
-        .#..#.
-        ######
-      `),
-    },
-    // roar
-    {
-      grid: partGrid(`
-        .####.
-        ##..##
-      `),
-    },
-  ],
+  // flat, wavering, pulled to one side, pursed
+  wary: partSheet(`
+    ......  .#..#.  ......  ..##..
+    ######  #.##.#  ..####  ......
+  `),
+  // fangs, clenched teeth, tusks, roar
+  hostile: partSheet(`
+    ######  ######  .#..#.  .####.
+    .#..#.  #.##.#  ######  ##..##
+  `),
 };
 
 /** Centred on the midline: a brand, a scar, a plate. Mood-independent, since
@@ -244,82 +79,24 @@ export const MOUTHS: Record<Mood, (PartDef | null)[]> = {
  *  mid tone so it never competes with the face. `null` is "unmarked". */
 export const MARKS: (PartDef | null)[] = [
   null,
-  // stud
-  {
-    grid: partGrid(`
-      ==
-      ==
-    `),
-  },
-  // chevron
-  {
-    grid: partGrid(`
-      =...=
-      .=.=.
-      ..=..
-    `),
-  },
-  // cross
-  {
-    grid: partGrid(`
-      .=.
-      ===
-      .=.
-    `),
-  },
-  // diamond
-  {
-    grid: partGrid(`
-      .=.
-      =.=
-      .=.
-    `),
-  },
-  // bands
-  {
-    grid: partGrid(`
-      ======
-      ......
-      ======
-    `),
-  },
-  // ring
-  {
-    grid: partGrid(`
-      .==.
-      =..=
-      =..=
-      .==.
-    `),
-  },
+  // stud, chevron, cross, diamond, bands, ring
+  ...partSheet(`
+    ==  =...=  .=.  .=.  ======  .==.
+    ==  .=.=.  ===  =.=  ......  =..=
+    ..  ..=..  .=.  .=.  ======  =..=
+    ..  .....  ...  ...  ......  .==.
+  `),
 ];
 
 /** A single central pupil per mood, for a body whose whole plate is one eye
  *  (the scanner). Drawn as the left half and mirrored at spread 0, so the
- *  pair meets on the midline. */
-export const PUPILS: Record<Mood, PartDef> = {
-  // round
-  calm: {
-    grid: partGrid(`
-      ##
-      ##
-    `),
-  },
-  // lidded: the top half only
-  wary: {
-    grid: partGrid(`
-      ##
-      ..
-    `),
-  },
-  // a vertical slit, the two halves meeting in one 2px line
-  hostile: {
-    grid: partGrid(`
-      .#
-      .#
-    `),
-  },
-};
+ *  pair meets on the midline: round, lidded (the top half only), and a
+ *  vertical slit where the two halves meet in one 2px line. */
+const [ROUND, LIDDED, SLIT] = partSheet(`
+  ##  ##  .#
+  ##  ..  .#
+`);
+export const PUPILS: Record<Mood, PartDef> = { calm: ROUND, wary: LIDDED, hostile: SLIT };
 
 /**
  * Horns over the top corners when the indicator is flagged. Left horn here,

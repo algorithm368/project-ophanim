@@ -121,6 +121,37 @@ export function partGrid(ascii: string): string[] {
   return parseGrid(ascii, { part: true });
 }
 
+/**
+ * Several parts drawn side by side, one column of cells per part, columns
+ * separated by spaces:
+ *
+ *     .##.  ##
+ *     ####  ##
+ *
+ * Reads as a sheet, so every variant of a slot can be compared at a glance,
+ * and saves repeating one wrapper per part. A column shorter than its
+ * neighbours is padded with `.` rows below, which paint nothing; trailing
+ * all-`.` rows are dropped again so each part keeps its true height.
+ */
+export function partSheet(ascii: string): PartDef[] {
+  const rows = ascii
+    .split("\n")
+    .map((r) => r.trim())
+    .filter((r) => r.length > 0)
+    .map((r) => r.split(/\s+/));
+  const columns = rows[0]?.length ?? 0;
+  for (const row of rows) {
+    if (row.length !== columns) {
+      throw new Error(`part sheet rows must have ${columns} columns, got "${row.join(" ")}"`);
+    }
+  }
+  return Array.from({ length: columns }, (_, i) => {
+    const grid = partGrid(rows.map((r) => r[i]).join("\n"));
+    while (grid.length > 1 && /^\.+$/.test(grid[grid.length - 1])) grid.pop();
+    return { grid };
+  });
+}
+
 export const isInk = (ch: string | undefined): boolean => ch !== undefined && ch !== ".";
 
 /**
