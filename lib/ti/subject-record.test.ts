@@ -14,6 +14,8 @@ export function src(opts: {
   malicious?: boolean;
   weight?: number;
   requiresKey?: boolean;
+  domainContext?: SourceResult["domainContext"];
+  hashContext?: SourceResult["hashContext"];
 }): SourceResult {
   return {
     source: {
@@ -32,6 +34,8 @@ export function src(opts: {
     lastSeen: opts.lastSeen,
     score: opts.score,
     malicious: opts.malicious,
+    domainContext: opts.domainContext,
+    hashContext: opts.hashContext,
   };
 }
 
@@ -876,6 +880,71 @@ describe("buildSubjectRecord", () => {
     );
   });
 
+  it("does not change a domain's picture when every key-gated source fails", () => {
+    // Domain VirusTotal fills resolvedIps and mx in the merged context, so a
+    // body read off r.context would turn a mail-only name into a site on the
+    // day the key answers. The free DNS row is what decides.
+    const sources = [
+      src({ id: "dns", domainContext: { resolvedIps: [], ipv6: [], mx: ["mx.example.test"] } }),
+      src({ id: "rdap", domainContext: { ageDays: 4000 } }),
+    ];
+    const withKeys = [
+      ...sources,
+      src({
+        id: "virustotal",
+        requiresKey: true,
+        domainContext: { resolvedIps: ["203.0.113.7"], ageDays: 3 },
+      }),
+      src({ id: "cloudflare-intel", requiresKey: true, details: { categories: ["News"] } }),
+    ];
+    const withoutKeys = [
+      ...sources,
+      src({ id: "virustotal", requiresKey: true, status: "rate_limited" }),
+      src({ id: "cloudflare-intel", requiresKey: true, status: "error" }),
+    ];
+    const merged = { resolvedIps: ["203.0.113.7"], mx: ["mx.example.test"], ageDays: 3 };
+    const a = buildSubjectRecord(domainResult(withKeys, merged)).sprite;
+    const b = buildSubjectRecord(domainResult(withoutKeys)).sprite;
+    expect(a).toEqual(b);
+    expect(a.body).toBe("courier");
+  });
+
+  it("does not change a hash's picture when every key-gated source fails", () => {
+    const sources = [
+      src({ id: "maltiverse", hashContext: { fileType: "PE32 executable (GUI) Intel 80386" } }),
+    ];
+    const withKeys = [
+      ...sources,
+      src({
+        id: "malwarebazaar",
+        requiresKey: true,
+        malicious: true,
+        categories: ["ransomware"],
+        hashContext: { fileType: "apk", fileName: "x.apk" },
+      }),
+      src({ id: "virustotal", requiresKey: true, hashContext: { magic: "ELF 64-bit LSB" } }),
+    ];
+    const withoutKeys = [
+      ...sources,
+      src({ id: "malwarebazaar", requiresKey: true, status: "error" }),
+      src({ id: "virustotal", requiresKey: true, status: "timeout" }),
+    ];
+    const a = buildSubjectRecord(hashResult(withKeys, { fileType: "apk" })).sprite;
+    const b = buildSubjectRecord(hashResult(withoutKeys)).sprite;
+    expect(a).toEqual(b);
+    expect(a.body).toBe("exe");
+  });
+
+  it("draws no file format at all when only key-gated sources named one", () => {
+    const rec = buildSubjectRecord(
+      hashResult([
+        src({ id: "virustotal", requiresKey: true, hashContext: { fileType: "Win32 EXE" } }),
+        src({ id: "maltiverse", status: "error", hashContext: { fileType: "ELF" } }),
+      ]),
+    );
+    expect(rec.sprite.body).toBe("file");
+  });
+
   it("says so rather than leaving a gap", () => {
     const rec = buildSubjectRecord(ipResult([]));
     expect(rec.class.label).toBe("Unknown type");
@@ -918,5 +987,160 @@ describe("buildSubjectRecord", () => {
 
   it("leaves detections undefined when no source reported a ratio", () => {
     expect(buildSubjectRecord(hashResult([])).detections).toBeUndefined();
+  });
+});
+
+describe("spriteFor, the 23-body roster", () => {
+  const body = (r: Parameters<typeof buildSubjectRecord>[0]) => buildSubjectRecord(r).sprite.body;
+
+  describe("threat bodies", () => {
+    it.each([
+      ["spamhaus-dbl", ["phishing domain"], "phishing"],
+      ["spamhaus-dbl", ["spam domain"], "spam"],
+      ["spamhaus-dbl", ["abused spammed redirector"], "spam"],
+      ["spamhaus-dbl", ["malware domain"], "malware"],
+      // A C2 that happens to be a domain stays a C2.
+      ["spamhaus-dbl", ["botnet C2 domain"], "c2"],
+      ["openphish", ["phishing"], "phishing"],
+    ])("draws %s %j as %s on a domain", (id, categories, expected) => {
+      expect(body(domainResult([src({ id, categories })]))).toBe(expected);
+    });
+
+    it("draws Shodan's phishing and malware tags on an IP", () => {
+      const tagged = (tag: string) =>
+        ipResult([src({ id: "shodan-internetdb", details: { tags: [tag] } })]);
+      expect(body(tagged("phishing"))).toBe("phishing");
+      expect(body(tagged("malware"))).toBe("malware");
+    });
+
+    it("draws Team Cymru's and hashlookup's malicious answers as malware", () => {
+      expect(body(hashResult([src({ id: "cymru-mhr", malicious: true })]))).toBe("malware");
+      expect(
+        body(hashResult([src({ id: "hashlookup", malicious: true, categories: ["malwarebazaar"] })])),
+      ).toBe("malware");
+    });
+
+    it("lets a threat outrank the file's format", () => {
+      expect(
+        body(
+          hashResult([
+            src({ id: "cymru-mhr", malicious: true }),
+            src({ id: "maltiverse", hashContext: { fileType: "PE32 executable" } }),
+          ]),
+        ),
+      ).toBe("malware");
+    });
+
+    it("prefers ransomware to malware when a free claim names both", () => {
+      // No free resolver says "ransomware" today; this pins the order so the
+      // day one does, the specific body wins over the catch-all.
+      const hashlookup = src({
+        id: "hashlookup",
+        malicious: true,
+        categories: ["ransomware-feed"],
+      });
+      expect(body(hashResult([hashlookup]))).toBe("ransomware");
+    });
+
+    it("leaves a legitimate-file answer to the format, not a threat body", () => {
+      expect(
+        body(
+          hashResult([
+            src({
+              id: "hashlookup",
+              score: 0,
+              details: { source: "NSRL" },
+              hashContext: { fileName: "setup.msi" },
+            }),
+          ]),
+        ),
+      ).toBe("exe");
+    });
+  });
+
+  describe("domain identity", () => {
+    const dns = (ctx: NonNullable<SourceResult["domainContext"]>) =>
+      src({ id: "dns", domainContext: ctx });
+    const rdap = (ageDays: number) => src({ id: "rdap", domainContext: { ageDays } });
+    const tranco = src({ id: "tranco", details: { rank: 12, vouched: true } });
+
+    it("draws a husk for NXDOMAIN, over age and rank", () => {
+      expect(body(domainResult([dns({ nxdomain: true }), rdap(2), tranco]))).toBe("husk");
+    });
+
+    it("draws a hatchling for a name under 30 days old, over mail-only and rank", () => {
+      expect(
+        body(domainResult([dns({ resolvedIps: [], mx: ["mx.test"] }), rdap(29), tranco])),
+      ).toBe("hatchling");
+      expect(body(domainResult([rdap(30)]))).toBe("site");
+    });
+
+    it("draws a courier for MX with no A or AAAA, over rank", () => {
+      expect(body(domainResult([dns({ resolvedIps: [], ipv6: [], mx: ["mx.test"] }), tranco]))).toBe(
+        "courier",
+      );
+      // An AAAA alone means it serves something.
+      expect(body(domainResult([dns({ ipv6: ["2001:db8::1"], mx: ["mx.test"] })]))).toBe("site");
+      // No MX either is not mail-only.
+      expect(body(domainResult([dns({ resolvedIps: [], mx: [] })]))).toBe("site");
+    });
+
+    it("draws a landmark for a Tranco-vouched name", () => {
+      expect(body(domainResult([dns({ resolvedIps: ["203.0.113.1"] }), rdap(4000), tranco]))).toBe(
+        "landmark",
+      );
+      expect(
+        body(domainResult([src({ id: "tranco", details: { rank: 900000, vouched: false } })])),
+      ).toBe("site");
+    });
+
+    it("ignores DNS and RDAP rows that did not answer", () => {
+      expect(
+        body(
+          domainResult([
+            src({ id: "dns", status: "timeout", domainContext: { nxdomain: true } }),
+            src({ id: "rdap", status: "error", domainContext: { ageDays: 1 } }),
+          ]),
+        ),
+      ).toBe("site");
+    });
+
+    it("does not draw a rack for a domain behind a named provider", () => {
+      // "Behind Cloudflare" is where a name is hosted, not what it is.
+      const rec = buildSubjectRecord(
+        domainResult([
+          src({ id: "cloud-range", details: { provider: "Cloudflare" } }),
+          dns({ nxdomain: true }),
+        ]),
+      );
+      expect(rec.hostedOn?.label ?? rec.class.label).toBe("Behind Cloudflare");
+      expect(rec.sprite.body).toBe("husk");
+      expect(body(domainResult([src({ id: "cloud-range", details: { provider: "Cloudflare" } })]))).toBe(
+        "site",
+      );
+    });
+  });
+
+  describe("file identity", () => {
+    const malt = (ctx: NonNullable<SourceResult["hashContext"]>) =>
+      src({ id: "maltiverse", hashContext: ctx });
+
+    it.each([
+      [{ fileType: "PE32 executable (GUI) Intel 80386, for MS Windows" }, "exe"],
+      [{ magic: "ELF 64-bit LSB executable, x86-64" }, "elf"],
+      [{ mimeType: "application/vnd.android.package-archive" }, "apk"],
+      [{ fileType: "PDF document, version 1.7" }, "doc"],
+      [{ fileName: "invoice.ps1" }, "script"],
+      [{ fileNames: ["payload.7z"] }, "archive"],
+      [{ fileType: "data" }, "file"],
+    ])("draws maltiverse %j as %s", (ctx, expected) => {
+      expect(body(hashResult([malt(ctx)]))).toBe(expected);
+    });
+
+    it("reads hashlookup's NSRL file name", () => {
+      expect(
+        body(hashResult([src({ id: "hashlookup", score: 0, hashContext: { fileName: "libc.so" } })])),
+      ).toBe("elf");
+    });
   });
 });

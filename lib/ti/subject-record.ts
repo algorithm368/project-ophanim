@@ -1,4 +1,5 @@
 import { cloudProvider } from "./cloud";
+import { fileFormatOf } from "./file-format";
 import { HASH_ALGO_LABEL } from "../hash";
 import { parseDomain } from "../domain";
 import {
@@ -464,11 +465,25 @@ const NAMED_PROVIDERS = ["Amazon Web Services", "Microsoft Azure", "Google Cloud
 /** Which drawn body a threat claim maps to. Behaviour has no sprites in this
  *  set on purpose: it would only be reached when nothing identified the
  *  indicator, and drawing a guess is worse than drawing the type's own body and
- *  letting the reported-for line speak. */
+ *  letting the reported-for line speak.
+ *
+ *  Every label tested here comes out of the THREAT ladder, whose resolvers read
+ *  only sources that need no key (fromProxyFlag is guarded where it reads a
+ *  reconciled flag), so no key or quota can move these bodies. Ordered, first
+ *  hit wins: ransomware before malware because it is the more specific claim,
+ *  and the three network bodies first because "Botnet C2 domain" is a C2 that
+ *  happens to be a domain, not a malware host. "Known malicious" is hashlookup
+ *  naming a curated feed that flagged the file; a file someone flagged is
+ *  malware, and matching on that phrase keeps the vendor name it carries (which
+ *  can itself contain "malware") from deciding anything. */
 const THREAT_BODY: [RegExp, BodyKey][] = [
   [/scanner/i, "scanner"],
   [/c2|command and control|botnet/i, "c2"],
   [/tor |anonymizer|proxy|vpn/i, "anonymizer"],
+  [/ransomware/i, "ransomware"],
+  [/phishing/i, "phishing"],
+  [/\bspam/i, "spam"],
+  [/\bmalware\b|trojan|stealer|backdoor|known malicious/i, "malware"],
 ];
 
 /** classifyIpLabel's labels, mapped onto their sprite body. The hosting-shaped
@@ -505,9 +520,75 @@ function ipFallbackBody(r: AnyResult): BodyKey {
   }
 }
 
+/** `ok`, narrowed to sources that need no key. The identity bodies below read
+ *  a source's own context rather than the merged `r.context`, because the
+ *  merge is first-non-empty across every source and a key-gated one (domain
+ *  VirusTotal sets resolvedIps and mx, file VirusTotal sets fileType) can be
+ *  the one that filled a field; that would make the body depend on the key. */
+function free(sources: SourceResult[], id: string): SourceResult | undefined {
+  const hit = ok(sources, id);
+  return hit && !hit.source.requiresKey ? hit : undefined;
+}
+
+type DomainSignals = {
+  dns?: DomainCheckResult["context"];
+  ageDays?: number;
+  vouched: boolean;
+};
+
+/**
+ * Domain identity, first hit wins. A name that does not exist is a husk
+ * whatever else is true of it: its age and rank describe something that is no
+ * longer there. A name days old is a hatchling even if it already serves mail
+ * or has a rank, because newness is the more actionable fact. Mail-only before
+ * popularity because a Tranco-ranked name with no A/AAAA is rare and, when it
+ * happens, "this only receives mail" says more about it than its rank.
+ *
+ * Inputs: DNS (`dns`), RDAP (`rdap`), Tranco (`tranco`), all key-free, each
+ * read through `free` so a future key-gated rename cannot slip in.
+ */
+const DOMAIN_IDENTITY: [(d: DomainSignals) => boolean, BodyKey][] = [
+  [(d) => d.dns?.nxdomain === true, "husk"],
+  [(d) => d.ageDays !== undefined && d.ageDays < 30, "hatchling"],
+  [
+    (d) => !d.dns?.resolvedIps?.length && !d.dns?.ipv6?.length && Boolean(d.dns?.mx?.length),
+    "courier",
+  ],
+  [(d) => d.vouched, "landmark"],
+];
+
+function domainBody(r: DomainCheckResult): BodyKey {
+  const signals: DomainSignals = {
+    dns: free(r.sources, "dns")?.domainContext,
+    ageDays: free(r.sources, "rdap")?.domainContext?.ageDays,
+    vouched: free(r.sources, "tranco")?.details?.vouched === true,
+  };
+  return DOMAIN_IDENTITY.find(([test]) => test(signals))?.[1] ?? "site";
+}
+
+/** File identity from what key-free sources said about the file: today that is
+ *  Maltiverse's fileType and names, and hashlookup's NSRL file name. The
+ *  formats VirusTotal, MalwareBazaar, Hybrid Analysis and Kaspersky report are
+ *  better and more often present, and deliberately not read: the body would
+ *  then change with the key, and the format still shows in the record text. */
+function fileBody(r: HashCheckResult): BodyKey {
+  const contexts = r.sources.flatMap((s) =>
+    s.status === "ok" && !s.source.requiresKey && s.hashContext ? [s.hashContext] : [],
+  );
+  const format = fileFormatOf({
+    descriptions: contexts.flatMap((c) =>
+      [c.fileType, c.mimeType, c.magic].filter((v): v is string => Boolean(v)),
+    ),
+    names: contexts.flatMap((c) =>
+      [c.fileName, ...(c.fileNames ?? [])].filter((v): v is string => Boolean(v)),
+    ),
+  });
+  return format ?? "file";
+}
+
 function typeBody(r: AnyResult): BodyKey {
-  if (isDomain(r)) return "site";
-  if (isHash(r)) return "file";
+  if (isDomain(r)) return domainBody(r);
+  if (isHash(r)) return fileBody(r);
   return ipFallbackBody(r);
 }
 
@@ -527,7 +608,14 @@ function spriteFor(
   flagged: boolean,
 ): SpriteSpec {
   const seed = seedOf(subjectOf(r));
-  const namedProvider = infra ? NAMED_PROVIDERS.some((p) => infra.label.includes(p)) : false;
+  // A domain's infra claim is "Behind Cloudflare": where it is hosted, not
+  // what it is, and true of most names on the web. Letting it draw the hosting
+  // golem would put a rack on nearly every domain and leave the domain bodies
+  // unreachable, so the infra rungs of this ladder are an IP's alone.
+  const ipInfra = "ip" in r ? infra : null;
+  const namedProvider = ipInfra
+    ? NAMED_PROVIDERS.some((p) => ipInfra.label.includes(p))
+    : false;
   if (namedProvider) {
     return { body: "hosting", flagged, seed };
   }
@@ -537,7 +625,7 @@ function spriteFor(
   if (threatBody) {
     return { body: threatBody, flagged, seed };
   }
-  return { body: infra ? "hosting" : typeBody(r), flagged, seed };
+  return { body: ipInfra ? "hosting" : typeBody(r), flagged, seed };
 }
 
 /**
