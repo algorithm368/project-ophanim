@@ -60,12 +60,26 @@ export interface Phase {
   edges: EventKind[];
 }
 
+/** A source's dated reports, for the density strip under the phases. */
+export interface ReportActivity {
+  source: string;
+  windowDays: number;
+  /** Seven-day buckets ending today, oldest first, only the ones with reports. */
+  weeks: { from: string; count: number }[];
+  /** The day the itemized reports reach back to: the window's start when the
+   *  list is complete, the oldest itemized report when it was cut off. */
+  covered: string;
+  itemized: number;
+  total: number;
+}
+
 export interface Timeline {
   now: string;
   events: TimelineEvent[];
   gaps: TimelineGap[];
   phases: Phase[];
   sourceCount: number;
+  activity?: ReportActivity;
 }
 
 export const EVENT_LABEL: Record<EventKind, string> = {
@@ -106,8 +120,9 @@ const LATEST_WINS = new Set<EventKind>([
  *  indicator on it on a date. A scanner's verdict (VirusTotal) is not. */
 const LISTING_SOURCES = new Set(["feodo", "threatfox", "urlhaus", "malwarebazaar", "abuseipdb"]);
 
-/** The `details` keys that carry a first-seen (see subject-record.ts). */
-const FIRST_SEEN_KEYS = ["firstSeen", "feedFirstSeen"] as const;
+/** The `details` keys that carry a first-seen (see subject-record.ts), plus
+ *  AbuseIPDB's first report, which only dates the indicator's life here. */
+const FIRST_SEEN_KEYS = ["firstSeen", "feedFirstSeen", "firstReported"] as const;
 
 type Kind = "ip" | "domain" | "hash";
 type Candidate = { kind: EventKind; ms: number; source: string; detail?: string };
@@ -169,16 +184,20 @@ function sourceCandidates(s: SourceResult, kind: Kind, now: Date): Candidate[] {
   const last = parse(s.hashContext?.lastSeen ?? s.lastSeen);
   const listing = s.malicious === true && LISTING_SOURCES.has(s.source.id);
   const what = s.categories?.slice(0, 2).join(", ");
+  // A first report from a windowed source is only the first inside it.
+  const window = s.details?.reportWindowDays;
+  const since = typeof window === "number" ? `earliest in ${window} days` : undefined;
+  const firstWhat = [what, since].filter(Boolean).join(", ");
 
   if (kind === "hash") {
     push("first-seen", first);
     push("last-seen", last);
     if (listing) push("listed", first, what);
   } else if (listing) {
-    push("listed", first, what);
+    push("listed", first, firstWhat);
     push("last-reported", last, what);
   } else {
-    push("first-seen", first);
+    push("first-seen", first, since);
     push("last-seen", last);
   }
   return out;
@@ -255,6 +274,51 @@ export function buildTimeline(result: AnyCheckResult, now = new Date(result.chec
     gaps: findGaps(events),
     phases: buildPhases(events, kind, nowMs),
     sourceCount: sources.size,
+    activity: reportActivity(result.sources, nowMs),
+  };
+}
+
+type ReportDay = { day: string; count: number };
+
+const isReportDays = (v: unknown): v is ReportDay[] =>
+  Array.isArray(v) &&
+  v.every((d) => typeof d?.day === "string" && typeof d?.count === "number");
+
+/**
+ * The first source that dated its reports one by one (today, AbuseIPDB),
+ * tallied into weeks ending today. Its list may be cut short of the total,
+ * and `covered` says where it stops, so the strip never draws reports we were
+ * not given as quiet weeks.
+ */
+export function reportActivity(sources: SourceResult[], nowMs: number): ReportActivity | undefined {
+  const s = sources.find((x) => x.status === "ok" && isReportDays(x.details?.reportDays));
+  if (!s?.details) return undefined;
+  const days = s.details.reportDays as ReportDay[];
+  const windowDays = typeof s.details.reportWindowDays === "number" ? s.details.reportWindowDays : 90;
+  const itemized = typeof s.details.reportsItemized === "number" ? s.details.reportsItemized : 0;
+  const total = Math.max(typeof s.details.totalReports === "number" ? s.details.totalReports : 0, itemized);
+  const today = Date.parse(`${isoDay(nowMs)}T00:00:00Z`);
+
+  const buckets = new Map<number, number>();
+  for (const d of days) {
+    const ago = Math.floor((today - Date.parse(`${d.day}T00:00:00Z`)) / DAY_MS);
+    if (ago < 0) continue;
+    const week = Math.floor(ago / 7);
+    buckets.set(week, (buckets.get(week) ?? 0) + d.count);
+  }
+  const weeks = [...buckets]
+    .sort((a, b) => b[0] - a[0])
+    .map(([week, count]) => ({ from: isoDay(today - (week * 7 + 6) * DAY_MS), count }));
+
+  const windowStart = isoDay(today - windowDays * DAY_MS);
+  const oldest = days.map((d) => d.day).sort((a, b) => a.localeCompare(b))[0];
+  return {
+    source: s.source.id,
+    windowDays,
+    weeks,
+    covered: itemized < total && oldest ? oldest : windowStart,
+    itemized,
+    total,
   };
 }
 

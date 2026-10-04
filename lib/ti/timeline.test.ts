@@ -364,3 +364,64 @@ describe("phase boundaries", () => {
     expect(buildTimeline(r, new Date("2026-10-04T00:00:00Z")).phases.map((p) => p.kind)).toEqual(["live", "quiet"]);
   });
 });
+
+describe("AbuseIPDB reports", () => {
+  const abuse = (details: Record<string, unknown>) =>
+    src({ id: "abuseipdb", malicious: true, lastSeen: "2026-10-03T00:00:00+00:00", details });
+
+  it("lists from the first report when the list is complete, and says it is windowed", () => {
+    const t = buildTimeline(
+      ip([
+        abuse({
+          totalReports: 3,
+          firstReported: "2026-08-31T18:08:32+00:00",
+          reportDays: [
+            { day: "2026-08-31", count: 1 },
+            { day: "2026-10-03", count: 2 },
+          ],
+          reportsItemized: 3,
+          reportWindowDays: 90,
+        }),
+      ]),
+      NOW,
+    );
+    const listed = t.events.find((e) => e.kind === "listed");
+    expect(listed).toMatchObject({ at: "2026-08-31", source: "abuseipdb" });
+    expect(listed?.detail).toContain("earliest in 90 days");
+    expect(t.activity).toEqual({
+      source: "abuseipdb",
+      windowDays: 90,
+      weeks: [
+        { from: "2026-08-31", count: 1 },
+        { from: "2026-09-28", count: 2 },
+      ],
+      covered: "2026-07-06",
+      itemized: 3,
+      total: 3,
+    });
+  });
+
+  it("stops the strip where a cut-off list stops, and does not list from it", () => {
+    const t = buildTimeline(
+      ip([
+        abuse({
+          totalReports: 364,
+          reportDays: [
+            { day: "2026-09-18", count: 40 },
+            { day: "2026-10-04", count: 60 },
+          ],
+          reportsItemized: 100,
+          reportWindowDays: 90,
+        }),
+      ]),
+      NOW,
+    );
+    expect(t.events.map((e) => e.kind)).toEqual(["last-reported"]);
+    expect(t.activity).toMatchObject({ covered: "2026-09-18", itemized: 100, total: 364 });
+    expect(t.activity?.weeks.reduce((n, w) => n + w.count, 0)).toBe(100);
+  });
+
+  it("has no activity when no source dated its reports", () => {
+    expect(buildTimeline(ip([abuse({ totalReports: 5 })]), NOW).activity).toBeUndefined();
+  });
+});

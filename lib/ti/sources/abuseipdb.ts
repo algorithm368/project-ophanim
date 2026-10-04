@@ -15,8 +15,9 @@ interface AbuseResponse {
     lastReportedAt?: string;
     /** PTR hostnames (only present with &verbose). */
     hostnames?: string[] | null;
-    /** Individual reports (only present with &verbose); categories are ids. */
-    reports?: { categories?: number[] }[] | null;
+    /** Individual reports (only present with &verbose), newest first and
+     *  capped at 100; categories are ids. */
+    reports?: { categories?: number[]; reportedAt?: string }[] | null;
   };
   errors?: { detail?: string }[];
 }
@@ -61,6 +62,41 @@ export function categoryBreakdown(
   return [...tally.entries()]
     .sort((a, b) => b[1] - a[1] || a[0] - b[0])
     .map(([id, count]) => ({ name: ABUSE_CATEGORIES[id] ?? `Category ${id}`, count }));
+}
+
+/** How far back the check looks. The verbose report list covers the same
+ *  window, so it is also the timeline's honest horizon. */
+export const MAX_AGE_DAYS = 90;
+
+export interface ReportLog {
+  /** Reports per UTC day, oldest first. */
+  days: { day: string; count: number }[];
+  /** Reports the list itemized, which verbose caps at 100. */
+  itemized: number;
+  /** Earliest itemized report, only when the list is complete: when it is
+   *  cut off, the oldest one returned is not the first. */
+  firstReported?: string;
+}
+
+/** The dated side of the verbose reports: a per-day tally for the timeline's
+ *  density strip, and a first report when the list holds every one. */
+export function reportLog(d: AbuseData): ReportLog | undefined {
+  const dated = (d.reports ?? [])
+    .map((r) => r.reportedAt)
+    .filter((at): at is string => typeof at === "string" && !Number.isNaN(Date.parse(at)))
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  if (!dated.length) return undefined;
+  const tally = new Map<string, number>();
+  for (const at of dated) {
+    const day = new Date(Date.parse(at)).toISOString().slice(0, 10);
+    tally.set(day, (tally.get(day) ?? 0) + 1);
+  }
+  const complete = dated.length >= (d.totalReports ?? 0);
+  return {
+    days: [...tally].map(([day, count]) => ({ day, count })),
+    itemized: dated.length,
+    firstReported: complete ? dated[0] : undefined,
+  };
 }
 
 /** Map an AbuseIPDB confidence record to score/verdict/categories/summary. */
@@ -110,7 +146,7 @@ export const abuseIpdbSource: TiSource = {
       // &verbose adds the PTR hostnames + per-report category ids (same call,
       // same 1/1000-day quota) so we can show *what* the IP is reported for.
       const { ok, status, data } = await getJson<AbuseResponse>(
-        `https://api.abuseipdb.com/api/v2/check?ipAddress=${ip}&maxAgeInDays=90&verbose`,
+        `https://api.abuseipdb.com/api/v2/check?ipAddress=${ip}&maxAgeInDays=${MAX_AGE_DAYS}&verbose`,
         signal,
         { Key: key },
       );
@@ -124,6 +160,7 @@ export const abuseIpdbSource: TiSource = {
       const d = data.data;
       const { score, malicious, categories, summary } = summarizeAbuse(d);
       const breakdown = categoryBreakdown(d.reports);
+      const log = reportLog(d);
 
       const relations: RelatedIndicator[] = [
         ...new Set(
@@ -153,6 +190,11 @@ export const abuseIpdbSource: TiSource = {
           // Named report-reason breakdown (SourceBreakdown doesn't render
           // categories, so the full list lives here).
           reportCategories: breakdown.length ? breakdown : undefined,
+          // Dated reports, for the timeline (see timeline.ts reportActivity).
+          firstReported: log?.firstReported,
+          reportDays: log?.days,
+          reportsItemized: log?.itemized,
+          reportWindowDays: log ? MAX_AGE_DAYS : undefined,
           isp: d.isp,
           domain: d.domain,
           usageType: d.usageType,

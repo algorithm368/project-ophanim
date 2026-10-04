@@ -9,6 +9,7 @@ import {
     type EventKind,
     type Phase,
     type PhaseKind,
+    type ReportActivity,
     type Timeline,
     type TimelineEvent,
 } from "@/lib/ti/timeline";
@@ -43,6 +44,7 @@ export const TimelineTile = memo(function TimelineTile({
             ) : (
                 <>
                     {timeline.phases.length > 0 && <PhaseStrip timeline={timeline} onHover={setLit} />}
+                    {timeline.activity && <ActivityStrip activity={timeline.activity} now={timeline.now} />}
                     <Ledger timeline={timeline} lit={lit} />
                 </>
             )}
@@ -107,6 +109,88 @@ function PhaseStrip({
                 </span>
             </div>
         </div>
+    );
+}
+
+const DAY = 86_400_000;
+const WEEK = 7 * DAY;
+
+/**
+ * Reports per week across the source's window, on its own axis: on the phase
+ * strip's, ninety days of an eight-year life is a sliver. Where the list was
+ * cut short, the stretch it did not itemize is hatched rather than left empty,
+ * so it never reads as a quiet spell. The bars are decorative; the caption
+ * says the same counts in words.
+ */
+function ActivityStrip({ activity, now }: Readonly<{ activity: ReportActivity; now: string }>) {
+    const end = dayMs(now) + DAY;
+    const start = dayMs(now) - activity.windowDays * DAY;
+    const pct = (ms: number) => ((ms - start) / (end - start)) * 100;
+    const peak = Math.max(1, ...activity.weeks.map((w) => w.count));
+    const covered = dayMs(activity.covered);
+    const untold = activity.total - activity.itemized;
+    const months: number[] = [];
+    const first = new Date(start);
+    for (let m = Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 1); m < end; ) {
+        months.push(m);
+        const d = new Date(m);
+        m = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+    }
+    return (
+        <div className="mb-2">
+            <div className="relative h-11" aria-hidden="true">
+                <span className="absolute top-0.5 left-0 font-mono text-[9px] tracking-[0.06em] text-muted-foreground uppercase">
+                    Reports per week, last {activity.windowDays} days
+                </span>
+                <div className="absolute inset-x-0 top-[14px] h-5 border-b border-foreground/30">
+                    {untold > 0 && covered > start && (
+                        <div
+                            className="absolute inset-y-0 bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--color-muted-foreground)_3px_4px)] opacity-40"
+                            style={{ left: 0, width: `${pct(covered)}%` }}
+                        />
+                    )}
+                    {activity.weeks.map((w) => (
+                        <div
+                            key={w.from}
+                            className="absolute bottom-0 bg-foreground/70"
+                            title={`${w.count} from ${shortDay(w.from)}`}
+                            style={{
+                                left: `${pct(dayMs(w.from))}%`,
+                                width: `calc(${pct(dayMs(w.from) + WEEK) - pct(dayMs(w.from))}% - 2px)`,
+                                height: `${Math.max(10, (w.count / peak) * 100)}%`,
+                            }}
+                        />
+                    ))}
+                </div>
+                {months.map((m) => (
+                    <span
+                        key={m}
+                        className="absolute top-[36px] -translate-x-1/2 font-mono text-[9px] text-muted-foreground"
+                        style={{ left: `${pct(m)}%` }}
+                    >
+                        {new Date(m).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })}
+                    </span>
+                ))}
+            </div>
+            <ActivityCaption activity={activity} />
+        </div>
+    );
+}
+
+const shortDay = (day: string) =>
+    new Date(dayMs(day)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+/** The strip is decorative, so the counts it draws are said here in words. */
+function ActivityCaption({ activity }: Readonly<{ activity: ReportActivity }>) {
+    const { source, windowDays, itemized, total } = activity;
+    const counted =
+        itemized < total
+            ? `${total} reports in ${windowDays} days, ${itemized} dated back to ${shortDay(activity.covered)}, ${total - itemized} earlier not dated`
+            : `${plural(total, "report")} in ${windowDays} days`;
+    return (
+        <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+            {source}: {counted}
+        </p>
     );
 }
 

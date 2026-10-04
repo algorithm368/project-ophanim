@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryBreakdown, summarizeAbuse } from "./abuseipdb";
+import { categoryBreakdown, reportLog, summarizeAbuse } from "./abuseipdb";
 
 describe("categoryBreakdown", () => {
   it("tallies category ids into named buckets, most-reported first", () => {
@@ -65,5 +65,41 @@ describe("summarizeAbuse", () => {
       "92% abuse confidence from 3 report(s) for SSH, Brute-Force",
     );
     expect(r.categories).toEqual(["ssh", "brute-force"]);
+  });
+});
+
+describe("reportLog", () => {
+  it("tallies reports per day and dates the first when the list is complete", () => {
+    expect(
+      reportLog({
+        totalReports: 3,
+        reports: [
+          { reportedAt: "2026-09-17T22:17:21+00:00" },
+          { reportedAt: "2026-09-17T01:00:00+00:00" },
+          { reportedAt: "2026-08-31T18:08:32+00:00" },
+        ],
+      }),
+    ).toEqual({
+      days: [
+        { day: "2026-08-31", count: 1 },
+        { day: "2026-09-17", count: 2 },
+      ],
+      itemized: 3,
+      firstReported: "2026-08-31T18:08:32+00:00",
+    });
+  });
+
+  it("withholds the first report when verbose cut the list short", () => {
+    const log = reportLog({
+      totalReports: 364,
+      reports: [{ reportedAt: "2026-10-04T10:02:58+00:00" }, { reportedAt: "2026-09-18T23:09:31+00:00" }],
+    });
+    expect(log?.itemized).toBe(2);
+    expect(log?.firstReported).toBeUndefined();
+  });
+
+  it("returns nothing when no report is dated", () => {
+    expect(reportLog({ totalReports: 1, reports: [{ categories: [22] }] })).toBeUndefined();
+    expect(reportLog({})).toBeUndefined();
   });
 });
