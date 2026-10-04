@@ -203,8 +203,8 @@ function sourceCandidates(s: SourceResult, kind: Kind, now: Date): Candidate[] {
   return out;
 }
 
-function wins(kind: EventKind, a: Candidate, b: Candidate): boolean {
-  return LATEST_WINS.has(kind) ? a.ms > b.ms : a.ms < b.ms;
+function wins(kind: EventKind, challenger: Candidate, incumbent: Candidate): boolean {
+  return LATEST_WINS.has(kind) ? challenger.ms > incumbent.ms : challenger.ms < incumbent.ms;
 }
 
 function foldKind(kind: EventKind, candidates: Candidate[], nowMs: number): TimelineEvent {

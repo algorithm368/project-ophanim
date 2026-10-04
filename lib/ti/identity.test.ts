@@ -435,7 +435,7 @@ describe("domains", () => {
     expect(find(rec, "created")).toBeUndefined();
     expect(find(rec, "expires")).toBeUndefined();
     expect(find(rec, "registrar")?.value).toBe("Example Registrar");
-    expect(rec.fields.length).toBe(buildIdentity(r).fields.length - 2);
+    expect(rec.fields).toHaveLength(buildIdentity(r).fields.length - 2);
   });
 
   it("states a name that does not resolve as a finding", () => {
