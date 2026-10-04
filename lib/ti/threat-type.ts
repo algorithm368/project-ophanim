@@ -1,5 +1,6 @@
 import { FLAG_THRESHOLD } from "./aggregate";
 import type { SourceResult, Verdict } from "./types";
+import { sourceWeight } from "./weight";
 
 /**
  * What kind of threat an indicator is, as opposed to how bad it is.
@@ -173,7 +174,7 @@ function contributes(s: SourceResult): boolean {
   // weight first silently excluded the source that exists to answer this
   // question.
   if (IDENTIFIERS.has(s.source.id)) return true;
-  if ((s.source.weight ?? 1) === 0) return false;
+  if (sourceWeight(s.source) === 0) return false;
   return s.malicious === true || (s.score ?? 0) >= FLAG_THRESHOLD;
 }
 

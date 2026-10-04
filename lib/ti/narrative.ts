@@ -25,6 +25,7 @@ import type {
   SourceResult,
   Verdict,
 } from "./types";
+import { sourceWeight } from "./weight";
 
 /**
  * VT sandbox behaviour tags -> plain verb phrases, so a wall of tags reads as one
@@ -63,14 +64,14 @@ const BEHAVIOR_TAG_PHRASES: Record<string, string> = {
 
 /** Oxford-comma join: ["a"] -> "a", ["a","b","c"] -> "a, b, and c". */
 function joinList(items: string[]): string {
-  if (items.length <= 1) return items[0] ?? "";
+  if (items.length <= 1) return items.join("");
   if (items.length === 2) return `${items[0]} and ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 }
 
 /** Lowercase the first character so a label reads mid-sentence. */
 function lowerFirst(s: string): string {
-  return s ? s[0].toLowerCase() + s.slice(1) : s;
+  return s.charAt(0).toLowerCase() + s.slice(1);
 }
 
 /**
@@ -398,9 +399,9 @@ const FORMAT_NOISE = new Set([
 /** Keep junk out of the "flagged it for …" reason clause: md5/sha1/sha256 or
  *  imphash hex blobs (which some sources list as categories), bare platform
  *  words, and file-format tags are not threat categories. */
+/** `name` arrives trimmed and non-blank: aggregateCategories drops blanks. */
 function isMeaningfulCategory(name: string): boolean {
-  const n = name.trim().toLowerCase();
-  if (!n) return false;
+  const n = name.toLowerCase();
   if (/^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(n)) return false;
   if (PLATFORM_NOISE.has(n)) return false;
   if (FORMAT_NOISE.has(n)) return false;
@@ -476,7 +477,7 @@ export function threatSentences(
   // sources like geolocation/RDAP respond "ok" but can never flag, so counting
   // them would inflate the denominator (issue #5).
   const scoringSources = result.sources.filter(
-    (x) => x.status === "ok" && (x.source.weight ?? 1) > 0,
+    (x) => x.status === "ok" && sourceWeight(x.source) > 0,
   );
   const responded = scoringSources.length;
   const out: string[] = [];
@@ -518,8 +519,8 @@ export function threatSentences(
     // too noisy for the headline.
     const byStrength = [...flaggedSources].sort(
       (a, b) =>
-        (b.score ?? 0) * (b.source.weight ?? 1) -
-        (a.score ?? 0) * (a.source.weight ?? 1),
+        (b.score ?? 0) * sourceWeight(b.source) -
+        (a.score ?? 0) * sourceWeight(a.source),
     );
     const strongest = byStrength[0].source.name;
     const cats = aggregateCategories(byStrength)
@@ -768,7 +769,7 @@ export function consensusBuckets(result: ResultLike): {
   noKey: number;
   unsupported: number;
 } {
-  const scoring = result.sources.filter((s) => (s.source.weight ?? 1) > 0);
+  const scoring = result.sources.filter((s) => sourceWeight(s.source) > 0);
   const answered = scoring.filter((s) => s.status === "ok");
   const responded = answered.length;
   // Three states, not two. "Reported something adverse" and "cleared the

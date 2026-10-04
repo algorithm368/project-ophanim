@@ -30,8 +30,9 @@ export async function* readNdjson<T>(
     buffer += decoder.decode(value, { stream: true });
 
     const lines = buffer.split("\n");
-    // The tail is a fragment until a later chunk terminates it.
-    buffer = lines.pop() ?? "";
+    // The tail is a fragment until a later chunk terminates it. split() always
+    // returns at least one element, so there is always a tail to take.
+    buffer = lines.pop()!;
     for (const line of lines) {
       if (line.trim()) yield JSON.parse(line) as T;
     }

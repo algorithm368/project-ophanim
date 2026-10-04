@@ -46,9 +46,9 @@ function stripExt(name: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+/** `name` arrives trimmed and non-empty: namesOffered drops blanks first. */
 function isJunk(name: string, hashes: Set<string>): boolean {
-  const n = name.trim().toLowerCase();
-  if (!n) return true;
+  const n = name.toLowerCase();
   // Equal to a full hash, or a hash with an extension appended.
   if (hashes.has(n)) return true;
   const base = stripExt(n);

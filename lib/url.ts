@@ -93,7 +93,8 @@ export function parseUrl(input: string): ParsedUrl | null {
     url.port && url.port !== DEFAULT_PORT[url.protocol]
       ? Number(url.port)
       : undefined;
-  const path = url.pathname || "/";
+  // An http(s) URL always has a path, "/" at the least.
+  const path = url.pathname;
   const query = url.search ? url.search.slice(1) : undefined;
 
   const authority = port ? `${host}:${port}` : host;

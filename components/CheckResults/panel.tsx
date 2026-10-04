@@ -34,6 +34,7 @@ import { useCopied } from "./primitives";
 import { Sprite } from "./sprite";
 import { VERDICT_STYLE } from "./verdict";
 import { VoteMark } from "./voting";
+import { sourceWeight } from "@/lib/ti/weight";
 
 /**
  * The bestiary entry's tiles: the picture, the name, the summary, and the
@@ -400,7 +401,7 @@ function keywordsFor(categories: string[] | undefined): string[] {
  *  keeps a hatched track, so a gap in the evidence cannot read as evidence. */
 function detectorRows(sources: SourceResult[]): DetectorRow[] {
     return sources
-        .filter((s) => (s.source.weight ?? 1) > 0)
+        .filter((s) => sourceWeight(s.source) > 0)
         .map((s) => ({
             id: s.source.id,
             name: s.source.name,

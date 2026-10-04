@@ -148,6 +148,8 @@ export function sortRows(
 ): GeoRow[] {
   const sign = dir === "asc" ? 1 : -1;
   const order = new Map(rows.map((r, i) => [r.ip, i]));
+  // Every row's address is in `order`, since it was built from these rows.
+  const pasted = (a: GeoRow, b: GeoRow) => order.get(a.ip)! - order.get(b.ip)!;
   const cmp = (a: GeoRow, b: GeoRow): number => {
     switch (key) {
       case "ip":
@@ -165,12 +167,10 @@ export function sortRows(
           sign,
         );
       default:
-        return sign * ((order.get(a.ip) ?? 0) - (order.get(b.ip) ?? 0));
+        return sign * pasted(a, b);
     }
   };
-  return [...rows].sort(
-    (a, b) => cmp(a, b) || (order.get(a.ip) ?? 0) - (order.get(b.ip) ?? 0),
-  );
+  return [...rows].sort((a, b) => cmp(a, b) || pasted(a, b));
 }
 
 /** One announcing network in the batch. */
@@ -218,7 +218,9 @@ export function networksOf(rows: GeoRow[]): NetworkGroup[] {
     );
 }
 
-const asnKey = (asn: string): number => Number(asn.slice(2)) || 0;
+// Only ever asked of a canonical "AS<digits>": the unattributed group sorts
+// last on the comparator's first term, before this is reached.
+const asnKey = (asn: string): number => Number(asn.slice(2));
 
 /** One exported row. Flat and string-or-number valued, so CSV and JSON carry
  *  exactly the same fields. */

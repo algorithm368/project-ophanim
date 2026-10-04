@@ -54,7 +54,8 @@ export function parseMnemonicPdns(
       type,
       firstSeen: isoFromMs(r.firstSeenTimestamp),
       lastSeen: isoFromMs(r.lastSeenTimestamp),
-      recordType: rr ? rr.toUpperCase() : undefined,
+      // Never empty here: a row without an rrtype matched no branch above.
+      recordType: rr.toUpperCase(),
     });
   }
   return out;

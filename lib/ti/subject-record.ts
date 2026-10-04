@@ -153,8 +153,8 @@ const strArr = (v: unknown): string[] =>
 /** True when at least one source backing a reconciled field needs no API key.
  *  A key-gated source may refine a label's wording, but it may not decide what
  *  the sprite draws: an icon that changes with the day's quota is #37 again. */
-function backedByFreeSource(r: AnyResult, backers: string[] | undefined): boolean {
-  return (backers ?? []).some((id) =>
+function backedByFreeSource(r: AnyResult, backers: string[]): boolean {
+  return backers.some((id) =>
     r.sources.some((s) => s.source.id === id && !s.source.requiresKey),
   );
 }
@@ -501,26 +501,21 @@ const THREAT_BODY: [RegExp, BodyKey][] = [
  *  the one class whose meaning inverts, a wall with tenants behind it rather
  *  than a box that might be hostile, and it wants a body of its own. That is
  *  more than a line here, because the sprite has its own resolver chain and
- *  this switch is only its last resort; a front door has to enter the infra
+ *  this table is only its last resort; a front door has to enter the infra
  *  claim ladder to be drawn reliably. */
+const IP_FALLBACK_BODY: Partial<Record<string, BodyKey>> = {
+  "Tor node": "tor",
+  Anonymizer: "anonymizer",
+  "Mobile network": "mobile",
+  // An organisation's egress is an end-user network wearing a company name,
+  // so it belongs with the consumer line rather than with the datacentre.
+  "Corporate network": "residential",
+  "Residential / Other": "residential",
+  "Unknown type": "unknown",
+};
+
 function ipFallbackBody(r: AnyResult): BodyKey {
-  switch (classifyIpLabel(ipEvidence(geoOf(r), r.sources)).label) {
-    case "Tor node":
-      return "tor";
-    case "Anonymizer":
-      return "anonymizer";
-    case "Mobile network":
-      return "mobile";
-    // An organisation's egress is an end-user network wearing a company name,
-    // so it belongs with the consumer line rather than with the datacentre.
-    case "Corporate network":
-    case "Residential / Other":
-      return "residential";
-    case "Unknown type":
-      return "unknown";
-    default:
-      return "hosting";
-  }
+  return IP_FALLBACK_BODY[classifyIpLabel(ipEvidence(geoOf(r), r.sources)).label] ?? "hosting";
 }
 
 /** `ok`, narrowed to sources that need no key. The identity bodies below read

@@ -128,7 +128,8 @@ const day = (iso: string | undefined): string | undefined => iso?.slice(0, 10);
 export function countryName(code: string | undefined): string | undefined {
   if (!code) return undefined;
   try {
-    return new Intl.DisplayNames(["en"], { type: "region" }).of(code.toUpperCase()) ?? code;
+    // The default fallback is "code", so an unknown region comes back as itself.
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(code.toUpperCase());
   } catch {
     return code;
   }
@@ -146,7 +147,8 @@ export function cleanAppName(name: string | undefined): string | undefined {
  *  `0 issue "letsencrypt.org"`, and only the quoted authority is worth showing. */
 export function caaIssuers(caa: string[]): string[] {
   return caa
-    .map((line) => /"([^"]+)"/.exec(line)?.[1] ?? line.split(/\s+/).at(-1) ?? "")
+    // split() never returns an empty list, so there is always a last word.
+    .map((line) => /"([^"]+)"/.exec(line)?.[1] ?? line.split(/\s+/).pop()!)
     .map((v) => v.replace(/^;$/, "").trim())
     .filter(Boolean);
 }
