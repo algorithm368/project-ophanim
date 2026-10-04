@@ -85,14 +85,14 @@ const ZONELESS = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/;
  * with nothing failing and nothing logging. #60 gives `lastSeen` a format
  * contract and a home in lib/ti/canon/; move this there when that lands.
  */
-export function parseSeen(value: string | undefined): number | undefined {
+export function parseSeen(value: string | undefined, now = new Date()): number | undefined {
   if (!value) return undefined;
   const trimmed = value.trim().replace(/utc$/i, "").trimEnd();
   const normalized = ZONELESS.test(trimmed) ? `${trimmed.replace(" ", "T")}Z` : trimmed;
   const ms = Date.parse(normalized);
   if (Number.isNaN(ms)) return undefined;
   const year = new Date(ms).getUTCFullYear();
-  if (year < 1990 || year > new Date().getUTCFullYear() + 1) return undefined;
+  if (year < 1990 || year > now.getUTCFullYear() + 1) return undefined;
   return ms;
 }
 
