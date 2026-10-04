@@ -717,7 +717,7 @@ describe("the vitals strip", () => {
         },
       ),
     );
-    expect(slots(rec)).toEqual(["category", "registrar", "country", "reach"]);
+    expect(slots(rec)).toEqual(["country", "category", "registrar", "reach"]);
     expect(vital(rec, "category")).toMatchObject({
       value: "Education & reference",
       sub: "Reference materials",

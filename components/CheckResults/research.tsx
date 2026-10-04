@@ -542,6 +542,21 @@ function ProviderSkeleton({ name }: Readonly<{ name?: string }>) {
     );
 }
 
+/** The providers that will show a lane. Which ones run is a static property
+ *  of the registry, so the wait before the stream's start event is named
+ *  rather than a grey box, and an IOC type with no live lane shows nothing
+ *  instead of flashing one. */
+function liveLanes(research: ResearchStreamState, kind: IOCType) {
+    const expected = research.started ? research.metas : researchMetasFor(kind);
+    return expected.filter((m) => research.results[m.id]?.status !== "skipped");
+}
+
+/** Whether the Live intel tile renders at all, so its neighbour can take the
+ *  full row instead of leaving a hole where it would have been. */
+export function hasLiveIntel(research: ResearchStreamState, kind: IOCType): boolean {
+    return research.loading || Boolean(research.error) || liveLanes(research, kind).length > 0;
+}
+
 /** The live, fetched portion of the Research card, rendered progressively from
  *  the stream: each provider shows a labeled skeleton until its result arrives,
  *  so a fast source (URLScan) appears immediately and a slow one (crt.sh) never
@@ -551,14 +566,9 @@ export function LiveIntelTile({
     research,
     kind,
 }: Readonly<{ research: ResearchStreamState; kind: IOCType }>) {
-    const { metas, results, loading, started, error } = research;
-    // Which providers will run is a static property of the registry, so the
-    // wait before the stream's start event is named rather than a grey box, and
-    // an IOC type with no live lane shows nothing instead of flashing one.
-    const expected = started ? metas : researchMetasFor(kind);
-    const visible = expected.filter((m) => results[m.id]?.status !== "skipped");
-
-    if (!loading && visible.length === 0 && !error) return null;
+    const { results, loading, error } = research;
+    const visible = liveLanes(research, kind);
+    if (!hasLiveIntel(research, kind)) return null;
 
     const laneCount = visible.length === 1 ? "1 lane" : `${visible.length} lanes`;
     return (
@@ -606,12 +616,29 @@ export function LinksTile({
 }: Readonly<{ indicator: string; kind: IOCType; span?: 7 | 12 }>) {
     const sections = researchLinks(indicator, kind);
     const total = sections.reduce((n, s) => n + s.links.length, 0);
+    // Beside Live intel the groups stand as three columns. Alone on the row
+    // there is width to spare and not height, so each group becomes a row:
+    // its name on the left, its links running across.
+    const rows = span === 12;
     return (
-        <Tile span={span} title="Look elsewhere" note={`${total} destinations`}>
-            <div className="grid gap-x-10 md:grid-cols-3">
+        <Tile span={span} title="Look elsewhere" note={`${total} destinations`} className="p-0">
+            <div
+                className={cn(
+                    "grid h-full divide-y divide-foreground/12",
+                    !rows && "md:grid-cols-3 md:divide-x md:divide-y-0",
+                )}
+            >
                 {sections.map((section) => (
-                    <div key={section.id}>
-                        <div className="mb-1 flex items-baseline justify-between gap-3">
+                    <div
+                        key={section.id}
+                        className={cn("flex min-w-0 flex-col", rows && "md:flex-row")}
+                    >
+                        <div
+                            className={cn(
+                                "flex items-baseline justify-between gap-3 border-b border-foreground/12 bg-muted/30 px-3 py-2",
+                                rows && "md:w-44 md:shrink-0 md:items-center md:border-r md:border-b-0",
+                            )}
+                        >
                             <span className={CAPS}>{section.label}</span>
                             {/* Best-effort: opens every link in this group at once. */}
                             <button
@@ -627,22 +654,38 @@ export function LinksTile({
                                 <ExternalLink className="size-2.5" />
                             </button>
                         </div>
-                        {section.links.map((link) => (
-                            <a
-                                key={link.id}
-                                href={link.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={`Search ${link.name} for ${indicator}`}
-                                onClick={(e) => backgroundClick(e, link.url)}
-                                className="group grid grid-cols-[1fr_auto] items-center gap-3 border-b border-foreground/12 py-1.5 transition-colors last:border-b-0 hover:border-foreground/40"
-                            >
-                                <span className="truncate font-mono text-[11.5px]">
-                                    {link.name}
-                                </span>
-                                <ExternalLink className="size-3 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
-                            </a>
-                        ))}
+                        <div
+                            className={cn(
+                                "flex-1 px-3",
+                                rows &&
+                                    "md:grid md:grid-cols-4 md:divide-x md:divide-foreground/12 md:px-0",
+                            )}
+                        >
+                            {section.links.map((link) => (
+                                <a
+                                    key={link.id}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={`Search ${link.name} for ${indicator}`}
+                                    onClick={(e) => backgroundClick(e, link.url)}
+                                    className={cn(
+                                        "group grid min-w-0 grid-cols-[1fr_auto] items-center gap-x-2 border-b border-foreground/12 py-1.5 transition-colors last:border-b-0 hover:text-foreground",
+                                        rows && "md:border-b-0 md:px-3",
+                                    )}
+                                >
+                                    <span className="flex min-w-0 flex-col">
+                                        <span className="truncate font-mono text-[11.5px]">
+                                            {link.name}
+                                        </span>
+                                        <span className="truncate font-mono text-[9.5px] text-muted-foreground">
+                                            {hostOf(link.url).replace(/^www\./, "")}
+                                        </span>
+                                    </span>
+                                    <ExternalLink className="size-3 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
+                                </a>
+                            ))}
+                        </div>
                     </div>
                 ))}
             </div>

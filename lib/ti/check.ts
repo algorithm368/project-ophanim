@@ -2,6 +2,7 @@ import type { CheckResult, SourceResult, TiSource } from "./types";
 import { parseIP } from "@/lib/ip";
 import { sources } from "./registry";
 import { runAll } from "./orchestrate";
+import { withRequestMemo } from "./request-memo";
 import { assembleIpResult } from "./assemble";
 
 /** Whether a source can answer for this IP family. Unset means IPv4 only. */
@@ -33,7 +34,7 @@ export async function checkIp(
   }));
   for (const result of skipped) onSettled?.(result);
 
-  const ran = await runAll(supported, ip, onSettled);
+  const ran = await withRequestMemo(() => runAll(supported, ip, onSettled));
 
   // Restore registry order so display order does not depend on which sources
   // happened to be skipped.

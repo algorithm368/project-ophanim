@@ -3,8 +3,10 @@ import { FILE_BODIES } from "./bodies/file";
 import { IP_BODIES } from "./bodies/ip";
 import {
   SPRITE_SIZE,
+  outlineRects,
   paintPart,
   pick,
+  type Rect,
   toLayers,
   type BodyDef,
   type BodyKey,
@@ -74,4 +76,9 @@ export function composeGrid(spec: SpriteSpec): string[] {
 /** The whole pipeline, which is what the renderer calls. */
 export function spriteLayers(spec: SpriteSpec): Layer[] {
   return toLayers(composeGrid(spec));
+}
+
+/** The ring the renderer draws around the creature, in the page's ink. */
+export function spriteOutline(spec: SpriteSpec): Rect[] {
+  return outlineRects(composeGrid(spec));
 }

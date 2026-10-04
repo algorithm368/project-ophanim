@@ -33,12 +33,14 @@ export const EYES: Record<Mood, PartDef[]> = {
     ####  ####  ##  #..#  ####
     .##.  .##.  ##  ....  ....
   `),
-  // narrowed, brow raised over a small eye, heavy lid, squint
+  // Every wary eye is at least two rows deep: one-row lids and squints
+  // vanished on the plate, and wary then read as calm.
+  // lidded (flat top), brow raised over a small eye, heavy lid, narrowed
   wary: partSheet(`
     ....  ####  ####  ....
-    ####  ....  ####  ....
-    .##.  .##.  .##.  ####
-    ....  .##.  ....  ....
+    ####  ....  ####  ####
+    ####  .##.  .##.  .###
+    .##.  .##.  ....  ....
   `),
   // Three wide, not four: on a narrow plate two four-wide slants met in the
   // middle and read as one V, a frown with no eyes in it.
@@ -104,12 +106,26 @@ export const PUPILS: Record<Mood, PartDef> = { calm: ROUND, wary: LIDDED, hostil
  * every body keeps the horn zone (top 4 rows, outer 8 columns each side) clear.
  * A shape difference, so the flagged state survives greyscale and colour
  * blindness rather than leaning on the verdict colour alone.
+ *
+ * Three rows inside a four-row zone, so the zone's last row is always empty:
+ * with the outline ring drawn round both, a horn that came within a cell of
+ * the body merged into it and stopped reading as a horn.
  */
 export const HORN = partGrid(`
   ##......
-  ###.....
-  .####...
+  .###....
   ..#####.
 `);
 
 export const HORN_ZONE = { rows: 4, cols: 8 } as const;
+
+/** The anonymizer's Fawkes moustache, pinned as its mouth so the mask keeps
+ *  its signature while the mood still reads: curled up in a smirk, drooping
+ *  flat, and bristling over bared teeth. 10 wide, centred like any mouth. */
+const [SMIRK, DROOP, BRISTLE] = partSheet(`
+  #........#  ..........  #........#
+  #...##...#  ....##....  #...##...#
+  .###..###.  .###..###.  .###..###.
+  ..........  #........#  ...####...
+`);
+export const MOUSTACHE: Record<Mood, PartDef> = { calm: SMIRK, wary: DROOP, hostile: BRISTLE };

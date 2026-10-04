@@ -23,7 +23,8 @@ export type ThreatType =
   | "ddos"
   | "exploit"
   | "compromised host"
-  | "anonymizer";
+  | "anonymizer"
+  | "tor";
 
 /**
  * Only the catch-alls are ranked, and only so a specific sibling beats them on
@@ -63,9 +64,12 @@ const EXACT: Record<string, ThreatType> = {
   "open proxy": "anonymizer",
   "vpn ip": "anonymizer",
 
-  // Tor
-  tor: "anonymizer",
-  "tor-exit": "anonymizer",
+  // Tor. Its own type rather than "anonymizer": a listed relay is a named,
+  // public network with a published exit policy, which is a different thing to
+  // act on than an unnamed proxy or VPN.
+  tor: "tor",
+  "tor-exit": "tor",
+  "tor-relay": "tor",
 
   // GreyNoise
   "internet-scanner": "scanner",

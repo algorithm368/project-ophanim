@@ -847,6 +847,14 @@ describe("buildSubjectRecord", () => {
     expect(buildSubjectRecord(ipResult([], { isHosting: true })).sprite.body).toBe("hosting");
   });
 
+  it("draws the onion for a listed Tor relay, and the mask for a plain proxy", () => {
+    const tor = (role: string) =>
+      buildSubjectRecord(ipResult([src({ id: "tor-project", details: { role } })], { isHosting: true }));
+    expect(tor("exit").sprite.body).toBe("tor");
+    expect(tor("relay").sprite.body).toBe("tor");
+    expect(buildSubjectRecord(ipResult([], { isProxy: true })).sprite.body).toBe("anonymizer");
+  });
+
   it("draws the plain hosting body for an org-regex match", () => {
     // fromOrgRegex is an inference, never a name (see the infraClaim test of
     // the same name); the sprite side of that rule was previously untested.

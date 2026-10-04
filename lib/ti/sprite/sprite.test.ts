@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BODIES,
   BODY_KEYS,
+  HORN,
   HORN_ZONE,
   EYES,
   MARKS,
@@ -20,6 +21,7 @@ import {
   seedOf,
   silhouette16,
   spriteLayers,
+  outlineRects,
   toLayers,
   type BodyKey,
   type Layer,
@@ -94,6 +96,25 @@ describe("every body", () => {
     }
   });
 
+  it.each(BODY_KEYS)("%s keeps a clear cell between its ink and either horn", (key) => {
+    const g = BODIES[key].grid;
+    const horn: [number, number][] = [];
+    HORN.forEach((row, y) =>
+      [...row].forEach((c, x) => {
+        if (c === "#") horn.push([x, y], [SPRITE_SIZE - 1 - x, y]);
+      }),
+    );
+    g.forEach((row, y) =>
+      [...row].forEach((c, x) => {
+        if (!isInk(c)) return;
+        for (const [hx, hy] of horn) {
+          const near = Math.max(Math.abs(hx - x), Math.abs(hy - y)) < 2;
+          expect(near ? `${key} r${y}c${x} touches a horn` : "clear").toBe("clear");
+        }
+      }),
+    );
+  });
+
   it.each(BODY_KEYS)("%s pins a part for every mood, or none", (key) => {
     for (const pinned of Object.values(BODIES[key].fixed ?? {})) {
       if (pinned === null) continue;
@@ -151,16 +172,18 @@ describe("finished bodies", () => {
 describe("house style", () => {
   const ink = (g: string[], x: number, y: number) => isInk(g[y]?.[x]);
 
-  it.each(FINISHED)("%s steps its outline in 2x2 blocks", (key) => {
+  // Round, not chunky: the outline may step at 1px, which is what lets a
+  // curve read as a curve at 32, but no edge pixel may hang off the body on a
+  // single neighbour. A spur like that is noise at icon size, not shape.
+  it.each(FINISHED)("%s has a smooth outline with no stray pixels", (key) => {
     const g = BODIES[key].grid;
-    const ragged: string[] = [];
-    for (let y = 0; y < SPRITE_SIZE; y += 2) {
-      for (let x = 0; x < SPRITE_SIZE; x += 2) {
-        const n = [ink(g, x, y), ink(g, x + 1, y), ink(g, x, y + 1), ink(g, x + 1, y + 1)].filter(Boolean).length;
-        if (n !== 0 && n !== 4) ragged.push(`r${y}c${x}`);
-      }
-    }
-    expect(ragged).toEqual([]);
+    const spurs: string[] = [];
+    g.forEach((row, y) => [...row].forEach((c, x) => {
+      if (!isInk(c)) return;
+      const n = [ink(g, x - 1, y), ink(g, x + 1, y), ink(g, x, y - 1), ink(g, x, y + 1)].filter(Boolean).length;
+      if (n < 2) spurs.push(`r${y}c${x}`);
+    }));
+    expect(spurs).toEqual([]);
   });
 
   it.each(FINISHED)("%s has a dark body with a solid edge", (key) => {
@@ -292,5 +315,38 @@ describe("toLayers", () => {
   it.each(BODY_KEYS)("round-trips %s to the same drawing", (key) => {
     const spec = { body: key, flagged: true, mood: "wary" as const, seed: SEEDS[1] };
     expect(layersToGrid(spriteLayers(spec))).toEqual(composeGrid(spec));
+  });
+});
+
+describe("outlineRects", () => {
+  it("rings every empty cell that touches ink edge-on, holes included", () => {
+    const grid = Array.from({ length: SPRITE_SIZE }, () => ".".repeat(SPRITE_SIZE));
+    grid[5] = "....###." + ".".repeat(SPRITE_SIZE - 8);
+    grid[6] = "....#.#." + ".".repeat(SPRITE_SIZE - 8);
+    grid[7] = "....###." + ".".repeat(SPRITE_SIZE - 8);
+    expect(outlineRects(grid)).toEqual([
+      { x: 4, y: 4, w: 3 },
+      { x: 3, y: 5, w: 1 }, { x: 7, y: 5, w: 1 },
+      { x: 3, y: 6, w: 1 }, { x: 5, y: 6, w: 1 }, { x: 7, y: 6, w: 1 },
+      { x: 3, y: 7, w: 1 }, { x: 7, y: 7, w: 1 },
+      { x: 4, y: 8, w: 3 },
+    ]);
+  });
+
+  it("steps one cell past the grid where ink touches its edge", () => {
+    const grid = Array.from({ length: SPRITE_SIZE }, () => ".".repeat(SPRITE_SIZE));
+    grid[0] = "#" + ".".repeat(SPRITE_SIZE - 2) + "#";
+    expect(outlineRects(grid)).toEqual([
+      { x: 0, y: -1, w: 1 }, { x: SPRITE_SIZE - 1, y: -1, w: 1 },
+      { x: -1, y: 0, w: 1 }, { x: 1, y: 0, w: 1 },
+      { x: SPRITE_SIZE - 2, y: 0, w: 1 }, { x: SPRITE_SIZE, y: 0, w: 1 },
+      { x: 0, y: 1, w: 1 }, { x: SPRITE_SIZE - 1, y: 1, w: 1 },
+    ]);
+  });
+
+  it.each(BODY_KEYS)("never rings a cell %s inks", (key) => {
+    const grid = composeGrid({ body: key, flagged: true, mood: "hostile", seed: SEEDS[2] });
+    for (const r of outlineRects(grid))
+      for (let i = 0; i < r.w; i++) expect(isInk(grid[r.y]?.[r.x + i])).toBe(false);
   });
 });

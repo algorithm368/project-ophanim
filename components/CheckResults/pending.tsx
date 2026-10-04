@@ -43,11 +43,8 @@ export function FrameSkeleton({
         <Frame>
             {/* The same box and the same centring as RailTile, so the sprite
                 lands where its placeholder was. */}
-            <Tile span={3} tone="rail" className="flex flex-col items-center justify-center gap-3 p-4">
-                <div className="grid min-h-24 place-items-center p-2">
-                    <span className="sweep block size-[224px] rounded" />
-                </div>
-                <span className="sweep block h-3 w-20 rounded" />
+            <Tile span={3} tone="rail" className="flex flex-col items-center justify-center p-4">
+                <span className="sweep block size-[170px] rounded" />
             </Tile>
 
             <Tile span={6} className="flex flex-col">
@@ -58,7 +55,7 @@ export function FrameSkeleton({
                 <Waiting partial={partial} />
             </Tile>
 
-            <Tile span={9} title={<span className="sweep block h-2 w-40 rounded" />}>
+            <Tile span={9}>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                     {["w-16", "w-12", "w-20", "w-14"].map((w) => (
                         <div key={w}>
@@ -74,7 +71,7 @@ export function FrameSkeleton({
                 <Lines widths={["w-full", "w-5/6", "w-2/3"]} />
             </Tile>
 
-            <Tile span={9} title="Evidence" note={partial ? "still arriving" : undefined}>
+            <Tile span={9}>
                 {partial ? <Tally partial={partial} /> : <Lines widths={ROWS} />}
             </Tile>
 

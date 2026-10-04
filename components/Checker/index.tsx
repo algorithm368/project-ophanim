@@ -59,6 +59,8 @@ export default function Checker({
   idleAside?: React.ReactNode;
 }>) {
   const router = useRouter();
+  // Fixed for an instance's lifetime: only "/" passes a board.
+  const hasBoard = Boolean(idleAside);
   const [mode, setMode] = useState<LookupType>(
     () => lookupTypeOf(detectIOC(initialQuery ?? "")) ?? "ip",
   );
@@ -145,7 +147,13 @@ export default function Checker({
     function restoreFromPath() {
       const ioc = iocFromPath(window.location.pathname);
       if (ioc === null) {
-        // Back to the home page: clear to the empty state.
+        // Back to the home page. Only the instance "/" mounted can show its
+        // board; one mounted by /check/<ioc> would clear to the bare lookup
+        // card instead, so let Next render the real home page for that one.
+        if (!hasBoard) {
+          router.replace("/");
+          return;
+        }
         setQuery("");
         setResult(null);
         clearLookupState();
@@ -191,7 +199,7 @@ export default function Checker({
         window.history.scrollRestoration = prevRestoration;
       }
     };
-  }, []);
+  }, [hasBoard, router]);
 
   // "/" focuses the search from anywhere, Esc clears it: quick keyboard access
   // for the analysts who live in this tool.

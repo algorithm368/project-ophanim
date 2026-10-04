@@ -71,7 +71,8 @@ from free-backed evidence. Consequences:
 | | `archive` | ZIP / RAR / 7z | crate with a strap band across it |
 | Threat | `scanner` | scanner | one huge nested aperture eye |
 | | `c2` | C2 / botnet | walker on braced legs, ears |
-| | `anonymizer` | Tor / VPN / proxy | peaked hood over a void |
+| | `anonymizer` | VPN / proxy | chibi Fawkes mask: brimmed hat, goatee chin, pinned curled moustache that follows the mood |
+| | `tor` | Tor relay or exit, from the Tor project's list | the onion: sprouting tuft, round bulb with layer arcs down each flank, root fringe |
 | | `phishing` | phishing | anglerfish lure arcing over the head |
 | | `spam` | spam | many-mouthed, swarm of small bodies |
 | | `malware` | malware / trojan / stealer | horse-head silhouette (trojan) |
@@ -93,9 +94,12 @@ different heights and eye lines. The user picked **the anonymizer** as the
 reference style. Its rules, each enforced by a test in `sprite.test.ts`
 ("house style"):
 
-1. **Chunky silhouette.** The outline steps in aligned 2x2 blocks, the same
-   resolution as the anonymizer. Only tones *inside* the body (the face-plate
-   rim, a token detail) may change at 1px.
+1. **Round silhouette** (revised 2026-10-04, replacing "chunky"). Bodies are
+   soft, rounded shapes, so the outline may step at 1px; a curve needs that to
+   read as a curve at 32. No edge pixel may hang off the body on a single
+   neighbour. Faces are minimal: no seeded mark (every body pins `mark: null`
+   except the scanner, whose plate has nothing else to vary), and a pair of
+   `=` blush cells under the eyes.
 2. **Dark body.** Every ink pixel touching the outside is `#`, and at least 55%
    of the body's ink is `#`. Secondary token detail on the body uses `=`.
 3. **Face plate.** One light plate of `-` (with an optional `=` rim) holds the

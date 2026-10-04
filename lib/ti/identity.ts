@@ -489,19 +489,19 @@ function domainVitals(r: DomainCheckResult): Vital[] {
   const born = day(ctx?.createdAt);
 
   return [
-    v("category", "Category", got(cat ?? app, list(rest)), "Uncategorised"),
-    v(
-      "registrar",
-      "Registrar",
-      got(ctx?.registrar, born && `registered ${born}`),
-      born ? { value: "Not on file", sub: `registered ${born}` } : "Not on file",
-    ),
     v(
       "country",
       "Country",
       got(res?.country?.value, res?.city?.value),
       "Not located",
       { countryCode: res?.countryCode },
+    ),
+    v("category", "Category", got(cat ?? app, list(rest)), "Uncategorised"),
+    v(
+      "registrar",
+      "Registrar",
+      got(ctx?.registrar, born && `registered ${born}`),
+      born ? { value: "Not on file", sub: `registered ${born}` } : "Not on file",
     ),
     v(
       "reach",

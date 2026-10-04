@@ -46,7 +46,8 @@ export const cloudRangeSource: TiSource = {
   async check(domain, signal): Promise<SourceFinding> {
     try {
       const [aRes, cnameRes, prefixes] = await Promise.all([
-        dohQuery(RESOLVERS.cloudflare, domain, "A", signal),
+        // DO bit matches dnsSource, so the request is shared within a search.
+        dohQuery(RESOLVERS.cloudflare, domain, "A", signal, true),
         dohQuery(RESOLVERS.cloudflare, domain, "CNAME", signal),
         cloudPrefixes(signal),
       ]);

@@ -642,7 +642,7 @@ describe("buildNarrative — proxy + hosting both reported (issue #9)", () => {
 
   it("still describes a proxy-only IP as a plain anonymizer", () => {
     const text = ip({ isProxy: true, isp: "Some VPN" });
-    expect(text).toContain("anonymizer (proxy, VPN, or Tor)");
+    expect(text).toContain("anonymizer (proxy or VPN)");
     expect(text).not.toContain("hosting/datacenter infrastructure");
   });
 });

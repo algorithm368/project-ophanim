@@ -479,7 +479,8 @@ const NAMED_PROVIDERS = ["Amazon Web Services", "Microsoft Azure", "Google Cloud
 const THREAT_BODY: [RegExp, BodyKey][] = [
   [/scanner/i, "scanner"],
   [/c2|command and control|botnet/i, "c2"],
-  [/tor |anonymizer|proxy|vpn/i, "anonymizer"],
+  [/\btor\b/i, "tor"],
+  [/anonymizer|proxy|vpn/i, "anonymizer"],
   [/ransomware/i, "ransomware"],
   [/phishing/i, "phishing"],
   [/\bspam/i, "spam"],
@@ -504,6 +505,8 @@ const THREAT_BODY: [RegExp, BodyKey][] = [
  *  claim ladder to be drawn reliably. */
 function ipFallbackBody(r: AnyResult): BodyKey {
   switch (classifyIpLabel(ipEvidence(geoOf(r), r.sources)).label) {
+    case "Tor node":
+      return "tor";
     case "Anonymizer":
       return "anonymizer";
     case "Mobile network":
