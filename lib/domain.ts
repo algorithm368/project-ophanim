@@ -29,7 +29,7 @@ const RESERVED_DOMAINS: Record<string, string> = {
 };
 
 function reservedNote(labels: string[], registrable: string): string | undefined {
-  const tld = labels[labels.length - 1];
+  const tld = labels.at(-1)!;
   return RESERVED_TLDS[tld] ?? RESERVED_DOMAINS[registrable];
 }
 
@@ -79,7 +79,7 @@ export function parseDomain(input: string): ParsedDomain | null {
   if (!labels.every((l) => LABEL_RE.test(l))) return null;
 
   // split() never returns an empty list, so there is always a last label.
-  const tld = labels[labels.length - 1];
+  const tld = labels.at(-1)!;
   if (!/^[a-z]{2,}$/.test(tld) && !tld.startsWith("xn--")) return null;
 
   const lastTwo = labels.slice(-2).join(".");

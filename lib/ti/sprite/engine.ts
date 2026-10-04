@@ -147,7 +147,7 @@ export function partSheet(ascii: string): PartDef[] {
   }
   return Array.from({ length: columns }, (_, i) => {
     const grid = partGrid(rows.map((r) => r[i]).join("\n"));
-    while (grid.length > 1 && /^\.+$/.test(grid[grid.length - 1])) grid.pop();
+    while (grid.length > 1 && /^\.+$/.test(grid.at(-1)!)) grid.pop();
     return { grid };
   });
 }
