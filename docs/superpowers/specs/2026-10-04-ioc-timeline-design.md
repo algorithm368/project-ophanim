@@ -48,7 +48,7 @@ quietly for a decade.
 
 - **VT `creation_date` is not read by the domain adapter** (type only), so `registered` comes from RDAP alone.
 - **ThreatFox records no first-seen** in any of its three adapters, so it can't open a listing. Task 1 adds `details.firstSeen` (and `hashContext.firstSeen` for hashes).
-- **The passive result page has no section nav** (only the scan page uses `SectionNav`), so the tile gets `id="timeline"` and no nav entry.
+- **The passive result page already has `SectionNav` in this worktree.** The planning assumption that it only existed on the scan page was stale. The tile gets `id="timeline"` and a Timeline nav entry for each IOC type, as originally designed.
 - **`IdentityCard` on the active-scan page also renders `RecordTile`.** Dates leave the record only when `omitDates` is passed, which `/check` does, so the scan page keeps its dates.
 - **Live starts at the earliest of `first-resolved`, `cert-issued`, `first-seen`, `listed`**, for every type. Dormant ends at the same point.
 
@@ -136,7 +136,7 @@ phase is drawn and Live runs on.
 
 `TimelineTile`: span 12, `id="timeline"`, title `Timeline`, note
 `N events · M sources`. It is a section of the panel's frame, placed directly
-before `RecordTile` in all three result views.
+before `RecordTile` in all three result views, with an entry in the section nav.
 
 - **PhaseStrip.** A linear axis from the first event to the later of now and
   the last future event, with year ticks below and a dashed `TODAY` line. Each

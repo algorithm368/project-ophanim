@@ -22,6 +22,7 @@ import {
     RailTile,
 } from "./panel";
 import { RecordTile, VitalsTile } from "./identity";
+import { TimelineTile } from "./timeline";
 import { SubdomainsTile } from "./subdomains";
 import { FrameSkeleton } from "./pending";
 import { SourceBreakdown } from "./sources";
@@ -36,6 +37,7 @@ import type { ResearchStreamState } from "./use-research";
  *  self-hide when empty, so SectionNav prunes any that render nothing. */
 const IP_SECTIONS: NavItem[] = [
     { id: "evidence", label: "Evidence" },
+    { id: "timeline", label: "Timeline" },
     { id: "record", label: "Record" },
     { id: "research", label: "Research" },
     { id: "sources", label: "Sources" },
@@ -43,6 +45,7 @@ const IP_SECTIONS: NavItem[] = [
 
 const DOMAIN_SECTIONS: NavItem[] = [
     { id: "evidence", label: "Evidence" },
+    { id: "timeline", label: "Timeline" },
     { id: "record", label: "Record" },
     { id: "subdomains", label: "Subdomains" },
     { id: "research", label: "Research" },
@@ -52,6 +55,7 @@ const DOMAIN_SECTIONS: NavItem[] = [
 const HASH_SECTIONS: NavItem[] = [
     { id: "origin", label: "Analysis" },
     { id: "dist", label: "Dist" },
+    { id: "timeline", label: "Timeline" },
     { id: "research", label: "Research" },
     { id: "sources", label: "Sources" },
 ];
@@ -101,7 +105,8 @@ function Results({
                     <ConfidenceTile result={result} />
                     <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
                     <BallotsTile result={result} />
-                    <RecordTile result={result} />
+                    <TimelineTile result={result} />
+                    <RecordTile result={result} omitDates />
                     <LiveIntelTile research={research} kind="ip" />
                     <LinksTile indicator={researchTarget(result).indicator} kind="ip" />
                     <SourceBreakdown
@@ -146,7 +151,8 @@ function DomainResults({
                     <ConfidenceTile result={result} />
                     <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
                     <BallotsTile result={result} />
-                    <RecordTile result={result} />
+                    <TimelineTile result={result} />
+                    <RecordTile result={result} omitDates />
                     <SubdomainsTile result={result} />
                     <LiveIntelTile research={research} kind="domain" />
                     <LinksTile indicator={researchTarget(result).indicator} kind="domain" />
@@ -192,7 +198,8 @@ function HashResults({
                     <ConfidenceTile result={result} />
                     <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
                     <BallotsTile result={result} />
-                    <RecordTile result={result} />
+                    <TimelineTile result={result} />
+                    <RecordTile result={result} omitDates />
                     <LiveIntelTile research={research} kind="hash" />
                     <LinksTile indicator={researchTarget(result).indicator} kind="hash" />
                     <SourceBreakdown

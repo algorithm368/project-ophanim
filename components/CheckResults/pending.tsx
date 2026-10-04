@@ -82,6 +82,15 @@ export function FrameSkeleton({
                 <Lines widths={["w-full", "w-4/5", "w-full", "w-3/4", "w-5/6"]} />
             </Tile>
 
+            <Tile span={12} title="Timeline">
+                <span className="sweep mb-5 block h-3.5 w-full rounded" />
+                {["w-1/2", "w-2/3", "w-2/5", "w-3/5"].map((w, i) => (
+                    <div key={`${w}-${i}`} className="py-1.5">
+                        <span className={cn("sweep block h-3 rounded", w)} />
+                    </div>
+                ))}
+            </Tile>
+
             <Tile span={12} title="Subject record">
                 <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
                     {RECORD.map((w, i) => (
