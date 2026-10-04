@@ -244,7 +244,9 @@ rule and construct rather than by line.
 Coverage comes from `bun run coverage`; the vitest coverage settings live in
 `vitest.config.ts` and are scoped to `lib/`, which is where the tests and the
 logic are. The scanner reads `coverage/lcov.info` as it analyses, so a missing
-report is silently 0%.
+report is silently 0%. `lib/` is at 100% of lines and branches; after
+`bun run coverage`, `node scripts/coverage-gaps.mjs [path]` lists every line and
+branch left unexecuted, which is the same set Sonar will report.
 
 `.githooks/pre-commit` autofixes and re-stages staged source files, then lints
 the project. `bun install` wires it up via the `prepare` script; if hooks are not
