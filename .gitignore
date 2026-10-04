@@ -55,3 +55,7 @@ ds-bundle/
 .design-sync/learnings/
 .design-sync/node_modules
 .env*
+
+# personal Claude Code settings and runtime locks
+.claude/settings.local.json
+.claude/*.lock
