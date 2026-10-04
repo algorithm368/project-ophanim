@@ -1,4 +1,5 @@
 import { getJson } from "../http";
+import { memoized } from "../request-memo";
 
 interface DohAnswer {
   name?: string;
@@ -84,10 +85,14 @@ export async function dohQuery(
   const url =
     `${resolver}?name=${encodeURIComponent(name)}&type=${type}` +
     (dnssec ? "&do=1" : "");
-  const { data } = await getJson<DohResponse>(url, signal, {
-    Accept: "application/dns-json",
+  // Shared within a search: several sources ask the same resolver the same
+  // question, see request-memo.ts.
+  return memoized(url, signal, async (s) => {
+    const { data } = await getJson<DohResponse>(url, s, {
+      Accept: "application/dns-json",
+    });
+    return data;
   });
-  return data;
 }
 
 // DNSSEC meta records (DS, RRSIG, NSEC, DNSKEY, NSEC3) ride along in the answer
@@ -116,7 +121,9 @@ const A_RECORD_TYPE = 1;
  *  final A record(s); `answers()` alone would let a CNAME's hostname through
  *  as if it were an IP, so this filters to type 1 before flattening. */
 export async function resolveA(name: string, signal: AbortSignal): Promise<string[]> {
-  const res = await dohQuery(RESOLVERS.cloudflare, name, "A", signal);
+  // DO bit set to match dnsSource's consensus query, so the two share one
+  // request; the type-1 filter below drops the RRSIG it adds.
+  const res = await dohQuery(RESOLVERS.cloudflare, name, "A", signal, true);
   if (!res?.Answer) return answers(res);
   return answers({ ...res, Answer: res.Answer.filter((a) => a.type === A_RECORD_TYPE) });
 }

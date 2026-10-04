@@ -1,6 +1,6 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout, postJson } from "../../http";
-import { byCodeUnit } from "../../sort";
+import { threatFoxWindow } from "../../sources/threatfox";
 
 interface ThreatFoxEntry {
   threat_type?: string;
@@ -82,11 +82,7 @@ export const threatFoxHashSource: TiSource = {
       const tags = Array.from(
         new Set(entries.flatMap((e) => e.tags ?? [])),
       ).slice(0, 10);
-      const lastSeen = entries
-        .map((e) => e.last_seen)
-        .filter((s): s is string => Boolean(s))
-        .sort(byCodeUnit)
-        .at(-1);
+      const { firstSeen, lastSeen } = threatFoxWindow(entries);
 
       return {
         status: "ok",
@@ -100,9 +96,11 @@ export const threatFoxHashSource: TiSource = {
         hashContext: {
           malwareFamily: malwares[0],
           tags: tags.length ? tags : undefined,
+          firstSeen,
           lastSeen: lastSeen ?? undefined,
         },
         details: {
+          firstSeen,
           iocCount: entries.length,
           malware: malwares,
           threatTypes,

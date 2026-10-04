@@ -794,7 +794,7 @@ describe("buildSubjectRecord", () => {
     expect(rec.hostedOn?.label).toBe("Amazon Web Services, eu-west-1");
     // Infra first for the picture: something physically an EC2 instance is more
     // truly an AWS box than a C2, and the C2 is the line beside it.
-    expect(rec.sprite).toMatchObject({ body: "hosting", flagged: false });
+    expect(rec.sprite).toMatchObject({ body: "hosting" });
   });
 
   it("draws the threat body, not a rack, when the only infra claim is a bare generic \"Hosting\"", () => {
@@ -809,7 +809,7 @@ describe("buildSubjectRecord", () => {
     );
     expect(rec.class.label).toBe("Dridex C2");
     expect(rec.hostedOn?.label).toBe("Hosting");
-    expect(rec.sprite).toMatchObject({ body: "c2", flagged: false });
+    expect(rec.sprite).toMatchObject({ body: "c2" });
   });
 
   it("never renders the same fact on two rows", () => {
@@ -820,14 +820,14 @@ describe("buildSubjectRecord", () => {
     expect(rec.hostedOn).toBeUndefined();
   });
 
-  it("puts horns on a flagged verdict and nothing on a clean one", () => {
+  it("follows the verdict with the face, not with a horned shape", () => {
     const flagged = ipResult([src({ id: "feodo", malicious: true })]);
     flagged.verdict = "malicious";
-    expect(buildSubjectRecord(flagged).sprite).toMatchObject({ body: "c2", flagged: true });
+    expect(buildSubjectRecord(flagged).sprite).toEqual({ body: "c2", mood: "hostile", seed: expect.any(Number) });
 
     const clean = ipResult([]);
     clean.verdict = "clean";
-    expect(buildSubjectRecord(clean).sprite.flagged).toBe(false);
+    expect(buildSubjectRecord(clean).sprite.mood).toBe("calm");
   });
 
   it("falls back to the type's own body when nothing identified it", () => {
@@ -847,12 +847,45 @@ describe("buildSubjectRecord", () => {
     expect(buildSubjectRecord(ipResult([], { isHosting: true })).sprite.body).toBe("hosting");
   });
 
+  it("calls a carrier PeeringDB lists a mobile network and draws the phone, not the hosting golem", () => {
+    // 202.56.204.146: Bharti Airtel peers as an NSP, so there is an infra
+    // claim, but ip-api's free mobile flag is the better answer to what it is.
+    const peering = src({ id: "peeringdb", details: { networkClass: "NSP", peeringName: "Bharti Airtel" } });
+    const free = src({ id: "ip-api" });
+    const paid = { ...src({ id: "ipinfo" }), source: { ...src({ id: "ipinfo" }).source, requiresKey: true } };
+    const mobileBy = (backer: SourceResult): NonNullable<CheckResult["geoResolution"]> => ({
+      flags: { isHosting: false, isProxy: false, isMobile: true, sources: { isMobile: [backer.source.id] } },
+      providerCount: 1,
+    });
+
+    const carrier = buildSubjectRecord(ipResult([peering, free], { isMobile: true }, mobileBy(free)));
+    expect(carrier.class).toEqual({ label: "Mobile network", sources: ["geo flags"] });
+    expect(carrier.hostedOn?.label).toBe("NSP, Bharti Airtel");
+    expect(carrier.sprite.body).toBe("mobile");
+
+    // A key-gated vote alone may not move the picture.
+    const gated = buildSubjectRecord(ipResult([peering, paid], { isMobile: true }, mobileBy(paid)));
+    expect(gated.sprite.body).toBe("hosting");
+    expect(gated.class.label).toBe("NSP, Bharti Airtel");
+
+    // Without the mobile flag the NSP claim still draws the golem.
+    expect(buildSubjectRecord(ipResult([peering], {})).sprite.body).toBe("hosting");
+  });
+
+  it("draws the onion for a listed Tor relay, and the mask for a plain proxy", () => {
+    const tor = (role: string) =>
+      buildSubjectRecord(ipResult([src({ id: "tor-project", details: { role } })], { isHosting: true }));
+    expect(tor("exit").sprite.body).toBe("tor");
+    expect(tor("relay").sprite.body).toBe("tor");
+    expect(buildSubjectRecord(ipResult([], { isProxy: true })).sprite.body).toBe("anonymizer");
+  });
+
   it("draws the plain hosting body for an org-regex match", () => {
     // fromOrgRegex is an inference, never a name (see the infraClaim test of
     // the same name); the sprite side of that rule was previously untested.
     const rec = buildSubjectRecord(ipResult([], { asnOrg: "Hetzner Online GmbH" }));
     expect(rec.class.label).toBe("Hosting");
-    expect(rec.sprite).toMatchObject({ body: "hosting", flagged: false });
+    expect(rec.sprite).toMatchObject({ body: "hosting" });
   });
 
   it("does not change the picture when every key-gated source fails", () => {

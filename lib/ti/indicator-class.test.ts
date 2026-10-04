@@ -19,10 +19,23 @@ describe("classifyIpLabel", () => {
     );
   });
 
-  it("calls a Tor node an anonymizer even when no geo provider flagged it", () => {
-    expect(classifyIpLabel({ tor: true, geo: { isHosting: true } }).label).toBe(
-      "Anonymizer",
-    );
+  it("calls a listed Tor relay a Tor node, ahead of the proxy and hosting flags", () => {
+    const exit = classifyIpLabel({ tor: "exit", geo: { isProxy: true, isHosting: true } });
+    expect(exit.label).toBe("Tor node");
+    expect(exit.caption).toBe("Tor exit node");
+    expect(exit.phrase).toBe("a Tor exit node on hosting/datacenter infrastructure");
+    expect(exit.sources).toEqual(["tor relay list"]);
+    const relay = classifyIpLabel({ tor: "relay" });
+    expect(relay.caption).toBe("Tor relay, non-exit");
+    expect(relay.tail).toBe("");
+  });
+
+  it("reads the Tor role from the relay list, and nothing from a role it does not know", () => {
+    const role = (r: unknown) =>
+      ipEvidence(undefined, [src({ id: "tor-project", details: { role: r } })]).tor;
+    expect(role("exit")).toBe("exit");
+    expect(role("relay")).toBe("relay");
+    expect(role("bridge")).toBeUndefined();
   });
 
   it("names hosting, mobile and residential from the geo flags", () => {
@@ -255,13 +268,13 @@ describe("ipEvidence", () => {
     expect(ev.networkClass).toBe("Content");
     expect(ev.cloud).toBe("Cloudflare");
     expect(ev.ports).toEqual([80, 443]);
-    expect(ev.tor).toBe(true);
+    expect(ev.tor).toBe("exit");
   });
 
   it("reads Tor from the role field, not from the score", () => {
     // The source scores 0 either way for a non-node, so only `role` separates
     // "not a relay" from "a relay we declined to score".
-    expect(ipEvidence(undefined, [src({ id: "tor-project", details: {} })]).tor).toBe(false);
+    expect(ipEvidence(undefined, [src({ id: "tor-project", details: {} })]).tor).toBeUndefined();
   });
 
   it("ignores a source that did not come back ok", () => {

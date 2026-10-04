@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   BODIES,
   BODY_KEYS,
-  HORN_ZONE,
   EYES,
   MARKS,
   MOODS,
@@ -20,8 +19,8 @@ import {
   seedOf,
   silhouette16,
   spriteLayers,
+  outlineRects,
   toLayers,
-  type BodyKey,
   type Layer,
 } from "@/lib/ti/sprite";
 
@@ -83,17 +82,6 @@ describe("every body", () => {
     for (const row of g) expect(row).toMatch(/^[.#=-]{32}$/);
   });
 
-  it.each(BODY_KEYS)("%s leaves the horn zone clear", (key) => {
-    const g = BODIES[key].grid;
-    for (let y = 0; y < HORN_ZONE.rows; y++) {
-      for (let x = 0; x < HORN_ZONE.cols; x++) {
-        expect(`${key} r${y}c${x}=${g[y][x]}`).toBe(`${key} r${y}c${x}=.`);
-        const xr = SPRITE_SIZE - 1 - x;
-        expect(`${key} r${y}c${xr}=${g[y][xr]}`).toBe(`${key} r${y}c${xr}=.`);
-      }
-    }
-  });
-
   it.each(BODY_KEYS)("%s pins a part for every mood, or none", (key) => {
     for (const pinned of Object.values(BODIES[key].fixed ?? {})) {
       if (pinned === null) continue;
@@ -106,7 +94,7 @@ describe("finished bodies", () => {
   it.each(FINISHED)("%s never has a part paint outside its outline", (key) => {
     const def = BODIES[key];
     for (const seed of SEEDS) {
-      for (const p of MOODS.flatMap((mood) => placements({ body: key, flagged: false, mood, seed }))) {
+      for (const p of MOODS.flatMap((mood) => placements({ body: key, mood, seed }))) {
         const scratch = def.grid.map((r) => [...r]);
         expect(paintPart(scratch, def.grid, p.part.grid, p.x, p.y, p.mirror)).toBe(0);
       }
@@ -114,7 +102,7 @@ describe("finished bodies", () => {
   });
 
   it.each(FINISHED)("%s produces visibly different siblings", (key) => {
-    const interiors = new Set(SEEDS.slice(0, 64).map((seed) => composeGrid({ body: key, flagged: false, mood: "calm", seed }).join("")));
+    const interiors = new Set(SEEDS.slice(0, 64).map((seed) => composeGrid({ body: key, mood: "calm", seed }).join("")));
     const free = (["eyes", "mouth", "mark"] as const).filter((s) => BODIES[key].fixed?.[s] === undefined).length;
     expect(interiors.size).toBeGreaterThanOrEqual(free >= 2 ? 16 : 4);
   });
@@ -122,7 +110,7 @@ describe("finished bodies", () => {
   it.each(FINISHED)("%s keeps its outline whatever the seed", (key) => {
     const bare = BODIES[key].grid.map((r) => [...r].map((c) => (isInk(c) ? "#" : ".")).join(""));
     for (const seed of SEEDS.slice(0, 64)) {
-      const g = composeGrid({ body: key, flagged: false, mood: MOODS[seed % 3], seed });
+      const g = composeGrid({ body: key, mood: MOODS[seed % 3], seed });
       // Knockouts may open holes inside, but nothing may appear outside.
       g.forEach((row, y) => [...row].forEach((c, x) => {
         if (isInk(c)) expect(bare[y][x]).toBe("#");
@@ -151,16 +139,18 @@ describe("finished bodies", () => {
 describe("house style", () => {
   const ink = (g: string[], x: number, y: number) => isInk(g[y]?.[x]);
 
-  it.each(FINISHED)("%s steps its outline in 2x2 blocks", (key) => {
+  // Round, not chunky: the outline may step at 1px, which is what lets a
+  // curve read as a curve at 32, but no edge pixel may hang off the body on a
+  // single neighbour. A spur like that is noise at icon size, not shape.
+  it.each(FINISHED)("%s has a smooth outline with no stray pixels", (key) => {
     const g = BODIES[key].grid;
-    const ragged: string[] = [];
-    for (let y = 0; y < SPRITE_SIZE; y += 2) {
-      for (let x = 0; x < SPRITE_SIZE; x += 2) {
-        const n = [ink(g, x, y), ink(g, x + 1, y), ink(g, x, y + 1), ink(g, x + 1, y + 1)].filter(Boolean).length;
-        if (n !== 0 && n !== 4) ragged.push(`r${y}c${x}`);
-      }
-    }
-    expect(ragged).toEqual([]);
+    const spurs: string[] = [];
+    g.forEach((row, y) => [...row].forEach((c, x) => {
+      if (!isInk(c)) return;
+      const n = [ink(g, x - 1, y), ink(g, x + 1, y), ink(g, x, y - 1), ink(g, x, y + 1)].filter(Boolean).length;
+      if (n < 2) spurs.push(`r${y}c${x}`);
+    }));
+    expect(spurs).toEqual([]);
   });
 
   it.each(FINISHED)("%s has a dark body with a solid edge", (key) => {
@@ -185,7 +175,7 @@ describe("house style", () => {
     expect(plate).toBeGreaterThanOrEqual(60);
     const offPlate = new Set<string>();
     for (const seed of SEEDS.slice(0, 200)) {
-      for (const p of MOODS.flatMap((mood) => placements({ body: key, flagged: false, mood, seed }))) {
+      for (const p of MOODS.flatMap((mood) => placements({ body: key, mood, seed }))) {
         p.part.grid.forEach((row, dy) => {
           const cells = p.mirror ? [...row].reverse() : [...row];
           cells.forEach((c, dx) => {
@@ -249,7 +239,7 @@ describe("the face follows the verdict", () => {
 
   it.each(FINISHED)("%s shows a different face in each mood", (key) => {
     const seed = SEEDS[2];
-    const faces = new Set(MOODS.map((mood) => composeGrid({ body: key, flagged: false, mood, seed }).join("")));
+    const faces = new Set(MOODS.map((mood) => composeGrid({ body: key, mood, seed }).join("")));
     expect(faces.size).toBe(3);
   });
 
@@ -257,22 +247,28 @@ describe("the face follows the verdict", () => {
     expect(MOUTHS.hostile).not.toContain(null);
   });
 
+  it("never gives a calm or wary face a solid dot for an eye", () => {
+    // A filled round blob with no glint reads as a blank stare, and on a tall
+    // dark body as a hooded figure. A round eye keeps its highlight instead.
+    // Hostile is exempt: it is meant to look fierce.
+    const blobs: string[] = [];
+    for (const mood of ["calm", "wary"] as const) {
+      EYES[mood].forEach((eye, i) => {
+        const rows = eye.grid.filter((r) => r.includes("#") || r.includes("-"));
+        const cols = [...rows[0]].map((_, x) => x).filter((x) => rows.some((r) => r[x] !== "."));
+        const w = cols.length;
+        const h = rows.length;
+        const cells = rows.join("");
+        const ink = [...cells].filter((c) => c === "#").length;
+        if (w >= 3 && h >= 3 && !cells.includes("-") && ink >= 0.75 * w * h) blobs.push(`${mood}[${i}]`);
+      });
+    }
+    expect(blobs).toEqual([]);
+  });
+
   it("draws every face part without knocking holes in the plate", () => {
     const parts = [...MOODS.flatMap((m) => [...EYES[m], ...MOUTHS[m]]), ...MARKS];
     for (const p of parts) if (p) expect(p.grid.join("")).not.toContain("o");
-  });
-});
-
-describe("horns", () => {
-  it.each(BODY_KEYS)("%s gains pixels and loses none when flagged", (key: BodyKey) => {
-    const seed = SEEDS[0];
-    const plain = composeGrid({ body: key, flagged: false, mood: "hostile", seed });
-    const horned = composeGrid({ body: key, flagged: true, mood: "hostile", seed });
-    expect(horned.slice(HORN_ZONE.rows)).toEqual(plain.slice(HORN_ZONE.rows));
-    expect(horned.join("")).not.toBe(plain.join(""));
-    plain.forEach((row, y) => [...row].forEach((c, x) => {
-      if (isInk(c)) expect(horned[y][x]).toBe(c);
-    }));
   });
 });
 
@@ -290,7 +286,40 @@ describe("toLayers", () => {
   });
 
   it.each(BODY_KEYS)("round-trips %s to the same drawing", (key) => {
-    const spec = { body: key, flagged: true, mood: "wary" as const, seed: SEEDS[1] };
+    const spec = { body: key, mood: "wary" as const, seed: SEEDS[1] };
     expect(layersToGrid(spriteLayers(spec))).toEqual(composeGrid(spec));
+  });
+});
+
+describe("outlineRects", () => {
+  it("rings every empty cell that touches ink edge-on, holes included", () => {
+    const grid = Array.from({ length: SPRITE_SIZE }, () => ".".repeat(SPRITE_SIZE));
+    grid[5] = "....###." + ".".repeat(SPRITE_SIZE - 8);
+    grid[6] = "....#.#." + ".".repeat(SPRITE_SIZE - 8);
+    grid[7] = "....###." + ".".repeat(SPRITE_SIZE - 8);
+    expect(outlineRects(grid)).toEqual([
+      { x: 4, y: 4, w: 3 },
+      { x: 3, y: 5, w: 1 }, { x: 7, y: 5, w: 1 },
+      { x: 3, y: 6, w: 1 }, { x: 5, y: 6, w: 1 }, { x: 7, y: 6, w: 1 },
+      { x: 3, y: 7, w: 1 }, { x: 7, y: 7, w: 1 },
+      { x: 4, y: 8, w: 3 },
+    ]);
+  });
+
+  it("steps one cell past the grid where ink touches its edge", () => {
+    const grid = Array.from({ length: SPRITE_SIZE }, () => ".".repeat(SPRITE_SIZE));
+    grid[0] = "#" + ".".repeat(SPRITE_SIZE - 2) + "#";
+    expect(outlineRects(grid)).toEqual([
+      { x: 0, y: -1, w: 1 }, { x: SPRITE_SIZE - 1, y: -1, w: 1 },
+      { x: -1, y: 0, w: 1 }, { x: 1, y: 0, w: 1 },
+      { x: SPRITE_SIZE - 2, y: 0, w: 1 }, { x: SPRITE_SIZE, y: 0, w: 1 },
+      { x: 0, y: 1, w: 1 }, { x: SPRITE_SIZE - 1, y: 1, w: 1 },
+    ]);
+  });
+
+  it.each(BODY_KEYS)("never rings a cell %s inks", (key) => {
+    const grid = composeGrid({ body: key, mood: "hostile", seed: SEEDS[2] });
+    for (const r of outlineRects(grid))
+      for (let i = 0; i < r.w; i++) expect(isInk(grid[r.y]?.[r.x + i])).toBe(false);
   });
 });

@@ -85,14 +85,14 @@ const ZONELESS = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/;
  * with nothing failing and nothing logging. #60 gives `lastSeen` a format
  * contract and a home in lib/ti/canon/; move this there when that lands.
  */
-export function parseSeen(value: string | undefined): number | undefined {
+export function parseSeen(value: string | undefined, now = new Date()): number | undefined {
   if (!value) return undefined;
   const trimmed = value.trim().replace(/utc$/i, "").trimEnd();
   const normalized = ZONELESS.test(trimmed) ? `${trimmed.replace(" ", "T")}Z` : trimmed;
   const ms = Date.parse(normalized);
   if (Number.isNaN(ms)) return undefined;
   const year = new Date(ms).getUTCFullYear();
-  if (year < 1990 || year > new Date().getUTCFullYear() + 1) return undefined;
+  if (year < 1990 || year > now.getUTCFullYear() + 1) return undefined;
   return ms;
 }
 
@@ -479,7 +479,8 @@ const NAMED_PROVIDERS = ["Amazon Web Services", "Microsoft Azure", "Google Cloud
 const THREAT_BODY: [RegExp, BodyKey][] = [
   [/scanner/i, "scanner"],
   [/c2|command and control|botnet/i, "c2"],
-  [/tor |anonymizer|proxy|vpn/i, "anonymizer"],
+  [/\btor\b/i, "tor"],
+  [/anonymizer|proxy|vpn/i, "anonymizer"],
   [/ransomware/i, "ransomware"],
   [/phishing/i, "phishing"],
   [/\bspam/i, "spam"],
@@ -504,6 +505,8 @@ const THREAT_BODY: [RegExp, BodyKey][] = [
  *  claim ladder to be drawn reliably. */
 function ipFallbackBody(r: AnyResult): BodyKey {
   switch (classifyIpLabel(ipEvidence(geoOf(r), r.sources)).label) {
+    case "Tor node":
+      return "tor";
     case "Anonymizer":
       return "anonymizer";
     case "Mobile network":
@@ -605,7 +608,6 @@ function spriteFor(
   r: AnyResult,
   infra: Claim | null,
   threat: Claim | null,
-  flagged: boolean,
 ): SpriteSpec {
   const seed = seedOf(subjectOf(r));
   const mood = moodFor(r.verdict);
@@ -618,15 +620,41 @@ function spriteFor(
     ? NAMED_PROVIDERS.some((p) => ipInfra.label.includes(p))
     : false;
   if (namedProvider) {
-    return { body: "hosting", flagged, mood, seed };
+    return { body: "hosting", mood, seed };
   }
   const threatBody = threat
     ? THREAT_BODY.find(([re]) => re.test(threat.label))?.[1]
     : undefined;
   if (threatBody) {
-    return { body: threatBody, flagged, mood, seed };
+    return { body: threatBody, mood, seed };
   }
-  return { body: ipInfra ? "hosting" : typeBody(r), flagged, mood, seed };
+  if (ipInfra && !onCarrier(r)) return { body: "hosting", mood, seed };
+  return { body: typeBody(r), mood, seed };
+}
+
+/** "Mobile network" for a carrier's address, ahead of an unnamed infra claim,
+ *  for the same reason the sprite draws the phone (see `onCarrier`). The infra
+ *  claim is not lost: it becomes the `hostedOn` line, so "NSP, Bharti Airtel"
+ *  still shows beside it. A named provider keeps the heading, as it keeps the
+ *  sprite. */
+function carrierClaim(r: AnyResult, infra: Claim | null): Claim | null {
+  if (!("ip" in r) || !onCarrier(r)) return null;
+  if (infra && NAMED_PROVIDERS.some((p) => infra.label.includes(p))) return null;
+  return { label: "Mobile network", sources: ["geo flags"] };
+}
+
+/**
+ * A carrier's address under an unnamed infra claim. PeeringDB lists every
+ * network that peers, carriers included, so "NSP, Bharti Airtel" is an infra
+ * claim about a mobile lease, and drawing the hosting golem for it contradicts
+ * the class ladder, which already ranks mobile above hosting. Only a named
+ * provider (AWS, Azure, ...) beats this, and it returns before we get here.
+ * Guarded like fromGeoFlags: a key-gated vote alone may not move the picture.
+ */
+function onCarrier(r: AnyResult): boolean {
+  if (!geoOf(r)?.isMobile) return false;
+  const backers = geoResolutionOf(r)?.flags?.sources?.isMobile;
+  return !backers || backedByFreeSource(r, backers);
 }
 
 /**
@@ -811,7 +839,7 @@ export function buildSubjectRecord(r: AnyResult): SubjectRecord {
   // infra claim would otherwise win for almost all of them. `spriteFor` is
   // still handed `infra`, so the drawn body does not move with the token, and
   // whichever claim the class does not take becomes the `hostedOn` line.
-  const klass = threat ?? fromCloudflareCategory(r) ?? infra ?? lastResortClaim(r);
+  const klass = threat ?? fromCloudflareCategory(r) ?? carrierClaim(r, infra) ?? infra ?? lastResortClaim(r);
   const hostedOn = infra && infra !== klass ? infra : undefined;
 
   // The behaviour axis. Identification sources are filtered out so a source
@@ -820,8 +848,6 @@ export function buildSubjectRecord(r: AnyResult): SubjectRecord {
     r.sources.filter((s) => !IDENTIFIERS.has(s.source.id)),
     { verdict: r.verdict, benignOverride: r.scoreBreakdown?.benignOverride },
   );
-
-  const flagged = r.verdict === "malicious" || r.verdict === "suspicious";
 
   return {
     subject: subjectOf(r),
@@ -832,6 +858,6 @@ export function buildSubjectRecord(r: AnyResult): SubjectRecord {
     priors: priorsOf(r, behaviour, klass),
     detections: isHash(r) ? r.context?.detectionRatio : undefined,
     seen: seenRange(r.sources, isHash(r) ? r.context : undefined),
-    sprite: spriteFor(r, infra, threat, flagged),
+    sprite: spriteFor(r, infra, threat),
   };
 }

@@ -240,7 +240,7 @@ describe("asnLine", () => {
 describe("assignment", () => {
   it("prefers the most specific flag, and always answers", () => {
     expect(assignment(ip({ geo: { isProxy: true, isHosting: true } }))).toBe("anonymizing proxy or VPN");
-    expect(assignment(ip({ geo: { isMobile: true, isHosting: true } }))).toBe("mobile network");
+    expect(assignment(ip({ geo: { isMobile: true, isHosting: true } }))).toBe("cellular carrier");
     expect(assignment(ip({ geo: { isHosting: true } }))).toBe("hosting or datacentre");
   });
 
@@ -425,6 +425,19 @@ describe("domains", () => {
     expect(find(rec, "caa")?.value).toBe("letsencrypt.org");
   });
 
+  it("leaves the dates to the timeline when asked", () => {
+    const r = domain({
+      registrar: "Example Registrar",
+      createdAt: "2015-03-04T00:00:00Z",
+      expiresAt: "2028-03-04T00:00:00Z",
+    });
+    const rec = buildIdentity(r, { omitDates: true });
+    expect(find(rec, "created")).toBeUndefined();
+    expect(find(rec, "expires")).toBeUndefined();
+    expect(find(rec, "registrar")?.value).toBe("Example Registrar");
+    expect(rec.fields.length).toBe(buildIdentity(r).fields.length - 2);
+  });
+
   it("states a name that does not resolve as a finding", () => {
     const claim = find(buildIdentity(domain({ nxdomain: true })), "resolve");
     expect(claim?.value).toBe("no such name");
@@ -496,6 +509,15 @@ describe("files", () => {
     expect(find(rec, "submissions")?.value).toBe("1,163,351");
   });
 
+  it("leaves first and last seen to the timeline when asked", () => {
+    const rec = buildIdentity(
+      hash({ firstSeen: "2006-05-22T00:00:00Z", lastSeen: "2026-01-01T00:00:00Z" }),
+      { omitDates: true },
+    );
+    expect(find(rec, "first")).toBeUndefined();
+    expect(find(rec, "last")).toBeUndefined();
+  });
+
   it("names every YARA rule that matched, deduped", () => {
     const rec = buildIdentity(
       hash(undefined, [
@@ -542,7 +564,7 @@ describe("splitAsn", () => {
 describe("typeWord", () => {
   it("names the loudest kind of connection in one word", () => {
     expect(typeWord(ip({ geo: { isProxy: true, isHosting: true } }))).toBe("Anonymizer");
-    expect(typeWord(ip({ geo: { isMobile: true, isHosting: true } }))).toBe("Mobile");
+    expect(typeWord(ip({ geo: { isMobile: true, isHosting: true } }))).toBe("Mobile network");
     expect(typeWord(ip({ geo: { isHosting: true } }))).toBe("Hosting");
   });
 
@@ -695,7 +717,7 @@ describe("the vitals strip", () => {
         },
       ),
     );
-    expect(slots(rec)).toEqual(["category", "registrar", "country", "reach"]);
+    expect(slots(rec)).toEqual(["country", "category", "registrar", "reach"]);
     expect(vital(rec, "category")).toMatchObject({
       value: "Education & reference",
       sub: "Reference materials",

@@ -20,7 +20,7 @@ export const SPRITE_SIZE = 32;
 export const TONES = { "#": 1, "=": 0.55, "-": 0.25 } as const;
 export type Tone = keyof typeof TONES;
 
-export const IP_BODY_KEYS = ["hosting", "residential", "mobile", "unknown", "scanner", "c2", "anonymizer"] as const;
+export const IP_BODY_KEYS = ["hosting", "residential", "mobile", "unknown", "scanner", "c2", "anonymizer", "tor"] as const;
 export const DOMAIN_BODY_KEYS = ["site", "landmark", "hatchling", "husk", "courier", "phishing", "spam"] as const;
 export const FILE_BODY_KEYS = ["file", "exe", "elf", "apk", "doc", "script", "archive", "malware", "ransomware"] as const;
 
@@ -83,7 +83,7 @@ export type BodyDef = {
 
 export type PartDef = { grid: string[] };
 
-export type SpriteSpec = { body: BodyKey; flagged: boolean; mood: Mood; seed: number };
+export type SpriteSpec = { body: BodyKey; mood: Mood; seed: number };
 export type Rect = { x: number; y: number; w: number };
 export type Layer = { tone: Tone; opacity: number; rects: Rect[] };
 
@@ -227,6 +227,37 @@ export function toLayers(grid: string[]): Layer[] {
       return { tone, opacity: TONES[tone], rects };
     })
     .filter((l) => l.rects.length > 0);
+}
+
+/**
+ * The one-cell ring around the drawing: every empty cell with ink directly
+ * above, below, left or right of it, merged into runs like a tone layer. It
+ * may sit one cell outside the grid (x or y of -1 or SPRITE_SIZE), since wide
+ * bodies touch the edge, so the renderer pads its view box by one.
+ *
+ * Holes inside the body get the ring too: a door notch or a gap between
+ * scattered fragments is part of the silhouette, and outlining it is what
+ * keeps it from reading as a smudge.
+ */
+export function outlineRects(grid: string[]): Rect[] {
+  const ink = (x: number, y: number) => isInk(grid[y]?.[x]);
+  const rects: Rect[] = [];
+  for (let y = -1; y <= grid.length; y++) {
+    let run = 0;
+    for (let x = -1; x <= SPRITE_SIZE + 1; x++) {
+      const ring =
+        x <= SPRITE_SIZE &&
+        !ink(x, y) &&
+        (ink(x - 1, y) || ink(x + 1, y) || ink(x, y - 1) || ink(x, y + 1));
+      if (ring) {
+        run++;
+        continue;
+      }
+      if (run) rects.push({ x: x - run, y, w: run });
+      run = 0;
+    }
+  }
+  return rects;
 }
 
 /** The 2x2 "any ink" reduction: what the silhouette looks like at 16px. */

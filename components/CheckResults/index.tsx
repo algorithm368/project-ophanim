@@ -22,41 +22,17 @@ import {
     RailTile,
 } from "./panel";
 import { RecordTile, VitalsTile } from "./identity";
+import { TimelineTile } from "./timeline";
 import { SubdomainsTile } from "./subdomains";
 import { FrameSkeleton } from "./pending";
 import { SourceBreakdown } from "./sources";
 import { SourceHealthNotice } from "./activity";
 import { DistributionUrlsCard } from "./connections";
 import { HashProfileCard } from "./profile";
-import { LinksTile, LiveIntelTile, researchTarget } from "./research";
-import { SectionNav, type NavItem } from "./section-nav";
+import { LinksTile, LiveIntelTile, hasLiveIntel, researchTarget } from "./research";
 import type { ResearchStreamState } from "./use-research";
 
-/** Section anchors + jump-nav labels, in document order, per IOC type. Tiles
- *  self-hide when empty, so SectionNav prunes any that render nothing. */
-const IP_SECTIONS: NavItem[] = [
-    { id: "evidence", label: "Evidence" },
-    { id: "record", label: "Record" },
-    { id: "research", label: "Research" },
-    { id: "sources", label: "Sources" },
-];
-
-const DOMAIN_SECTIONS: NavItem[] = [
-    { id: "evidence", label: "Evidence" },
-    { id: "record", label: "Record" },
-    { id: "subdomains", label: "Subdomains" },
-    { id: "research", label: "Research" },
-    { id: "sources", label: "Sources" },
-];
-
-const HASH_SECTIONS: NavItem[] = [
-    { id: "origin", label: "Analysis" },
-    { id: "dist", label: "Dist" },
-    { id: "research", label: "Research" },
-    { id: "sources", label: "Sources" },
-];
-
-/** Anchor wrapper: gives a card a nav target and clears the sticky nav on jump. */
+/** Anchor wrapper: gives a card an id to link to. */
 function Section({ id, children }: Readonly<{ id: string; children: React.ReactNode }>) {
     return (
         <section id={id} className="scroll-mt-20">
@@ -101,9 +77,14 @@ function Results({
                     <ConfidenceTile result={result} />
                     <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
                     <BallotsTile result={result} />
-                    <RecordTile result={result} />
+                    <TimelineTile result={result} />
+                    <RecordTile result={result} omitDates />
                     <LiveIntelTile research={research} kind="ip" />
-                    <LinksTile indicator={researchTarget(result).indicator} kind="ip" />
+                    <LinksTile
+                        indicator={researchTarget(result).indicator}
+                        kind="ip"
+                        span={hasLiveIntel(research, "ip") ? 7 : 12}
+                    />
                     <SourceBreakdown
                         sources={result.sources}
                         indicator={indicator}
@@ -111,9 +92,6 @@ function Results({
                     />
                 </Frame>
             )}
-            {/* Rendered in both phases: it draws the left rail, and a rail that
-                appears only with results slides the whole column sideways. */}
-            <SectionNav items={IP_SECTIONS} />
         </div>
     );
 }
@@ -146,10 +124,15 @@ function DomainResults({
                     <ConfidenceTile result={result} />
                     <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
                     <BallotsTile result={result} />
-                    <RecordTile result={result} />
+                    <TimelineTile result={result} />
+                    <RecordTile result={result} omitDates />
                     <SubdomainsTile result={result} />
                     <LiveIntelTile research={research} kind="domain" />
-                    <LinksTile indicator={researchTarget(result).indicator} kind="domain" />
+                    <LinksTile
+                        indicator={researchTarget(result).indicator}
+                        kind="domain"
+                        span={hasLiveIntel(research, "domain") ? 7 : 12}
+                    />
                     <SourceBreakdown
                         sources={result.sources}
                         indicator={indicator}
@@ -157,9 +140,6 @@ function DomainResults({
                     />
                 </Frame>
             )}
-            {/* Rendered in both phases: it draws the left rail, and a rail that
-                appears only with results slides the whole column sideways. */}
-            <SectionNav items={DOMAIN_SECTIONS} />
         </div>
     );
 }
@@ -192,9 +172,14 @@ function HashResults({
                     <ConfidenceTile result={result} />
                     <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
                     <BallotsTile result={result} />
-                    <RecordTile result={result} />
+                    <TimelineTile result={result} />
+                    <RecordTile result={result} omitDates />
                     <LiveIntelTile research={research} kind="hash" />
-                    <LinksTile indicator={researchTarget(result).indicator} kind="hash" />
+                    <LinksTile
+                        indicator={researchTarget(result).indicator}
+                        kind="hash"
+                        span={hasLiveIntel(research, "hash") ? 7 : 12}
+                    />
                     <SourceBreakdown
                         sources={result.sources}
                         indicator={indicator}
@@ -202,9 +187,6 @@ function HashResults({
                     />
                 </Frame>
             )}
-            {/* Rendered in both phases: it draws the left rail, and a rail that
-                appears only with results slides the whole column sideways. */}
-            <SectionNav items={HASH_SECTIONS} />
             {/* Still their own cards: neither has been folded into the frame
                 yet. */}
             <Section id="origin">

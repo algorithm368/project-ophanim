@@ -1,12 +1,12 @@
-import { partGrid, partSheet, type Mood, type PartDef } from "./engine";
+import { partSheet, type Mood, type PartDef } from "./engine";
 
 /**
  * The sibling slots. A body's silhouette is its class; the face is its mood
  * and its individuality.
  *
  * Eyes and mouths come in one set per mood, and the mood follows the verdict
- * (see `moodFor`), so a creature's expression is a second, colour-free reading
- * of the verdict alongside the horns: calm when clean, wary when something is
+ * (see `moodFor`), so a creature's expression is the colour-free reading of
+ * the verdict: calm when clean, wary when something is
  * off, hostile when it is malicious. The seed then picks within that mood's
  * set, which is what makes two clean hosts look like siblings rather than
  * twins.
@@ -26,19 +26,24 @@ import { partGrid, partSheet, type Mood, type PartDef } from "./engine";
  *  rightmost column is the inner corner, so a hostile eye's brow descends
  *  toward it. */
 export const EYES: Record<Mood, PartDef[]> = {
-  // round, round and lit, tall bean, content (closed in an arc), wide and level
+  // round and lit, tall bean, content (closed in an arc), wide and level.
+  // No plain solid round eye: a filled dot read as a blank stare, and on a
+  // tall dark body as a hooded figure. Every round eye carries its glint.
   calm: partSheet(`
-    .##.  .##.  ##  ....  ....
-    ####  #-##  ##  .##.  ####
-    ####  ####  ##  #..#  ####
-    .##.  .##.  ##  ....  ....
+    .##.  ##  ....  ....
+    #-##  ##  .##.  ####
+    ####  ##  #..#  ####
+    .##.  ##  ....  ....
   `),
-  // narrowed, brow raised over a small eye, heavy lid, squint
+  // Every wary eye is at least two rows deep: one-row lids and squints
+  // vanished on the plate, and wary then read as calm.
+  // lidded (flat top, with the calm eye's glint), brow raised over a small
+  // eye, heavy lid, narrowed
   wary: partSheet(`
     ....  ####  ####  ....
-    ####  ....  ####  ....
-    .##.  .##.  .##.  ####
-    ....  .##.  ....  ....
+    ####  ....  ####  ####
+    #-##  .##.  .-#.  .###
+    .##.  .##.  ....  ....
   `),
   // Three wide, not four: on a narrow plate two four-wide slants met in the
   // middle and read as one V, a frown with no eyes in it.
@@ -98,18 +103,13 @@ const [ROUND, LIDDED, SLIT] = partSheet(`
 `);
 export const PUPILS: Record<Mood, PartDef> = { calm: ROUND, wary: LIDDED, hostile: SLIT };
 
-/**
- * Horns over the top corners when the indicator is flagged. Left horn here,
- * mirrored onto the right. Additive and painted outside the body, which is why
- * every body keeps the horn zone (top 4 rows, outer 8 columns each side) clear.
- * A shape difference, so the flagged state survives greyscale and colour
- * blindness rather than leaning on the verdict colour alone.
- */
-export const HORN = partGrid(`
-  ##......
-  ###.....
-  .####...
-  ..#####.
+/** The anonymizer's Fawkes moustache, pinned as its mouth so the mask keeps
+ *  its signature while the mood still reads: curled up in a smirk, drooping
+ *  flat, and bristling over bared teeth. 10 wide, centred like any mouth. */
+const [SMIRK, DROOP, BRISTLE] = partSheet(`
+  #........#  ..........  #........#
+  #...##...#  ....##....  #...##...#
+  .###..###.  .###..###.  .###..###.
+  ..........  #........#  ...####...
 `);
-
-export const HORN_ZONE = { rows: 4, cols: 8 } as const;
+export const MOUSTACHE: Record<Mood, PartDef> = { calm: SMIRK, wary: DROOP, hostile: BRISTLE };

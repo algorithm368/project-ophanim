@@ -21,7 +21,6 @@ import {
     buildDomainNarrative,
     buildHashNarrative,
     buildNarrative,
-    consensusBuckets,
 } from "@/lib/ti/narrative";
 import {
     type AnyCheckResult,
@@ -46,9 +45,9 @@ import { VoteMark } from "./voting";
  *
  * Rules this file exists to hold:
  *
- *  - The verdict is stated once, under the sprite. It is not a stat, it is what
- *    the stats add up to, and listing a total beside its own addends is a
- *    category error.
+ *  - The verdict is the sprite's colour, with no word under it. It is not a
+ *    stat, it is what the stats add up to, and listing a total beside its own
+ *    addends is a category error.
  *  - The page opens with one picture, one name, and one sentence. It used to
  *    open with five named ladders as well, and four of the five turned out to
  *    restate something the rest of the page says better: see `lib/ti/panel.ts`
@@ -61,38 +60,20 @@ import { VoteMark } from "./voting";
  *  - Colour appears on the sprite and the verdict. Nowhere else.
  */
 
-/** The picture and the one word it resolves to. */
+/** The picture, in the colour of the verdict. */
 export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
     const record = useMemo(() => buildSubjectRecord(result), [result]);
     const tone = VERDICT_STYLE[result.verdict];
     return (
         // Centred in both axes: the rail is as tall as the hero beside it, so a
         // sprite pinned to the top left the lower half of the column empty.
-        <Tile span={3} tone="rail" className="flex flex-col items-center justify-center gap-3 p-4">
-            {/* Corner brackets, not a box: an evidence crop rather than an
-                illustration frame. */}
-            <div
-                className={cn(
-                    "relative grid min-h-24 place-items-center p-2",
-                    tone.text,
-                )}
-            >
-                <span aria-hidden>
-                    <span className="absolute top-0 left-0 size-3 border-t-2 border-l-2 border-current" />
-                    <span className="absolute top-0 right-0 size-3 border-t-2 border-r-2 border-current" />
-                    <span className="absolute bottom-0 left-0 size-3 border-b-2 border-l-2 border-current" />
-                    <span className="absolute right-0 bottom-0 size-3 border-r-2 border-b-2 border-current" />
-                </span>
-                <Sprite spec={record.sprite} px={224} title={record.class.label} />
+        <Tile span={3} tone="rail" className="flex flex-col items-center justify-center p-4">
+            <div className={cn("grid place-items-center", tone.text)}>
+                <Sprite spec={record.sprite} px={170} title={record.class.label} />
             </div>
-            <div
-                className={cn(
-                    "text-center font-mono text-[11px] leading-tight font-bold tracking-[0.16em] uppercase",
-                    tone.text,
-                )}
-            >
-                {tone.headline}
-            </div>
+            {/* The sprite's colour carries the verdict on screen; this says it
+                for a reader who cannot see the colour. */}
+            <span className="sr-only">{tone.headline}</span>
         </Tile>
     );
 }
@@ -369,20 +350,12 @@ export function EvidenceTile({
     // its own zero. Eight rows of "not a known botnet C2, not a Tor relay, not
     // observed scanning" is the sound of nothing happening, and spelling each
     // one out costs the same ink as the two rows that decided the verdict.
-    // The same tally the narrative and the confidence table use, rather than a
-    // fourth count of the same thing computed from these rows.
-    const buckets = consensusBuckets(result);
     const spoke = rows.filter((r) => r.score !== 0);
     const silent = rows.filter((r) => r.score === 0);
     const half = Math.ceil(silent.length / 2);
 
     return (
-        <Tile
-            span={span}
-            id="evidence"
-            title="Evidence"
-            note={`${buckets.flagged} of ${buckets.responded} flagged`}
-        >
+        <Tile span={span} id="evidence">
             {spoke.map((row) => (
                 <DetectorRow key={row.id} row={row} />
             ))}
@@ -412,7 +385,16 @@ type DetectorRow = {
     /** What the source said, in its own words. The same line the Source
      *  breakdown prints; the number alone is the half nobody can act on. */
     why?: string;
+    /** The source's own labels, as the short answer to "why": the list it is
+     *  on, the malware family, "tor-exit". The sentence stays on hover. */
+    keywords: string[];
 };
+
+const MAX_KEYWORDS = 2;
+
+function keywordsFor(categories: string[] | undefined): string[] {
+    return [...new Set((categories ?? []).filter(Boolean))].slice(0, MAX_KEYWORDS);
+}
 
 /** Scoring sources that settled, loudest first. A source that did not answer
  *  keeps a hatched track, so a gap in the evidence cannot read as evidence. */
@@ -425,6 +407,7 @@ function detectorRows(sources: SourceResult[]): DetectorRow[] {
             score: s.status === "ok" ? (s.score ?? 0) : null,
             loud: s.malicious === true,
             why: s.status === "ok" ? s.summary : (s.error ?? s.summary),
+            keywords: s.status === "ok" ? keywordsFor(s.categories) : [],
         }))
         .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 }
@@ -432,7 +415,7 @@ function detectorRows(sources: SourceResult[]): DetectorRow[] {
 /** A source with something to say: name, track, score, and the reason. */
 function DetectorRow({ row }: Readonly<{ row: DetectorRow }>) {
     return (
-        <div className="grid grid-cols-[8rem_5.5rem_1.9rem_1fr] items-center gap-x-3.5 border-b border-foreground/12 py-1.5 last:border-b-0">
+        <div className="grid grid-cols-[8rem_minmax(0,1fr)_5.5rem_1.9rem] items-center gap-x-3.5 border-b border-foreground/12 py-1.5 last:border-b-0">
             <span
                 title={row.name}
                 className={cn(
@@ -443,6 +426,25 @@ function DetectorRow({ row }: Readonly<{ row: DetectorRow }>) {
             >
                 {row.name}
             </span>
+            {row.keywords.length > 0 ? (
+                <span title={row.why} className="flex min-w-0 justify-end gap-1.5">
+                    {row.keywords.map((k) => (
+                        <span
+                            key={k}
+                            className="truncate border border-foreground/20 px-1.5 font-mono text-[10px] leading-[1.15rem]"
+                        >
+                            {k}
+                        </span>
+                    ))}
+                </span>
+            ) : (
+                <span
+                    title={row.why}
+                    className="truncate text-right font-mono text-[10.5px] text-muted-foreground"
+                >
+                    {row.why}
+                </span>
+            )}
             <Track row={row} />
             <span
                 className={cn(
@@ -452,12 +454,6 @@ function DetectorRow({ row }: Readonly<{ row: DetectorRow }>) {
                 )}
             >
                 {row.score ?? "—"}
-            </span>
-            <span
-                title={row.why}
-                className="truncate font-mono text-[10.5px] text-muted-foreground"
-            >
-                {row.why}
             </span>
         </div>
     );
@@ -487,7 +483,7 @@ function Track({ row }: Readonly<{ row: DetectorRow }>) {
     return (
         <span
             className={cn(
-                "relative h-1.5 border border-foreground/12 bg-muted",
+                "relative block h-1.5 border border-foreground/12 bg-muted",
                 row.score === null &&
                     "border-transparent bg-[repeating-linear-gradient(45deg,var(--color-muted-foreground)_0_2px,transparent_2px_4px)] opacity-50",
             )}

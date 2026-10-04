@@ -39,7 +39,9 @@ describe("classifyCategory", () => {
     ["Brute-Force", "brute force"],
     ["Email Spam", "spam"],
     ["DDoS Attack", "ddos"],
-    ["tor-exit", "anonymizer"],
+    ["tor-exit", "tor"],
+    ["tor-relay", "tor"],
+    ["Open Proxy", "anonymizer"],
     ["ransomware.wannacry", "ransomware"],
     ["CVE-2017-0147", "exploit"],
     ["Trojan.Win32.Emotet", "malware"],
@@ -189,7 +191,7 @@ describe("threatTypeOf", () => {
       src({ id: "tor-project", categories: ["tor-exit"], score: 50 }),
       { ...src({ id: "greynoise", categories: [], score: 0 }), status: "timeout" as const },
     ];
-    expect(threatTypeOf(sources, { verdict: "malicious" })?.type).toBe("anonymizer");
+    expect(threatTypeOf(sources, { verdict: "malicious" })?.type).toBe("tor");
   });
 
   it("prefers a specific type over a catch-all on equal support", () => {

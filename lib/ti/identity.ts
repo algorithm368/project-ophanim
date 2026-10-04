@@ -489,19 +489,19 @@ function domainVitals(r: DomainCheckResult): Vital[] {
   const born = day(ctx?.createdAt);
 
   return [
-    v("category", "Category", got(cat ?? app, list(rest)), "Uncategorised"),
-    v(
-      "registrar",
-      "Registrar",
-      got(ctx?.registrar, born && `registered ${born}`),
-      born ? { value: "Not on file", sub: `registered ${born}` } : "Not on file",
-    ),
     v(
       "country",
       "Country",
       got(res?.country?.value, res?.city?.value),
       "Not located",
       { countryCode: res?.countryCode },
+    ),
+    v("category", "Category", got(cat ?? app, list(rest)), "Uncategorised"),
+    v(
+      "registrar",
+      "Registrar",
+      got(ctx?.registrar, born && `registered ${born}`),
+      born ? { value: "Not on file", sub: `registered ${born}` } : "Not on file",
     ),
     v(
       "reach",
@@ -555,8 +555,21 @@ function hashVitals(r: HashCheckResult): Vital[] {
   ];
 }
 
-/** The dex entry behind the subject record. */
-export function buildIdentity(r: AnyResult): IdentityRecord {
+/** Rows the timeline tile owns on `/check`. The active-scan page has no
+ *  timeline, so it keeps them. */
+const DATE_FIELDS = new Set(["created", "expires", "first", "last"]);
+
+export function buildIdentity(
+  r: AnyResult,
+  opts: { omitDates?: boolean } = {},
+): IdentityRecord {
+  const rec = identityOf(r);
+  return opts.omitDates
+    ? { ...rec, fields: rec.fields.filter((f) => !DATE_FIELDS.has(f.key)) }
+    : rec;
+}
+
+function identityOf(r: AnyResult): IdentityRecord {
   const kind = buildSubjectRecord(r).class.label;
   if (isHashResult(r)) return { kind, vitals: hashVitals(r), fields: hashFields(r) };
   if (isDomainResult(r)) return { kind, vitals: domainVitals(r), fields: domainFields(r) };

@@ -1,6 +1,6 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout, postJson } from "../../http";
-import { byCodeUnit } from "../../sort";
+import { threatFoxWindow } from "../../sources/threatfox";
 
 interface ThreatFoxEntry {
   ioc?: string;
@@ -9,6 +9,7 @@ interface ThreatFoxEntry {
   malware?: string;
   malware_printable?: string;
   confidence_level?: number;
+  first_seen?: string;
   last_seen?: string;
   tags?: string[] | null;
 }
@@ -90,11 +91,7 @@ export const threatFoxDomainSource: TiSource = {
       const tags = Array.from(
         new Set(entries.flatMap((e) => e.tags ?? [])),
       ).slice(0, 10);
-      const lastSeen = entries
-        .map((e) => e.last_seen)
-        .filter((s): s is string => Boolean(s))
-        .sort(byCodeUnit)
-        .at(-1);
+      const { firstSeen, lastSeen } = threatFoxWindow(entries);
 
       return {
         status: "ok",
@@ -104,6 +101,7 @@ export const threatFoxDomainSource: TiSource = {
         lastSeen: lastSeen ?? undefined,
         summary: `Linked to ${malwares.join(", ") || "malware"} across ${entries.length} IOC(s)`,
         details: {
+          firstSeen,
           iocCount: entries.length,
           malware: malwares,
           threatTypes,

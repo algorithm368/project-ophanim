@@ -16,14 +16,6 @@ const CATEGORY_LABEL: Record<string, string> = {
     context: "Context",
 };
 
-const CATEGORY_ORDER = [
-    "reputation",
-    "blocklist",
-    "scanner",
-    "dnsbl",
-    "context",
-] as const;
-
 /** Per-source pages that look up a specific IP, keyed by source id. */
 const LOOKUP_URL: Record<string, (ip: string) => string> = {
     abuseipdb: (ip) => `https://www.abuseipdb.com/check/${ip}`,
@@ -102,16 +94,7 @@ function noSummaryReason(skipped: boolean, keyEnv?: string): string {
     return keyEnv ? `Set ${keyEnv} to enable` : "Disabled";
 }
 
-function relevanceRank(s: SourceResult): number {
-    const flagged =
-        s.status === "ok" && (s.malicious === true || (s.score ?? 0) >= 40);
-    if (flagged) return 0;
-    if (s.status === "ok") return 1;
-    if (s.status === "error" || s.status === "timeout") return 2;
-    return 3;
-}
-
-/** One semantic state per source, driving the single status dot. */
+/** One semantic state per source, driving the status dot and the verdict word. */
 type SourceTone = "flagged" | "low" | "clean" | "error" | "limited" | "skipped";
 
 function sourceTone(result: SourceResult): SourceTone {
@@ -126,32 +109,64 @@ function sourceTone(result: SourceResult): SourceTone {
     return "skipped";
 }
 
-/** The status dot is the only color in the breakdown (verdict-family). A hollow
- *  ring marks skipped/no-key sources that never contributed. */
-const TONE_DOT: Record<SourceTone, string> = {
+/** Ledger order: what moved the score first, then what answered clean, then
+ *  what never answered. */
+const TONE_RANK: Record<SourceTone, number> = {
+    flagged: 0,
+    low: 1,
+    clean: 2,
+    error: 3,
+    limited: 3,
+    skipped: 4,
+};
+
+/** The row's left edge is the only color in the breakdown (verdict-family).
+ *  Sources that never contributed, skipped ones and context sources, which
+ *  carry no weight and so cannot flag anything, leave the edge bare. */
+const TONE_EDGE: Record<SourceTone, string> = {
     flagged: "bg-red-500",
     low: "bg-amber-500",
     clean: "bg-emerald-500",
     error: "bg-muted-foreground/40",
     limited: "bg-amber-500",
-    skipped: "border border-muted-foreground/40",
+    skipped: "",
 };
 
 const TONE_LABEL: Record<SourceTone, string> = {
     flagged: "Flagged",
     low: "Low risk",
-    clean: "Clean",
+    clean: "Clear",
     error: "No response",
     limited: "Rate limited",
     skipped: "Skipped",
 };
 
-function StatusDot({ tone }: Readonly<{ tone: SourceTone }>) {
+const HATCH = {
+    backgroundImage:
+        "repeating-linear-gradient(135deg, transparent 0 3px, var(--border) 3px 4px)",
+};
+
+/**
+ * Where this source's score sits on the shared 0-100 axis.
+ *
+ * Every weighted source draws on the same track so the rows compare by eye
+ * without reading a number. A source with no score to place, because it never
+ * answered or because it is context and has no score at all, draws the track
+ * hatched rather than with a mark at zero: a mark at zero is a measured clear,
+ * and those must not look alike.
+ */
+function ScoreTrack({ score }: Readonly<{ score: number | null }>) {
+    if (score === null)
+        return <div aria-hidden className="h-2.5 w-full" style={HATCH} />;
+    const pct = Math.max(0, Math.min(100, score));
     return (
-        <span
-            title={TONE_LABEL[tone]}
-            className={cn("size-2 shrink-0 rounded-full", TONE_DOT[tone])}
-        />
+        <div aria-hidden className="relative h-2.5 w-full border-x border-border">
+            <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
+            <div
+                className="absolute top-0 h-2.5 w-[3px] bg-foreground"
+                style={{ left: `calc(${pct}% - ${(pct / 100) * 3}px)` }}
+            />
+        </div>
     );
 }
 
@@ -171,7 +186,16 @@ export const SourceBreakdown = memo(function SourceBreakdown({
     streaming?: boolean;
 }>) {
     const byRelevance = (a: SourceResult, b: SourceResult) =>
-        relevanceRank(a) - relevanceRank(b) || (b.score ?? 0) - (a.score ?? 0);
+        TONE_RANK[sourceTone(a)] - TONE_RANK[sourceTone(b)] ||
+        (b.score ?? 0) - (a.score ?? 0) ||
+        b.source.weight - a.source.weight;
+
+    // Split on weight, not category: a context source is one that cannot move
+    // the score, and some of those (scanner identification) file under another
+    // category.
+    const weighted = sources.filter((s) => s.source.weight > 0).sort(byRelevance);
+    const context = sources.filter((s) => s.source.weight === 0).sort(byRelevance);
+    const flagged = weighted.filter((s) => sourceTone(s) === "flagged").length;
 
     return (
         <Tile
@@ -186,41 +210,56 @@ export const SourceBreakdown = memo(function SourceBreakdown({
                             className="size-1.5 animate-pulse rounded-full bg-foreground/40"
                         />
                     )}
-                    {sources.length} sources
+                    {flagged} of {weighted.length} flagged, {sources.length} answered
                 </span>
             }
-            className="space-y-6 p-4"
+            className="overflow-x-auto p-0"
         >
-            {CATEGORY_ORDER.filter((cat) =>
-                sources.some((s) => s.source.category === cat),
-            ).map((cat) => {
-                const group = sources
-                    .filter((s) => s.source.category === cat)
-                    .sort(byRelevance);
-                return (
-                    <div key={cat} className="space-y-3">
-                        <div className="flex items-center gap-3">
-                            <h3 className="font-mono text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
-                                {CATEGORY_LABEL[cat] ?? cat}
-                            </h3>
-                            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                                {group.length.toString().padStart(2, "0")}
-                            </span>
-                            <div className="h-px flex-1 bg-border" />
-                        </div>
-                        <div className="border-t border-foreground/12">
-                            {group.map((s) => (
-                                <SourceRow
-                                    key={s.source.id}
-                                    result={s}
-                                    indicator={indicator}
-                                    kind={kind}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                );
-            })}
+            <table className="w-full min-w-[880px] border-collapse text-[13px]">
+                <thead>
+                    <tr className="border-b border-border text-left font-mono text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                        <th className="w-[3px] p-0" aria-label="Status" />
+                        <th className="py-2 pr-3 pl-4 font-semibold">Source</th>
+                        <th className="px-3 py-2 font-semibold">Class</th>
+                        <th className="px-3 py-2 font-semibold">Verdict</th>
+                        <th className="w-40 px-3 py-2 font-semibold">Score</th>
+                        <th className="px-3 py-2 text-right font-semibold">Weight</th>
+                        <th className="px-3 py-2 font-semibold">Finding</th>
+                        <th className="w-6 p-0" aria-label="Raw details" />
+                    </tr>
+                </thead>
+                <tbody>
+                    {weighted.map((s) => (
+                        <SourceRow
+                            key={s.source.id}
+                            result={s}
+                            indicator={indicator}
+                            kind={kind}
+                        />
+                    ))}
+                </tbody>
+                {context.length > 0 && (
+                    <tbody>
+                        <tr className="border-b border-border bg-muted/40">
+                            <td
+                                colSpan={8}
+                                className="px-4 py-1.5 font-mono text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"
+                            >
+                                Context, {context.length}, no weight in the score
+                            </td>
+                        </tr>
+                        {context.map((s) => (
+                            <SourceRow
+                                key={s.source.id}
+                                result={s}
+                                indicator={indicator}
+                                kind={kind}
+                                isContext
+                            />
+                        ))}
+                    </tbody>
+                )}
+            </table>
         </Tile>
     );
 });
@@ -229,10 +268,14 @@ function SourceRow({
     result,
     indicator,
     kind,
+    isContext = false,
 }: Readonly<{
     result: SourceResult;
     indicator: string;
     kind: Mode;
+    /** Weight 0: it answers with facts, never a verdict, so it gets no verdict
+     *  word and no score mark. */
+    isContext?: boolean;
 }>) {
     const { source, status } = result;
     const skipped = status === "skipped";
@@ -248,55 +291,91 @@ function SourceRow({
     const summary = errored
         ? (result.error ?? "Lookup failed")
         : (result.summary || noSummaryReason(skipped, source.keyEnv));
+    const placed = !isContext && status === "ok";
+    const showVerdict = !isContext || tone !== "clean";
 
     return (
-        <div
-            className={cn(
-                "group/row border-b border-border last:border-0",
-                skipped && "opacity-60",
-            )}
-        >
-            <div className="flex items-center gap-2 pr-2">
-                <a
-                    href={lookupUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={`Look up ${indicator} on ${source.name}`}
-                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
-                >
-                    <StatusDot tone={tone} />
-                    <span className="shrink-0 text-sm font-medium tracking-tight">
-                        {source.name}
-                    </span>
-                    <span className="sr-only">{TONE_LABEL[tone]}.</span>
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
-                        {summary}
-                    </span>
-                    <ExternalLink className="size-3.5 shrink-0 text-muted-foreground/50 opacity-0 transition group-hover/row:opacity-100" />
-                </a>
-                {hasDetails && (
-                    <button
-                        type="button"
-                        aria-label={
-                            detailsOpen ? "Hide raw details" : "Show raw details"
-                        }
-                        onClick={() => setDetailsOpen((o) => !o)}
-                        className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                        <ChevronRight
-                            className={cn(
-                                "size-3.5 transition-transform",
-                                detailsOpen && "rotate-90",
-                            )}
-                        />
-                    </button>
+        <>
+            <tr
+                className={cn(
+                    "group/row border-b border-border transition-colors hover:bg-accent/40",
+                    skipped && "opacity-60",
                 )}
-            </div>
+            >
+                <td
+                    title={isContext ? "Context" : TONE_LABEL[tone]}
+                    className={cn(
+                        "w-[3px] p-0",
+                        !(isContext && tone === "clean") && TONE_EDGE[tone],
+                    )}
+                >
+                    <span className="sr-only">
+                        {isContext ? "Context" : TONE_LABEL[tone]}
+                    </span>
+                </td>
+                <td className="py-1.5 pr-3 pl-4 font-medium whitespace-nowrap">
+                    <a
+                        href={lookupUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Look up ${indicator} on ${source.name}`}
+                        className="inline-flex items-center gap-1.5 tracking-tight underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+                    >
+                        {source.name}
+                        <ExternalLink className="size-3 text-muted-foreground/50 opacity-0 transition group-hover/row:opacity-100" />
+                    </a>
+                </td>
+                <td className="px-3 py-1.5 font-mono text-[11px] tracking-[0.1em] whitespace-nowrap text-muted-foreground uppercase">
+                    {CATEGORY_LABEL[source.category] ?? source.category}
+                </td>
+                <td className="px-3 py-1.5 font-mono text-[11px] font-semibold tracking-[0.08em] whitespace-nowrap uppercase">
+                    {showVerdict ? (
+                        TONE_LABEL[tone]
+                    ) : (
+                        <span className="sr-only">No verdict</span>
+                    )}
+                </td>
+                <td className="px-3 py-1.5">
+                    <ScoreTrack score={placed ? (result.score ?? 0) : null} />
+                </td>
+                <td className="px-3 py-1.5 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                    {isContext ? "0" : source.weight.toFixed(2)}
+                </td>
+                <td className="px-3 py-1.5 text-muted-foreground">{summary}</td>
+                <td className="p-0">
+                    {hasDetails && (
+                        <button
+                            type="button"
+                            aria-label={
+                                detailsOpen ? "Hide raw details" : "Show raw details"
+                            }
+                            aria-expanded={detailsOpen}
+                            onClick={() => setDetailsOpen((o) => !o)}
+                            className={cn(
+                                "ml-auto flex h-8 w-6 items-center justify-center text-muted-foreground/40 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none",
+                                detailsOpen && "text-foreground",
+                            )}
+                        >
+                            <ChevronRight
+                                strokeWidth={1.5}
+                                className={cn(
+                                    "size-3 transition-transform",
+                                    detailsOpen && "rotate-90",
+                                )}
+                            />
+                        </button>
+                    )}
+                </td>
+            </tr>
             {hasDetails && detailsOpen && (
-                <pre className="overflow-x-auto border-t border-border bg-muted/40 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                    {JSON.stringify(result.details, null, 2)}
-                </pre>
+                <tr className="border-b border-border">
+                    <td colSpan={8} className="p-0">
+                        <pre className="overflow-x-auto bg-muted/40 px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                            {JSON.stringify(result.details, null, 2)}
+                        </pre>
+                    </td>
+                </tr>
             )}
-        </div>
+        </>
     );
 }

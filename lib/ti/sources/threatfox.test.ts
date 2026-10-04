@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { threatFoxScore, threatFoxSource } from "./threatfox";
+import { threatFoxScore, threatFoxSource, threatFoxWindow } from "./threatfox";
 import { postJson } from "../http";
 
 describe("threatFoxScore", () => {
@@ -66,5 +66,24 @@ describe("threatFoxSource.check newest sighting", () => {
     respond([entry()]);
     const finding = await threatFoxSource.check("203.0.113.9", new AbortController().signal);
     expect(finding.lastSeen).toBeUndefined();
+  });
+});
+
+describe("threatFoxWindow", () => {
+  it("takes the earliest first_seen and the latest last_seen, skipping blanks", () => {
+    expect(
+      threatFoxWindow([
+        { first_seen: "2025-03-01 10:00:00 UTC", last_seen: "2026-08-14 19:38:23 UTC" },
+        { first_seen: "", last_seen: "2026-03-04 09:00:00 UTC" },
+        { first_seen: "2025-01-19 08:00:00 UTC" },
+      ]),
+    ).toEqual({ firstSeen: "2025-01-19 08:00:00 UTC", lastSeen: "2026-08-14 19:38:23 UTC" });
+  });
+
+  it("answers undefined for both when no entry is dated", () => {
+    expect(threatFoxWindow([{}, { first_seen: "" }])).toEqual({
+      firstSeen: undefined,
+      lastSeen: undefined,
+    });
   });
 });

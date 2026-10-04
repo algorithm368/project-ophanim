@@ -2,6 +2,7 @@ import type { HashCheckResult, SourceMeta, SourceResult, TiSource } from "../typ
 import { HASH_ALGO_LABEL, type HashAlgorithm } from "@/lib/hash";
 import { hashSources } from "./registry";
 import { runAll } from "../orchestrate";
+import { withRequestMemo } from "../request-memo";
 import { assembleHashResult } from "../assemble";
 import { resolveFamily } from "./family";
 import { fetchFamilyDescription } from "./sources/malpedia";
@@ -80,7 +81,7 @@ export async function checkHash(
   }));
   for (const result of skipped) onSettled?.(result);
 
-  const ran = await runAll(supported, hash, onSettled);
+  const ran = await withRequestMemo(() => runAll(supported, hash, onSettled));
 
   // Restore registry order so display order does not depend on which sources
   // happened to be skipped.

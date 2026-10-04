@@ -24,6 +24,20 @@ export function threatFoxScore(confidence: number): number {
   return Math.min(100, Math.max(60, confidence));
 }
 
+/** Earliest first sighting and newest last sighting across a ThreatFox
+ *  answer. Both lean on ThreatFox's timestamp format sorting chronologically
+ *  by code unit, the same promise the last-seen pick already relied on. */
+export function threatFoxWindow(
+  entries: { first_seen?: string; last_seen?: string }[],
+): { firstSeen?: string; lastSeen?: string } {
+  const dated = (key: "first_seen" | "last_seen") =>
+    entries
+      .map((e) => e[key])
+      .filter((s): s is string => Boolean(s))
+      .sort(byCodeUnit);
+  return { firstSeen: dated("first_seen")[0], lastSeen: dated("last_seen").at(-1) };
+}
+
 /** ThreatFox (abuse.ch): malware IOC database (free abuse.ch Auth-Key). */
 export const threatFoxSource: TiSource = {
   meta: {
@@ -77,11 +91,7 @@ export const threatFoxSource: TiSource = {
       const tags = Array.from(
         new Set(entries.flatMap((e) => e.tags ?? [])),
       ).slice(0, 10);
-      const lastSeen = entries
-        .map((e) => e.last_seen)
-        .filter((s): s is string => Boolean(s))
-        .sort(byCodeUnit)
-        .at(-1);
+      const { firstSeen, lastSeen } = threatFoxWindow(entries);
 
       return {
         status: "ok",
@@ -93,6 +103,7 @@ export const threatFoxSource: TiSource = {
           malwares.join(", ") || "malware"
         } across ${entries.length} IOC(s)`,
         details: {
+          firstSeen,
           iocCount: entries.length,
           malware: malwares,
           threatTypes,

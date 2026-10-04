@@ -43,7 +43,7 @@ export const VitalsTile = memo(function VitalsTile({
 }: Readonly<{ result: AnyCheckResult; span?: 9 | 12 }>) {
     const identity = useMemo(() => buildIdentity(result), [result]);
     return (
-        <Tile span={span} title={`This is a ${identity.kind}`}>
+        <Tile span={span} className="p-0">
             <Vitals vitals={identity.vitals} />
         </Tile>
     );
@@ -51,8 +51,9 @@ export const VitalsTile = memo(function VitalsTile({
 
 export const RecordTile = memo(function RecordTile({
     result,
-}: Readonly<{ result: AnyCheckResult }>) {
-    const identity = useMemo(() => buildIdentity(result), [result]);
+    omitDates = false,
+}: Readonly<{ result: AnyCheckResult; omitDates?: boolean }>) {
+    const identity = useMemo(() => buildIdentity(result, { omitDates }), [result, omitDates]);
     return (
         <Tile
             span={12}
@@ -72,7 +73,9 @@ export const RecordTile = memo(function RecordTile({
 /**
  * The four headline facts, side by side.
  *
- * Four fixed slots, ruled apart, each one headline over one caption. The slots
+ * Four fixed slots as bento cells, each one headline over one caption. The
+ * cells are ruled apart the way the frame rules its tiles, a one-pixel gap
+ * over the rule colour, so a shared edge is never two borders. The slots
  * are per IOC type and never move, which is what lets a reader go to the third
  * cell for the network rather than reading four labels to find it. A slot with
  * nothing behind it still occupies its place and says what is missing, because
@@ -80,26 +83,29 @@ export const RecordTile = memo(function RecordTile({
  */
 function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
     return (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="grid h-full grid-cols-1 gap-px bg-foreground/12 md:grid-cols-4">
             {vitals.map((vital) => (
-                <div key={vital.key} className="min-w-0">
-                    <div className="font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
+                <div
+                    key={vital.key}
+                    className="relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4"
+                >
+                    <FlagWallpaper code={vital.countryCode} />
+                    <div className="font-mono text-[9.5px] tracking-[0.11em] text-muted-foreground uppercase">
                         {vital.label}
                     </div>
                     <div
                         className={cn(
-                            "mt-1.5 flex items-center gap-2 font-mono text-[15px] leading-tight font-bold uppercase",
+                            "mt-2 flex items-start gap-2 text-base leading-tight font-medium",
                             vital.absent && "font-normal text-muted-foreground",
                         )}
                     >
-                        <Flag code={vital.countryCode} />
-                        <span className="min-w-0 truncate" title={vital.value}>
+                        <span className="line-clamp-2 min-w-0 wrap-anywhere" title={vital.value}>
                             {vital.value}
                         </span>
                     </div>
                     {vital.sub && (
                         <div
-                            className="mt-1 truncate font-mono text-[10px] text-muted-foreground"
+                            className="mt-0.5 truncate text-xs text-muted-foreground"
                             title={vital.sub}
                         >
                             {vital.sub}
@@ -111,9 +117,9 @@ function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
     );
 }
 
-/** The country's flag, when the claim carries one. Tiny external asset, so
- *  next/image would cost more than it saves. */
-function Flag({ code, className }: Readonly<{ code?: string; className?: string }>) {
+/** The country's flag behind a vital, filling the cell and fading out toward
+ *  the text so the headline stays the thing that is read. */
+function FlagWallpaper({ code }: Readonly<{ code?: string }>) {
     const src = flagUrl(code);
     if (!src) return null;
     return (
@@ -121,13 +127,9 @@ function Flag({ code, className }: Readonly<{ code?: string; className?: string 
         <img
             src={src}
             alt=""
-            width={20}
-            height={15}
+            aria-hidden
             loading="lazy"
-            className={cn(
-                "h-3 w-auto shrink-0 rounded-[2px] border border-foreground/20 object-cover",
-                className,
-            )}
+            className="pointer-events-none absolute inset-0 -z-10 size-full object-cover opacity-25 [mask-image:linear-gradient(to_left,black_35%,transparent_95%)] dark:opacity-20"
         />
     );
 }
@@ -166,10 +168,6 @@ function Row({
                     claim.absent && "text-muted-foreground",
                 )}
             >
-                <Flag
-                    code={claim.countryCode}
-                    className="mr-1.5 inline-block align-[-1px]"
-                />
                 {claim.value}
             </dd>
         </div>
@@ -182,12 +180,12 @@ function Row({
  */
 export function VitalsSkeleton({ span = 9 }: Readonly<{ span?: 9 | 12 }> = {}) {
     return (
-        <Tile span={span} title={<span className="sweep block h-2 w-40 rounded" />}>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <Tile span={span} className="p-0">
+            <div className="grid h-full grid-cols-1 gap-px bg-foreground/12 md:grid-cols-4">
                 {["w-16", "w-12", "w-20", "w-14"].map((w) => (
-                    <div key={w}>
+                    <div key={w} className="bg-card p-4">
                         <span className={cn("sweep block h-2 rounded", w)} />
-                        <span className="sweep mt-2 block h-3.5 w-28 rounded" />
+                        <span className="sweep mt-2.5 block h-4 w-28 rounded" />
                         <span className="sweep mt-1.5 block h-2 w-20 rounded" />
                     </div>
                 ))}

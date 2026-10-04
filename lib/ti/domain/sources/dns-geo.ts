@@ -53,22 +53,20 @@ function throwIfAborted(signal: AbortSignal): void {
 
 /**
  * Multi-resolver A-record consensus, same mechanism dnsSource uses. Resolved
- * independently rather than read off dnsSource's result: sources in this
+ * here rather than read off dnsSource's result, because sources in this
  * pipeline run in parallel and never depend on one another's output.
  *
- * That independence has a visible cost: dnsSource's own resolverConsensus
- * (shown in the DNS Records group) is a *separate* live query a moment apart,
- * and on a GeoDNS/anycast name the two can name different winning IPs. To
- * keep this source's own "IP confidence" and "Geo confidence" cards from
- * contradicting each other on screen, both are built from this one call's
- * result — never from dnsSource's — so the pair is always self-consistent
- * even when it drifts from the DNS Records group above it.
+ * Within a search the queries themselves are shared (request-memo.ts), and the
+ * DO bit is set to match dnsSource's, so both sources vote on the same live
+ * answers: the "IP confidence" and "Geo confidence" cards here agree with the
+ * DNS Records group even on a GeoDNS/anycast name. Run on its own, outside a
+ * search, this still makes its own queries.
  */
 async function resolveConsensus(domain: string, signal: AbortSignal): Promise<ResolverConsensus> {
   const votes: ResolverVote[] = await Promise.all(
     Object.entries(UNFILTERED_RESOLVERS).map(async ([resolver, url]) => {
       try {
-        return { resolver, ips: answers(await dohQuery(url, domain, "A", signal)) };
+        return { resolver, ips: answers(await dohQuery(url, domain, "A", signal, true)) };
       } catch {
         return { resolver, ips: null };
       }

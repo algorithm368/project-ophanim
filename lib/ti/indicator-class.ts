@@ -50,8 +50,8 @@ export type IpEvidence = {
   cloud?: string;
   /** Listening ports, from Shodan InternetDB. */
   ports?: number[];
-  /** A Tor relay or exit node. */
-  tor?: boolean;
+  /** The address's role in the Tor relay list, when it is in it. */
+  tor?: "exit" | "relay";
 };
 
 /**
@@ -99,21 +99,42 @@ function tenantWords(t: { count: number; atCeiling: boolean }): string {
 /** One rung of the ladder: it recognises its own case or stands aside. */
 type Rung = (ev: IpEvidence) => SubjectClass | null;
 
+/** Ahead of the anonymizer because the Tor project's own relay list is a
+ *  positive identification, where a geo provider's proxy flag is a guess about
+ *  an unnamed service. An exit is the one whose traffic leaves as this address;
+ *  a non-exit relay only carries traffic between other relays. */
+const torNode: Rung = ({ geo, tor }) => {
+  if (!tor) return null;
+  const exit = tor === "exit";
+  const where = geo?.isHosting ? " on hosting/datacenter infrastructure" : "";
+  return {
+    label: "Tor node",
+    short: "Tor node",
+    caption: exit ? "Tor exit node" : "Tor relay, non-exit",
+    phrase: `${exit ? "a Tor exit node" : "a Tor relay"}${where}`,
+    tail: exit ? ", so the real origin is hidden" : "",
+    desc: exit
+      ? "Listed by the Tor project as an exit node; traffic from it belongs to anonymous Tor users, not the operator."
+      : "Listed by the Tor project as a non-exit relay; it carries Tor traffic between relays and is not where Tor traffic leaves.",
+    sources: ["tor relay list"],
+  };
+};
+
 /** The hosting fact survives when both flags are set: collapsing to
  *  "anonymizer" alone dropped the datacentre context the profile showed
  *  alongside it (issue #9). */
-const anonymizer: Rung = ({ geo, tor }) =>
-  tor || geo?.isProxy
+const anonymizer: Rung = ({ geo }) =>
+  geo?.isProxy
     ? {
         label: "Anonymizer",
         short: "Anonymizer",
         caption: "anonymizing proxy or VPN",
         phrase: geo?.isHosting
-          ? "an anonymizer (proxy, VPN, or Tor) on hosting/datacenter infrastructure"
-          : "an anonymizer (proxy, VPN, or Tor)",
+          ? "an anonymizer (proxy or VPN) on hosting/datacenter infrastructure"
+          : "an anonymizer (proxy or VPN)",
         tail: ", so the real origin is hidden",
-        desc: "Proxy, VPN, or Tor; the real user is hidden behind it.",
-        sources: [tor ? "tor relay list" : "geo flags"],
+        desc: "Proxy or VPN; the real user is hidden behind it.",
+        sources: ["geo flags"],
       }
     : null;
 
@@ -221,8 +242,8 @@ const mobile: Rung = ({ geo }) =>
   geo?.isMobile
     ? {
         label: "Mobile network",
-        short: "Mobile",
-        caption: "mobile network",
+        short: "Mobile network",
+        caption: "cellular carrier",
         phrase: "a mobile carrier (cellular) address",
         tail: ", which identifies a lease rather than a device",
         desc: "A mobile carrier address. It identifies a lease rather than a device, and the lease moves.",
@@ -274,6 +295,7 @@ const residential: Rung = ({ geo }) =>
  * signal, once that split is settled.
  */
 const LADDER: Rung[] = [
+  torNode,
   anonymizer,
   frontDoor,
   infrastructure,
@@ -347,8 +369,13 @@ export function ipEvidence(
     // The source only sets `role` when the address is actually in the relay
     // list; its score is 0 either way for a non-node, so the field is the
     // reliable read.
-    tor: Boolean(text(okSource(sources, "tor-project")?.details?.role)),
+    tor: torRole(text(okSource(sources, "tor-project")?.details?.role)),
   };
+}
+
+function torRole(role: string | undefined): IpEvidence["tor"] {
+  if (role === "exit" || role === "relay") return role;
+  return undefined;
 }
 
 /** What the app knows about a name. Same contract as `IpEvidence`: every field
