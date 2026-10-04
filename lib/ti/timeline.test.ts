@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTimeline } from "@/lib/ti/timeline";
+import { buildTimeline, phaseSpan } from "@/lib/ti/timeline";
 import type {
   CheckResult,
   DomainCheckResult,
@@ -249,5 +249,118 @@ describe("timeline date boundaries", () => {
     })])).gaps;
     expect(gap("2026-07-14")).toEqual([]);
     expect(gap("2026-07-15")).toEqual([{ after: "first-seen", months: 6 }]);
+  });
+});
+
+const phases = (r: Parameters<typeof buildTimeline>[0]) =>
+  buildTimeline(r, NOW).phases.map((p) => [p.kind, p.from, p.to, p.ongoing]);
+
+describe("buildTimeline phases", () => {
+  it("draws a young domain as dormant, live, listed, paid ahead", () => {
+    expect(phases(story())).toEqual([
+      ["dormant", "2023-04-12", "2024-11-02", false],
+      ["live", "2024-11-02", "2025-01-19", false],
+      ["listed", "2025-01-19", "2026-10-04", true],
+      ["paid-to", "2026-10-04", "2027-04-12", true],
+    ]);
+  });
+
+  it("names the edges of each phase, for the ledger highlight", () => {
+    const t = buildTimeline(story(), NOW);
+    expect(t.phases.find((p) => p.kind === "dormant")?.edges).toEqual(["registered", "first-resolved"]);
+  });
+
+  it("refuses to call a pre-2018 domain dormant", () => {
+    const old = domain([
+      rdap("1997-09-15T00:00:00Z"),
+      pdns(["142.250.0.1", "2009-06-01T00:00:00Z", "2026-10-01T00:00:00Z"]),
+    ]);
+    expect(phases(old)[0]).toEqual(["before-records", "1997-09-15", "2009-06-01", false]);
+  });
+
+  it("goes quiet 90 days after the last report", () => {
+    const r = domain([
+      rdap("2023-04-12T00:00:00Z"),
+      pdns(["185.220.101.4", "2024-11-02T00:00:00Z", "2024-12-01T00:00:00Z"]),
+      listing("threatfox", "2025-02-01 00:00:00 UTC", "2026-05-01 00:00:00 UTC", ["botnet_cc"]),
+    ]);
+    expect(phases(r).slice(-2)).toEqual([
+      ["listed", "2025-02-01", "2026-05-01", false],
+      ["quiet", "2026-05-01", "2026-10-04", true],
+    ]);
+  });
+
+  it("ends the bar at a lapsed registration", () => {
+    const r = domain([rdap("2023-04-12T00:00:00Z", "2026-01-01T00:00:00Z")]);
+    expect(phases(r)).toEqual([["lapsed", "2026-01-01", "2026-10-04", false]]);
+  });
+
+  it("draws an IP from first seen, never from its netblock", () => {
+    const r = ip([
+      src({ id: "rdap-ip", domainContext: { createdAt: "1998-01-01T00:00:00Z" } }),
+      listing("feodo", "2025-06-01 00:00:00", "2026-10-01 00:00:00", ["botnet-c2"]),
+      src({ id: "dshield", details: { feedFirstSeen: "2025-03-01" }, lastSeen: "2026-09-28" }),
+    ]);
+    expect(phases(r)).toEqual([
+      ["live", "2025-03-01", "2025-06-01", false],
+      ["listed", "2025-06-01", "2026-10-04", true],
+    ]);
+  });
+
+  it("skips a zero-length live phase when a hash was listed on the day it surfaced", () => {
+    const r = hash([
+      src({ id: "virustotal", hashContext: { firstSeen: "2025-02-07T09:00:00Z", lastSeen: "2026-03-01T00:00:00Z" } }),
+      src({ id: "malwarebazaar", malicious: true, hashContext: { firstSeen: "2025-02-07 12:00:00" } }),
+    ]);
+    expect(phases(r)).toEqual([
+      ["listed", "2025-02-07", "2026-03-01", false],
+      ["quiet", "2026-03-01", "2026-10-04", true],
+    ]);
+  });
+
+  it("keeps an unlisted hash live until its last sighting", () => {
+    const r = hash([
+      src({ id: "virustotal", hashContext: { firstSeen: "2026-08-01T00:00:00Z", lastSeen: "2026-09-20T00:00:00Z" } }),
+    ]);
+    expect(phases(r)).toEqual([["live", "2026-08-01", "2026-10-04", true]]);
+  });
+});
+
+describe("phaseSpan", () => {
+  it("speaks in days, then months, then years", () => {
+    expect(phaseSpan("2026-09-20", "2026-10-04")).toBe("14 d");
+    expect(phaseSpan("2023-04-12", "2024-11-02")).toBe("18 mo");
+    expect(phaseSpan("1997-09-15", "2009-06-01")).toBe("11 yr");
+  });
+});
+
+describe("phase boundaries", () => {
+  it("does not close live activity at a future listing", () => {
+    const r = ip([
+      src({ id: "dshield", details: { feedFirstSeen: "2026-08-01" } }),
+      listing("threatfox", "2026-11-01", "2026-11-02", ["botnet_cc"]),
+    ]);
+    expect(phases(r)).toEqual([["live", "2026-08-01", "2026-10-04", true]]);
+  });
+
+  it("omits phases whose edges are on the same displayed day", () => {
+    const r = hash([src({ id: "virustotal", hashContext: { firstSeen: "2026-10-04" } })]);
+    expect(phases(r)).toEqual([]);
+  });
+
+  it("changes from before records to dormant on 2018-05-01", () => {
+    const phase = (registered: string) => phases(domain([
+      rdap(registered), cert("2019-01-01"),
+    ]))[0][0];
+    expect(phase("2018-04-30")).toBe("before-records");
+    expect(phase("2018-05-01")).toBe("dormant");
+  });
+
+  it("becomes quiet at 90 days, and remains live a day earlier", () => {
+    const r = hash([src({ id: "virustotal", hashContext: {
+      firstSeen: "2026-01-01", lastSeen: "2026-07-06",
+    } })]);
+    expect(buildTimeline(r, new Date("2026-10-03T00:00:00Z")).phases.map((p) => p.kind)).toEqual(["live"]);
+    expect(buildTimeline(r, new Date("2026-10-04T00:00:00Z")).phases.map((p) => p.kind)).toEqual(["live", "quiet"]);
   });
 });

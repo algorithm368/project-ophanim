@@ -258,10 +258,94 @@ export function buildTimeline(result: AnyCheckResult, now = new Date(result.chec
   };
 }
 
-/** Filled in by Task 3. */
-function buildPhases(_events: TimelineEvent[], _kind: Kind, _nowMs: number): Phase[] {
-  void _events;
-  void _kind;
-  void _nowMs;
-  return [];
+const DAY_MS = 86_400_000;
+/** CT enforcement in Chrome: from here a new name's first cert or resolution
+ *  is seen almost at once, so a gap after registration means nobody used it.
+ *  Before it, the gap only means nobody was watching. */
+const DORMANT_FROM = Date.UTC(2018, 4, 1);
+const QUIET_MS = 90 * DAY_MS;
+const LIVE_STARTS: EventKind[] = ["first-resolved", "cert-issued", "first-seen", "listed"];
+
+type PhaseDraft = Omit<Phase, "from" | "to"> & { from: number; to: number };
+
+function buildPhases(events: TimelineEvent[], kind: Kind, nowMs: number): Phase[] {
+  const at = (k: EventKind): number | undefined => {
+    const e = events.find((x) => x.kind === k);
+    // Future observations stay in the ledger but cannot describe activity yet.
+    if (k !== "expires" && e?.tone === "future") return undefined;
+    return e ? Date.parse(`${e.at}T00:00:00Z`) : undefined;
+  };
+  const drafts: PhaseDraft[] = [];
+  const add = (p: PhaseDraft) => {
+    if (isoDay(p.to) > isoDay(p.from)) drafts.push(p);
+  };
+
+  const start = LIVE_STARTS.map((k) => ({ k, ms: at(k) }))
+    .filter((s): s is { k: EventKind; ms: number } => s.ms !== undefined)
+    .sort((a, b) => a.ms - b.ms)[0];
+
+  const registered = kind === "domain" ? at("registered") : undefined;
+  if (registered !== undefined && start) {
+    add({
+      kind: registered >= DORMANT_FROM ? "dormant" : "before-records",
+      from: registered,
+      to: start.ms,
+      ongoing: false,
+      edges: ["registered", start.k],
+    });
+  }
+
+  addActivity(add, start, at, kind, nowMs);
+  addRegistration(add, at("expires"), nowMs);
+
+  return drafts.map((p) => ({ ...p, from: isoDay(p.from), to: isoDay(p.to) }));
+}
+
+/** Live, listed and quiet: the stretch the indicator was in use. */
+function addActivity(
+  add: (p: PhaseDraft) => void,
+  start: { k: EventKind; ms: number } | undefined,
+  at: (k: EventKind) => number | undefined,
+  kind: Kind,
+  nowMs: number,
+) {
+  const listed = at("listed");
+  const lastKind: EventKind = kind === "hash" ? "last-seen" : "last-reported";
+  const lastActive = at(lastKind);
+  // An unlisted IP or domain has no dated end to its activity; a hash does.
+  const activityEnd = listed !== undefined || kind === "hash" ? lastActive : undefined;
+  const quiet = activityEnd !== undefined && nowMs - activityEnd >= QUIET_MS;
+  const edge = quiet ? (activityEnd as number) : nowMs;
+  const closing: EventKind[] = quiet ? [lastKind] : [];
+
+  if (start && listed === undefined) {
+    add({ kind: "live", from: start.ms, to: edge, ongoing: !quiet, edges: [start.k, ...closing] });
+  } else if (start && listed !== undefined) {
+    add({ kind: "live", from: start.ms, to: listed, ongoing: false, edges: [start.k, "listed"] });
+  }
+  if (listed !== undefined) {
+    add({ kind: "listed", from: listed, to: edge, ongoing: !quiet, edges: ["listed", ...closing] });
+  }
+  if (quiet) {
+    add({ kind: "quiet", from: activityEnd as number, to: nowMs, ongoing: true, edges: [lastKind] });
+  }
+}
+
+/** Paid ahead, or lapsed: what the registration says about the future. */
+function addRegistration(add: (p: PhaseDraft) => void, expires: number | undefined, nowMs: number) {
+  if (expires === undefined) return;
+  if (expires > nowMs) {
+    add({ kind: "paid-to", from: nowMs, to: expires, ongoing: true, edges: ["expires"] });
+  } else {
+    add({ kind: "lapsed", from: expires, to: nowMs, ongoing: false, edges: ["expires"] });
+  }
+}
+
+/** A phase's length as a fragment for its label: "14 d", "18 mo", "11 yr". */
+export function phaseSpan(from: string, to: string): string {
+  const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
+  if (days < 60) return `${days} d`;
+  const months = monthsBetween(from, to);
+  if (months < 24) return `${months} mo`;
+  return `${Math.floor(months / 12)} yr`;
 }
