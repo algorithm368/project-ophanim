@@ -51,8 +51,9 @@ export const VitalsTile = memo(function VitalsTile({
 
 export const RecordTile = memo(function RecordTile({
     result,
-}: Readonly<{ result: AnyCheckResult }>) {
-    const identity = useMemo(() => buildIdentity(result), [result]);
+    omitDates = false,
+}: Readonly<{ result: AnyCheckResult; omitDates?: boolean }>) {
+    const identity = useMemo(() => buildIdentity(result, { omitDates }), [result, omitDates]);
     return (
         <Tile
             span={12}

@@ -425,6 +425,19 @@ describe("domains", () => {
     expect(find(rec, "caa")?.value).toBe("letsencrypt.org");
   });
 
+  it("leaves the dates to the timeline when asked", () => {
+    const r = domain({
+      registrar: "Example Registrar",
+      createdAt: "2015-03-04T00:00:00Z",
+      expiresAt: "2028-03-04T00:00:00Z",
+    });
+    const rec = buildIdentity(r, { omitDates: true });
+    expect(find(rec, "created")).toBeUndefined();
+    expect(find(rec, "expires")).toBeUndefined();
+    expect(find(rec, "registrar")?.value).toBe("Example Registrar");
+    expect(rec.fields.length).toBe(buildIdentity(r).fields.length - 2);
+  });
+
   it("states a name that does not resolve as a finding", () => {
     const claim = find(buildIdentity(domain({ nxdomain: true })), "resolve");
     expect(claim?.value).toBe("no such name");
@@ -494,6 +507,15 @@ describe("files", () => {
     const rec = buildIdentity(hash({ firstSeen: "2006-05-22T00:00:00Z", timesSubmitted: 1163351 }));
     expect(find(rec, "first")?.value).toBe("2006-05-22");
     expect(find(rec, "submissions")?.value).toBe("1,163,351");
+  });
+
+  it("leaves first and last seen to the timeline when asked", () => {
+    const rec = buildIdentity(
+      hash({ firstSeen: "2006-05-22T00:00:00Z", lastSeen: "2026-01-01T00:00:00Z" }),
+      { omitDates: true },
+    );
+    expect(find(rec, "first")).toBeUndefined();
+    expect(find(rec, "last")).toBeUndefined();
   });
 
   it("names every YARA rule that matched, deduped", () => {
