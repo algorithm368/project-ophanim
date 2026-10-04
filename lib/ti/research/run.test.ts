@@ -97,3 +97,16 @@ describe("runResearch", () => {
     expect(typeof r.durationMs).toBe("number");
   });
 });
+
+describe("runResearch — timeouts", () => {
+  it("turns a provider that times out into a timeout result", async () => {
+    const [r] = await runResearch("evil.com", "domain", [
+      provider({
+        check: async () => {
+          throw new DOMException("t", "TimeoutError");
+        },
+      }),
+    ]);
+    expect(r.status).toBe("timeout");
+  });
+});

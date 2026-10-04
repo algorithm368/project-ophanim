@@ -66,3 +66,66 @@ describe("threatFoxHashSource.check newest sighting", () => {
     expect(finding.lastSeen).toBeUndefined();
   });
 });
+
+describe("threatFoxHashSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const H = "a".repeat(64);
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(postJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(postJson).mockReset();
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "");
+    expect(threatFoxHashSource.isEnabled()).toBe(false);
+    expect(await threatFoxHashSource.check(H, signal)).toEqual({ status: "skipped" });
+  });
+
+  it("names malware, types and tags", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    expect(threatFoxHashSource.isEnabled()).toBe(true);
+    reply({
+      query_status: "ok",
+      data: [
+        { malware: "win.x", malware_printable: "X", threat_type: "payload", confidence_level: 80, tags: ["t"] },
+        { malware: "win.y", tags: null },
+      ],
+    });
+    expect(await threatFoxHashSource.check(H, signal)).toMatchObject({
+      score: 80,
+      categories: ["payload", "X", "win.y", "t"],
+      summary: "Linked to X, win.y across 2 IOC(s)",
+      hashContext: { malwareFamily: "X", tags: ["t"] },
+    });
+  });
+
+  it("falls back to a generic malware name with no tags", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    reply({ query_status: "ok", data: [{}] });
+    const f = await threatFoxHashSource.check(H, signal);
+    expect(f.summary).toBe("Linked to malware across 1 IOC(s)");
+    expect(f.hashContext?.tags).toBeUndefined();
+  });
+
+  it("treats no_result and illegal_hash as no data, and maps errors", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    for (const query_status of ["no_result", "illegal_hash"]) {
+      reply({ query_status });
+      expect((await threatFoxHashSource.check(H, signal)).summary).toBe(
+        "No malware IOCs reference this hash",
+      );
+    }
+    reply({ query_status: "x", data: "Bad request" });
+    expect((await threatFoxHashSource.check(H, signal)).error).toBe("Bad request");
+    reply({ query_status: "unknown_auth_key" });
+    expect((await threatFoxHashSource.check(H, signal)).error).toBe("unknown_auth_key");
+    reply(null, 502);
+    expect((await threatFoxHashSource.check(H, signal)).error).toBe("HTTP 502");
+    vi.mocked(postJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await threatFoxHashSource.check(H, signal)).status).toBe("timeout");
+    vi.mocked(postJson).mockRejectedValue(new Error("boom"));
+    expect((await threatFoxHashSource.check(H, signal)).error).toBe("boom");
+  });
+});

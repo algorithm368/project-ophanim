@@ -129,3 +129,38 @@ describe("rememberBatch", () => {
     expect(rememberBatch(null, fresh).previous).toBeUndefined();
   });
 });
+
+describe("scan-history — remaining shapes", () => {
+  it("lists an engine once and keeps whichever report handle a scan has", () => {
+    const past = summarizeBatch(
+      batch({
+        scans: [
+          scan({ engine: "urlscan", uuid: "u-1", verdict: { malicious: false } }),
+          scan({ engine: "urlscan", resultUrl: "https://r.test/", verdict: { malicious: false } }),
+          scan({ engine: "cloudflare", verdict: { malicious: false } }),
+        ],
+      }),
+    );
+    expect(past?.engines).toEqual(["urlscan", "cloudflare"]);
+    expect(past?.reports).toEqual([
+      { engine: "urlscan", uuid: "u-1" },
+      { engine: "urlscan", resultUrl: "https://r.test/" },
+    ]);
+  });
+
+  it("carries older history even when the replaced batch itself never finished", () => {
+    const older = summarizeBatch(batch());
+    const replaced = batch({ scans: [scan({ engine: "urlscan", status: "error" })], previous: older ? [older] : [] });
+    expect(rememberBatch(replaced, batch()).previous).toEqual([older]);
+  });
+
+  it("returns the new batch when the replaced one leaves nothing to carry", () => {
+    const next = batch();
+    expect(rememberBatch(batch({ scans: [] }), next)).toBe(next);
+  });
+
+  it("returns the new batch when nothing was replaced", () => {
+    const next = batch();
+    expect(rememberBatch(null, next)).toBe(next);
+  });
+});

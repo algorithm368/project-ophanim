@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { censysErrorMessage, isCensysQuota } from "./censys";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { censysErrorMessage, censysSource, isCensysQuota } from "./censys";
+import { getJson } from "../http";
+
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
 
 describe("censysErrorMessage", () => {
   it("surfaces the specific reason from the Platform errors[] envelope", () => {
@@ -61,5 +68,74 @@ describe("isCensysQuota", () => {
     expect(isCensysQuota("invalid token", 401)).toBe(false);
     expect(isCensysQuota("Unprocessable Entity", 422)).toBe(false);
     expect(isCensysQuota("HTTP 500", 500)).toBe(false);
+  });
+});
+
+describe("censysSource.check", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("is skipped without a token", async () => {
+    vi.stubEnv("CENSYS_API_SECRET", "");
+    expect(censysSource.isEnabled()).toBe(false);
+    expect(await censysSource.check("1.2.3.4", signal)).toEqual({ status: "skipped" });
+  });
+
+  it("scores exposed services and risky labels", async () => {
+    vi.stubEnv("CENSYS_API_SECRET", "t");
+    expect(censysSource.isEnabled()).toBe(true);
+    reply({
+      result: {
+        resource: {
+          labels: [{ value: "remote_access" }, {}],
+          services: [
+            { port: 22, protocol: "SSH", labels: [{ value: "remote_access" }] },
+            { port: 8080 },
+            { protocol: "UNKNOWN" },
+          ],
+          autonomous_system: { asn: 64500, name: "EXAMPLE" },
+          location: { country: "NL", city: "Amsterdam" },
+        },
+      },
+    });
+    const f = await censysSource.check("1.2.3.4", signal);
+    expect(f).toMatchObject({
+      score: 34,
+      categories: ["remote_access"],
+      summary: "3 exposed services · remote_access",
+      details: { ports: [22, 8080], services: ["22/SSH", "8080/?"], asn: 64500, city: "Amsterdam" },
+    });
+  });
+
+  it("reports a host with no services", async () => {
+    vi.stubEnv("CENSYS_API_SECRET", "t");
+    reply({ result: { resource: {} } });
+    const f = await censysSource.check("1.2.3.4", signal);
+    expect(f).toMatchObject({ score: 0, summary: "No exposed services" });
+  });
+
+  it("maps 404, quota and plain errors", async () => {
+    vi.stubEnv("CENSYS_API_SECRET", "t");
+    reply(null, 404);
+    expect((await censysSource.check("1.2.3.4", signal)).summary).toBe("Host not found in Censys");
+    reply({ errors: [{ message: "insufficient balance" }] }, 422);
+    expect(await censysSource.check("1.2.3.4", signal)).toEqual({
+      status: "rate_limited",
+      summary: "insufficient balance",
+    });
+    reply({ detail: "Unauthorized" }, 401);
+    expect(await censysSource.check("1.2.3.4", signal)).toEqual({
+      status: "error",
+      error: "Unauthorized",
+    });
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await censysSource.check("1.2.3.4", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await censysSource.check("1.2.3.4", signal)).error).toBe("boom");
   });
 });

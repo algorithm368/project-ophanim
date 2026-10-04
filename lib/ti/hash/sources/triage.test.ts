@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   bareHost,
   extractTriageCapabilities,
@@ -149,5 +149,96 @@ describe("extractTriageCapabilities / extractTriageMitre", () => {
   it("returns empty arrays when no signatures carry behavior", () => {
     expect(extractTriageCapabilities({ targets: [{}] })).toEqual([]);
     expect(extractTriageMitre({})).toEqual([]);
+  });
+});
+
+describe("triage helpers — sparse input", () => {
+  it("tolerates configs and targets missing their parts", () => {
+    expect(extractTriageRelations({ extracted: [{}, { config: { domains: ["a.example"], hosts: [7 as never] } }], targets: [{}] })).toEqual([
+      expect.objectContaining({ value: "a.example", tier: "confirmed" }),
+    ]);
+  });
+
+  it("skips nameless signatures and ones without techniques", () => {
+    const data = { targets: [{ signatures: [{}, { name: "X" }] }, {}] };
+    expect(extractTriageCapabilities(data)).toEqual([{ label: "X", mitre: undefined }]);
+    expect(extractTriageMitre(data)).toEqual([]);
+  });
+});
+
+describe("triageSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const H = "a".repeat(64);
+  const res = (data: unknown, status = 200) => ({ ok: status < 400, status, data, text: "" }) as never;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("TRIAGE_API_KEY", "");
+    expect(triageSource.isEnabled()).toBe(false);
+    expect(await triageSource.check(H, signal)).toEqual({ status: "skipped" });
+  });
+
+  it("scales the analysis score and names families, behavior and contacts", async () => {
+    vi.stubEnv("TRIAGE_API_KEY", "k");
+    expect(triageSource.isEnabled()).toBe(true);
+    vi.spyOn(http, "getJson")
+      .mockResolvedValueOnce(res({ data: [{ id: "s1" }] }))
+      .mockResolvedValueOnce(
+        res({
+          analysis: { score: 10, family: ["lumma"] },
+          targets: [
+            {
+              family: ["stealer"],
+              signatures: [{ name: "Steals creds", ttp: ["t1555"] }],
+              iocs: { ips: ["5.6.7.8"] },
+            },
+          ],
+        }),
+      );
+    const f = await triageSource.check(H, signal);
+    expect(f).toMatchObject({
+      malicious: true,
+      score: 100,
+      categories: ["lumma", "stealer", "Steals creds"],
+      summary: "Triage score 10/10 (lumma, stealer)",
+      hashContext: { mitreTechniques: [{ id: "T1555" }] },
+    });
+    expect(f.relations).toHaveLength(1);
+  });
+
+  it("falls back to the best target score, then to zero", async () => {
+    vi.stubEnv("TRIAGE_API_KEY", "k");
+    const spy = vi.spyOn(http, "getJson");
+    spy
+      .mockResolvedValueOnce(res({ data: [{ id: "s1" }] }))
+      .mockResolvedValueOnce(res({ targets: [{ score: 4 }, {}] }));
+    expect((await triageSource.check(H, signal)).summary).toBe("Triage score 4/10");
+    spy.mockResolvedValueOnce(res({ data: [{ id: "s1" }] })).mockResolvedValueOnce(res({}));
+    const f = await triageSource.check(H, signal);
+    expect(f.score).toBe(0);
+    expect(f.relations).toBeUndefined();
+    expect(f.hashContext).toMatchObject({
+      fileNames: undefined,
+      capabilities: undefined,
+      mitreTechniques: undefined,
+    });
+  });
+
+  it("reports a missing report, and HTTP failures on either call", async () => {
+    vi.stubEnv("TRIAGE_API_KEY", "k");
+    const spy = vi.spyOn(http, "getJson");
+    spy.mockResolvedValueOnce(res({ data: [] }));
+    expect((await triageSource.check(H, signal)).summary).toBe("No Triage report for this file");
+    spy.mockResolvedValueOnce(res(null, 401));
+    expect((await triageSource.check(H, signal)).error).toBe("HTTP 401");
+    spy.mockResolvedValueOnce(res({ data: [{ id: "s1" }] })).mockResolvedValueOnce(res(null, 500));
+    expect((await triageSource.check(H, signal)).error).toBe("HTTP 500");
+    spy.mockRejectedValueOnce(new DOMException("t", "TimeoutError"));
+    expect((await triageSource.check(H, signal)).status).toBe("timeout");
+    spy.mockRejectedValueOnce(new Error("boom"));
+    expect((await triageSource.check(H, signal)).error).toBe("boom");
   });
 });

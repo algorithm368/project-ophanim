@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  asSingleScan,
   attribution,
   mergeScans,
   mergeTargets,
@@ -443,5 +444,13 @@ describe("mergeTargets", () => {
     expect(merged.targets).toEqual([]);
     expect(merged.engines).toEqual([]);
     expect(merged.separateSites).toBe(false);
+  });
+});
+
+describe("asSingleScan", () => {
+  it("stands the first target in for the indicator, or nothing when there is none", () => {
+    const m = mergeTargets([]);
+    expect(asSingleScan(m).target).toBe("");
+    expect(asSingleScan({ ...m, targets: ["https://a.test/"] }).target).toBe("https://a.test/");
   });
 });

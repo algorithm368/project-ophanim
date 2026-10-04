@@ -130,3 +130,7 @@ describe("dshieldSource.check", () => {
     expect((await dshieldSource.check("1.2.3.4", signal())).status).toBe("timeout");
   });
 });
+
+describe("dshieldSource.isEnabled", () => {
+  it("needs no key", () => expect(dshieldSource.isEnabled()).toBe(true));
+});

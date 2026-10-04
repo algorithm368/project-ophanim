@@ -3,12 +3,14 @@ import type { SourceFinding, TiSource } from "../../types";
 
 const ZONE = "multi.surbl.org";
 
-// multi.surbl.org encodes the lists a domain is on as a bitmask in the last octet.
-const BITS: { bit: number; label: string; malicious: boolean }[] = [
-  { bit: 8, label: "phishing", malicious: true },
-  { bit: 16, label: "malware", malicious: true },
-  { bit: 64, label: "abuse", malicious: true },
-  { bit: 128, label: "cracked", malicious: true },
+// multi.surbl.org encodes the lists a domain is on as a bitmask in the last
+// octet. Every list decoded here is a malicious one; a mask matching none of
+// them is still reported, but only as an unlabelled listing.
+const BITS: { bit: number; label: string }[] = [
+  { bit: 8, label: "phishing" },
+  { bit: 16, label: "malware" },
+  { bit: 64, label: "abuse" },
+  { bit: 128, label: "cracked" },
 ];
 
 export function decode(addr: string): { labels: string[]; malicious: boolean } | null {
@@ -16,15 +18,9 @@ export function decode(addr: string): { labels: string[]; malicious: boolean } |
   if (!addr.startsWith("127.0.0.") || addr === "127.0.0.255") return null;
   const mask = Number(addr.split(".")[3]);
   if (!Number.isFinite(mask) || mask === 0) return null;
-  const labels: string[] = [];
-  let malicious = false;
-  for (const { bit, label, malicious: m } of BITS) {
-    if (mask & bit) {
-      labels.push(label);
-      if (m) malicious = true;
-    }
-  }
-  if (labels.length === 0) labels.push(`listed (mask ${mask})`);
+  const labels = BITS.filter(({ bit }) => mask & bit).map(({ label }) => label);
+  const malicious = labels.length > 0;
+  if (!malicious) labels.push(`listed (mask ${mask})`);
   return { labels, malicious };
 }
 

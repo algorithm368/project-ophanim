@@ -54,15 +54,15 @@ export function modeRouteFor(pathname: string): ModeRoute | null {
   const mode = MODE_OF_SEGMENT[parts[0]];
   if (!mode) return null;
 
-  let indicator: string;
   try {
-    indicator = decodeURIComponent(parts[1]);
+    // Never empty: the filter above dropped empty segments, and no escape
+    // decodes to nothing.
+    return { mode, indicator: decodeURIComponent(parts[1]) };
   } catch {
     // A malformed escape means the path was not one we wrote. Better no switch
     // than a switch pointing at a mangled indicator.
     return null;
   }
-  return indicator ? { mode, indicator } : null;
 }
 
 /** The path for reading this indicator in that mode, or the mode's landing page

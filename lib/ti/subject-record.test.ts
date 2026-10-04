@@ -1177,3 +1177,97 @@ describe("spriteFor, the 23-body roster", () => {
     });
   });
 });
+
+describe("subject record — remaining shapes", () => {
+  it("names hashlookup's malicious flag without a feed when it gives none", () => {
+    expect(threatClaim(hashResult([src({ id: "hashlookup", malicious: true })]))).toEqual({
+      label: "Known malicious",
+      sources: ["hashlookup"],
+    });
+  });
+
+  it("draws the type body when the threat and infra resolvers decline", () => {
+    // A Tor role without the categories fromTor reads, and a proxy flag only a
+    // key-gated source backs: both resolvers stand down, classifyIpLabel answers.
+    const tor = buildSubjectRecord(ipResult([src({ id: "tor-project", details: { role: "relay" } })]));
+    expect(tor.sprite.body).toBe("tor");
+    const keyed = src({ id: "ipinfo", requiresKey: true });
+    const proxy = buildSubjectRecord(
+      ipResult([keyed], { isProxy: true }, {
+        flags: { isHosting: false, isProxy: true, isMobile: false, sources: { isProxy: ["ipinfo"] } },
+        providerCount: 1,
+      } as CheckResult["geoResolution"]),
+    );
+    expect(proxy.sprite.body).toBe("anonymizer");
+  });
+
+  it("keeps a named provider ahead of a carrier", () => {
+    const rec = buildSubjectRecord(
+      ipResult(
+        [src({ id: "cloud-range", details: { provider: "Amazon Web Services", region: "us-east-1" } })],
+        { isMobile: true },
+      ),
+    );
+    expect(rec.class.label).toMatch(/^Amazon Web Services/);
+  });
+
+  it("labels an origin without a country code by name alone", () => {
+    expect(
+      originOf(
+        ipResult([], undefined, {
+          country: { value: "Germany", confidence: "high", score: 1, agreement: 1, sources: ["ip-api"] },
+          flags: { isHosting: false, isProxy: false, isMobile: false, sources: {} },
+          providerCount: 1,
+        } as CheckResult["geoResolution"]),
+      )?.label,
+    ).toBe("Germany");
+    expect(originOf(ipResult([], { country: "Germany", city: "Berlin" }))?.label).toBe("Germany, Berlin");
+  });
+
+  it("does not name a flagging source that did not answer, and counts VirusTotal only with numbers", () => {
+    const flagged = (sources: SourceResult[], id: string) => {
+      const r = ipResult(sources);
+      r.verdict = "malicious";
+      r.scoreBreakdown = { dominantSourceId: id } as CheckResult["scoreBreakdown"];
+      return priorsOf(r, null, { label: "x", sources: [] });
+    };
+    expect(flagged([src({ id: "virustotal", status: "error" })], "virustotal").label).toBe("No record");
+    expect(flagged([src({ id: "virustotal", details: {} })], "virustotal").label).toBe("Flagged by virustotal");
+  });
+
+  it("cites hashlookup's vouch on a forced-clean file the class named otherwise", () => {
+    const r = hashResult([
+      src({ id: "cymru-mhr", malicious: true, details: { detectionRate: 60 } }),
+      src({ id: "hashlookup", score: 0 }),
+    ]);
+    r.verdict = "clean";
+    r.scoreBreakdown = { benignOverride: "eicar" } as HashCheckResult["scoreBreakdown"];
+    const rec = buildSubjectRecord(r);
+    expect(rec.class.sources).not.toContain("hashlookup");
+    expect(rec.priors.label).toBe("No record, vouched by hashlookup");
+  });
+});
+
+describe("subject record — fallback bodies and backed flags", () => {
+  it("draws the hosting golem for a crowded address nothing else named", () => {
+    const rec = buildSubjectRecord(ipResult([src({ id: "reverse-ip", details: { domainCount: 40 } })]));
+    expect(rec.sprite.body).toBe("hosting");
+  });
+
+  it("takes a hosting flag a free source backs", () => {
+    const claim = infraClaim(
+      ipResult([src({ id: "ip-api" })], { isHosting: true }, {
+        flags: { isHosting: true, isProxy: false, isMobile: false, sources: { isHosting: ["ip-api"] } },
+        providerCount: 1,
+      } as CheckResult["geoResolution"]),
+    );
+    expect(claim).not.toBeNull();
+    const keyedOnly = infraClaim(
+      ipResult([src({ id: "ipinfo", requiresKey: true })], { isHosting: true }, {
+        flags: { isHosting: true, isProxy: false, isMobile: false, sources: { isHosting: ["ipinfo"] } },
+        providerCount: 1,
+      } as CheckResult["geoResolution"]),
+    );
+    expect(keyedOnly).toBeNull();
+  });
+});

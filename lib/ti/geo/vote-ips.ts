@@ -26,6 +26,20 @@ interface CountryGroup {
   ips: string[];
 }
 
+/** One IP's vote, once it has qualified: it has a country, so a name. */
+interface Ballot {
+  ip: string;
+  code?: string;
+  name: string;
+  city?: string;
+}
+
+/** A group's display name. Never empty: a ballot with neither a code nor a
+ *  name has no key, so it never forms a group. */
+function labelOf(group: CountryGroup): string {
+  return group.name || (group.code as string);
+}
+
 /**
  * Vote across a domain's consensus-resolved IPs for one pinned location, the
  * same shape (`GeoResolution`) a single IP gets from `reconcileGeoInputs` so
@@ -40,39 +54,29 @@ interface CountryGroup {
  * vote does not have.
  */
 export function voteAcrossIps(votes: IpGeoVote[]): GeoResolution | undefined {
-  const qualifying = votes.filter((v) =>
-    QUALIFYING_CONFIDENCE.has(v.resolution.country?.confidence ?? "low"),
+  const qualifying: Ballot[] = votes.flatMap(({ ip, resolution: r }) =>
+    r.country && QUALIFYING_CONFIDENCE.has(r.country.confidence)
+      ? [{ ip, code: r.countryCode, name: r.country.value, city: r.city?.value }]
+      : [],
   );
   if (qualifying.length === 0) return undefined;
 
-  const index = countryKeyIndex(
-    qualifying.map((v) => ({
-      code: v.resolution.countryCode,
-      name: v.resolution.country?.value,
-    })),
-  );
+  const index = countryKeyIndex(qualifying.map((b) => ({ code: b.code, name: b.name })));
 
   const groups = new Map<string, CountryGroup>();
-  for (const v of qualifying) {
-    const key = countryVoteKey(
-      { countryCode: v.resolution.countryCode, country: v.resolution.country?.value },
-      index,
-    );
+  for (const b of qualifying) {
+    const key = countryVoteKey({ countryCode: b.code, country: b.name }, index);
     if (!key) continue;
     const existing = groups.get(key);
     if (existing) {
-      existing.ips.push(v.ip);
+      existing.ips.push(b.ip);
       // A code-only IP and a name-only IP fill in each other's blank, same as
       // the provider-level country vote, so the winner reads as a full name
       // even when whichever IP happened to be seen first only had a code.
-      existing.name ||= v.resolution.country?.value ?? "";
-      existing.code ||= v.resolution.countryCode;
+      existing.name ||= b.name;
+      existing.code ||= b.code;
     } else {
-      groups.set(key, {
-        code: v.resolution.countryCode,
-        name: v.resolution.country?.value ?? "",
-        ips: [v.ip],
-      });
+      groups.set(key, { code: b.code, name: b.name, ips: [b.ip] });
     }
   }
   if (groups.size === 0) return undefined;
@@ -89,13 +93,13 @@ export function voteAcrossIps(votes: IpGeoVote[]): GeoResolution | undefined {
   const confidence = tierFor(agreement);
 
   const country: GeoResolution["country"] = {
-    value: winner.name || winner.code || "",
+    value: labelOf(winner),
     confidence,
     score: agreement,
     agreement,
     sources: winner.ips,
     ...(losers.length
-      ? { alternatives: losers.map((l) => ({ value: l.name || l.code || "", sources: l.ips })) }
+      ? { alternatives: losers.map((l) => ({ value: labelOf(l), sources: l.ips })) }
       : {}),
   };
 
@@ -106,8 +110,8 @@ export function voteAcrossIps(votes: IpGeoVote[]): GeoResolution | undefined {
   // all) pass as agreement rather than break it, so the raw per-IP values —
   // undefined included — are what unanimity is checked against.
   const winnerCityValues = qualifying
-    .filter((v) => winner.ips.includes(v.ip))
-    .map((v) => v.resolution.city?.value);
+    .filter((b) => winner.ips.includes(b.ip))
+    .map((b) => b.city);
   const firstCity = winnerCityValues[0];
   const unanimousCity =
     firstCity !== undefined && winnerCityValues.every((c) => c === firstCity);

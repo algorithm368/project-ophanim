@@ -77,3 +77,10 @@ describe("countryVoteKey", () => {
     expect(countryVoteKey({}, new Map())).toBe("");
   });
 });
+
+describe("countryKeyIndex — codes the runtime cannot name", () => {
+  it("learns nothing from an unassigned or malformed code", () => {
+    expect([...countryKeyIndex([{ code: "AA" }]).keys()]).toEqual([]);
+    expect([...countryKeyIndex([{ code: "1" }]).keys()]).toEqual([]);
+  });
+});

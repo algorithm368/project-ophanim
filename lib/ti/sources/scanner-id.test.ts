@@ -98,3 +98,7 @@ describe("scannerIdSource.check", () => {
     expect((await scannerIdSource.check("1.2.3.4", signal())).status).toBe("timeout");
   });
 });
+
+describe("scannerIdSource.isEnabled", () => {
+  it("needs no key", () => expect(scannerIdSource.isEnabled()).toBe(true));
+});

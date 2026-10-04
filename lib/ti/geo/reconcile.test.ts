@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GeoContext, SourceResult } from "../types";
-import { overlayResolution, reconcileGeo, reconcileGeoInputs } from "./reconcile";
+import { overlayResolution, reconcileGeo, reconcileGeoInputs, type GeoInput } from "./reconcile";
 
 /** Minimal SourceResult factory for reconcile tests. */
 function r(id: string, geo: Record<string, unknown>): SourceResult {
@@ -490,5 +490,78 @@ describe("reconcileCountry vote keys", () => {
       { id: "freeipapi", geo: { country: "Australia" } },
     ]);
     expect(res?.country?.alternatives).toHaveLength(1);
+  });
+});
+
+describe("reconcile — remaining shapes", () => {
+  /** n equal-weight points, each ~24.5 km north of the mean of those before
+   *  it, so every one joins the cluster and the cluster chains ever wider. */
+  function chain(n: number, prefix = "p"): GeoInput[] {
+    const lats: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const mean = lats.length ? lats.reduce((a, b) => a + b, 0) / lats.length : 10;
+      lats.push(lats.length ? mean + 0.22 : 10);
+    }
+    return lats.map((lat, i) => ({ id: `${prefix}${i}`, geo: { lat, lon: 10 } }));
+  }
+
+  it("caps a cluster's confidence by how far it chains", () => {
+    expect(reconcileGeoInputs(chain(4))?.coordinates?.confidence).toBe("medium");
+    expect(reconcileGeoInputs(chain(35))?.coordinates?.confidence).toBe("low");
+    // Already short of high on the vote, a wide cluster is not lowered further.
+    const far = Array.from({ length: 3 }, (_, i) => ({ id: `f${i}`, geo: { lat: -30, lon: 100 + i * 0.01 } }));
+    expect(reconcileGeoInputs([...chain(4), ...far])?.coordinates?.confidence).toBe("medium");
+  });
+
+  it("names a merged city after its heavier report", () => {
+    const heavyLater = reconcileGeoInputs([
+      { id: "reverse-dns", geo: { city: "Kowloon", lat: 22.32, lon: 114.17 } },
+      { id: "ip-api", geo: { city: "Hong Kong", lat: 22.3, lon: 114.17 } },
+    ]);
+    expect(heavyLater?.city?.value).toBe("Hong Kong");
+    const heavyFirst = reconcileGeoInputs([
+      { id: "ip-api", geo: { city: "Hong Kong", lat: 22.3, lon: 114.17 } },
+      { id: "reverse-dns", geo: { city: "Kowloon", lat: 22.32, lon: 114.17 } },
+    ]);
+    expect(heavyFirst?.city?.value).toBe("Hong Kong");
+  });
+
+  it("ignores an ASN with no number in it", () => {
+    expect(reconcileGeoInputs([{ id: "ip-api", geo: { asn: "unknown", country: "Japan" } }])?.asn).toBeUndefined();
+  });
+
+  it("overlays only the fields a resolution has", () => {
+    const res = reconcileGeoInputs([{ id: "ip-api", geo: { lat: 1, lon: 2 } }]);
+    expect(overlayResolution(res as NonNullable<typeof res>, { country: "Kept" })).toMatchObject({
+      country: "Kept",
+      lat: 1,
+      lon: 2,
+    });
+  });
+});
+
+describe("reconcile — code-only dissent and a full overlay", () => {
+  it("prints a code-only losing country by its code", () => {
+    const res = reconcileGeoInputs([
+      { id: "ip-api", geo: { country: "Germany", countryCode: "DE" } },
+      { id: "ipinfo", geo: { countryCode: "DE" } },
+      { id: "ipwhois", geo: { countryCode: "FR" } },
+    ]);
+    expect(res?.country?.alternatives).toEqual([{ value: "FR", sources: ["ipwhois"] }]);
+  });
+
+  it("overlays every reconciled place and network field", () => {
+    const res = reconcileGeoInputs([
+      {
+        id: "ip-api",
+        geo: { country: "Japan", countryCode: "JP", region: "Tokyo", city: "Tokyo", asn: "AS2497", asnOrg: "IIJ", isp: "IIJ" },
+      },
+    ]);
+    expect(overlayResolution(res as NonNullable<typeof res>)).toMatchObject({
+      region: "Tokyo",
+      city: "Tokyo",
+      asn: "AS2497",
+      asnOrg: "IIJ",
+    });
   });
 });

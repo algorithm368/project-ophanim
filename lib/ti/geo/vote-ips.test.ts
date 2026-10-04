@@ -118,3 +118,23 @@ describe("voteAcrossIps", () => {
     expect(out.country?.value).toBe("Singapore");
   });
 });
+
+describe("voteAcrossIps — votes with too little to count", () => {
+  it("skips an IP with no country at all", () => {
+    const none: GeoResolution = { ...res("x"), country: undefined };
+    expect(voteAcrossIps([vote("1.1.1.1", none)])).toBeUndefined();
+  });
+
+  it("skips a qualifying vote with neither a name nor a code", () => {
+    expect(voteAcrossIps([vote("1.1.1.1", res(""))])).toBeUndefined();
+  });
+
+  it("labels a code-only winner and loser by their codes", () => {
+    const r = voteAcrossIps([
+      vote("1.1.1.1", res("", { countryCode: "DE" })),
+      vote("1.1.1.2", res("", { countryCode: "DE" })),
+      vote("1.1.1.3", res("", { countryCode: "FR" })),
+    ]);
+    expect(r?.country).toMatchObject({ value: "DE", alternatives: [{ value: "FR" }] });
+  });
+});

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { OTX_SCORE_CAP, otxIndicatorType, otxScore, otxSource } from "./otx";
 import { FLAG_THRESHOLD } from "../aggregate";
 import { getJson } from "../http";
+import { fetchOtxMalwareRelations } from "../otx-malware";
 
 vi.mock("../http", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../http")>();
@@ -66,5 +67,60 @@ describe("otxIndicatorType", () => {
   it("selects the IPv6 indicator namespace for a v6 address", () => {
     expect(otxIndicatorType("2001:4860:4860::8888")).toBe("IPv6");
     expect(otxIndicatorType("::1")).toBe("IPv6");
+  });
+});
+
+describe("otxSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+    vi.mocked(fetchOtxMalwareRelations).mockReset();
+    vi.mocked(fetchOtxMalwareRelations).mockResolvedValue([]);
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("OTX_API_KEY", "");
+    expect(otxSource.isEnabled()).toBe(false);
+    expect(await otxSource.check("1.2.3.4", signal)).toEqual({ status: "skipped" });
+  });
+
+  it("collects pulse tags and names, and attaches malware relations", async () => {
+    vi.stubEnv("OTX_API_KEY", "k");
+    expect(otxSource.isEnabled()).toBe(true);
+    vi.mocked(fetchOtxMalwareRelations).mockResolvedValue([
+      { value: "a".repeat(64), type: "hash", relation: "malware" },
+    ]);
+    reply({
+      pulse_info: { count: 2, pulses: [{ name: "P1", tags: ["c2", "c2"] }, { name: "" }] },
+      reputation: 0,
+    });
+    const f = await otxSource.check("1.2.3.4", signal);
+    expect(f.summary).toBe("Referenced in 2 threat pulse(s)");
+    expect(f.categories).toEqual(["c2"]);
+    expect(f.details).toMatchObject({ pulses: ["P1"] });
+    expect(f.relations).toHaveLength(1);
+  });
+
+  it("reports an unreferenced indicator from an empty answer", async () => {
+    vi.stubEnv("OTX_API_KEY", "k");
+    reply({});
+    const f = await otxSource.check("1.2.3.4", signal);
+    expect(f.summary).toBe("Not referenced in any threat pulse");
+    expect(f.relations).toBeUndefined();
+  });
+
+  it("surfaces API errors, timeouts and thrown errors", async () => {
+    vi.stubEnv("OTX_API_KEY", "k");
+    reply({ error: "bad key" }, 403);
+    expect((await otxSource.check("1.2.3.4", signal)).error).toBe("bad key");
+    reply(null, 500);
+    expect((await otxSource.check("1.2.3.4", signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await otxSource.check("1.2.3.4", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await otxSource.check("1.2.3.4", signal)).error).toBe("boom");
   });
 });

@@ -55,6 +55,7 @@ describe("ruleNames", () => {
 describe("clamavNames", () => {
   it("dedupes and caps", () => {
     expect(clamavNames([{ clamav_results: ["x", "X", "y"] }])).toEqual(["x", "y"]);
+    expect(clamavNames([{ clamav_results: ["x", "y"] }], 1)).toEqual(["x"]);
   });
 
   it("tolerates a null result set", () => {
@@ -148,5 +149,31 @@ describe("yaraifySource.check", () => {
     expect((await yaraifySource.check("a".repeat(64), signal())).status).toBe("error");
     vi.mocked(postJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
     expect((await yaraifySource.check("a".repeat(64), signal())).status).toBe("timeout");
+  });
+});
+
+describe("yaraify helpers — sparse input", () => {
+  it("tolerates missing tasks and task results", () => {
+    expect(ruleNames(undefined)).toEqual([]);
+    expect(ruleNames([{}])).toEqual([]);
+    expect(clamavNames(undefined)).toEqual([]);
+  });
+
+  it("caps the rule list inside a single task", () => {
+    expect(ruleNames([{ static_results: [{ rule_name: "a" }, { rule_name: "b" }] }], 1)).toEqual([
+      "a",
+    ]);
+  });
+
+  it("builds an empty record from metadata-free data", () => {
+    const f = yaraifyFinding({ query_status: "ok", data: {} });
+    expect(f.summary).toBe("No YARA rule matched this file");
+    expect(f.details).toEqual({});
+  });
+
+  it("counts sightings", () => {
+    const f = yaraifyFinding({ query_status: "ok", data: { metadata: { sightings: 3 } } });
+    expect(f.summary).toBe("3 sightings");
+    expect(f.details).toEqual({ sightings: 3 });
   });
 });

@@ -1,5 +1,6 @@
 import { mergeFields } from "./orchestrate";
 import type { GeoContext, SourceMeta, SourceResult } from "./types";
+import { sourceWeight } from "./weight";
 
 /**
  * What a half-finished lookup is allowed to say about itself.
@@ -79,7 +80,7 @@ export function buildPartial(
 ): PartialLookup {
   // Context-only sources (weight 0) cannot flag anything, so they are not
   // detectors. Counting them here would disagree with the completed strip.
-  const scoring = settled.filter((s) => (s.source.weight ?? 1) > 0);
+  const scoring = settled.filter((s) => sourceWeight(s.source) > 0);
   const answered = scoring.filter((s) => s.status === "ok");
   const adverse = answered.filter(isAdverse).length;
   const noRecord = answered.filter(isNoRecord).length;
@@ -95,7 +96,7 @@ export function buildPartial(
       total,
       // Counted off the panel, not off who has answered, so the denominator is
       // fixed from the first frame instead of climbing with the numerator.
-      detectors: metas.filter((m) => (m.weight ?? 1) > 0).length,
+      detectors: metas.filter((m) => sourceWeight(m) > 0).length,
       settled: settled.length,
       answered: answered.length,
       adverse,

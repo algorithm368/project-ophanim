@@ -235,8 +235,9 @@ function stripVendorSuffix(raw: string): string {
   let out = raw.trimEnd();
   while (out.endsWith(")")) {
     const open = out.lastIndexOf("(");
-    // No opener, or something nested inside: leave it rather than guess.
-    if (open === -1 || out.slice(open + 1, -1).includes("(")) return out;
+    // No opener: leave it rather than guess. (Being the last "(", `open` can
+    // never have another one nested after it.)
+    if (open === -1) return out;
     out = out.slice(0, open).trimEnd();
   }
   return out;

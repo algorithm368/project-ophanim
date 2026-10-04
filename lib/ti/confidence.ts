@@ -6,6 +6,7 @@ import type {
   SourceCategory,
   SourceResult,
 } from "./types";
+import { sourceWeight } from "./weight";
 
 // Tier cutoffs (inclusive lower bounds), placed on the two natural gaps in a
 // sixteen-indicator calibration run rather than picked a priori.
@@ -42,7 +43,7 @@ export interface ScoreConfidence {
   reason: string;
 }
 
-const weightOf = (s: SourceResult) => s.source.weight ?? 1;
+const weightOf = (s: SourceResult) => sourceWeight(s.source);
 const sumWeight = (list: SourceResult[]) =>
   list.reduce((n, s) => n + weightOf(s), 0);
 
@@ -88,7 +89,8 @@ function isNarrowSilence(s: SourceResult): boolean {
   return (
     NARROW.includes(s.source.category) &&
     s.malicious !== true &&
-    (s.score ?? 0) === 0
+    // Only ever asked of scored sources, so the score is a number.
+    s.score === 0
   );
 }
 

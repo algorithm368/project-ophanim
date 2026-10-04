@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { categoryBreakdown, reportLog, summarizeAbuse } from "./abuseipdb";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { abuseIpdbSource, categoryBreakdown, reportLog, summarizeAbuse } from "./abuseipdb";
+import { getJson } from "../http";
+
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
 
 describe("categoryBreakdown", () => {
   it("tallies category ids into named buckets, most-reported first", () => {
@@ -101,5 +108,94 @@ describe("reportLog", () => {
   it("returns nothing when no report is dated", () => {
     expect(reportLog({ totalReports: 1, reports: [{ categories: [22] }] })).toBeUndefined();
     expect(reportLog({})).toBeUndefined();
+  });
+});
+
+describe("abuseIpdbSource.check", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("ABUSEIPDB_API_KEY", "");
+    expect(abuseIpdbSource.isEnabled()).toBe(false);
+    expect(await abuseIpdbSource.check("1.2.3.4", signal)).toEqual({ status: "skipped" });
+  });
+
+  it("maps a reported IP with hostnames, geo and a dated report log", async () => {
+    vi.stubEnv("ABUSEIPDB_API_KEY", "k");
+    expect(abuseIpdbSource.isEnabled()).toBe(true);
+    reply({
+      data: {
+        abuseConfidenceScore: 100,
+        totalReports: 2,
+        numDistinctUsers: 2,
+        isp: "Example ISP",
+        countryCode: "CN",
+        isWhitelisted: false,
+        lastReportedAt: "2026-01-02T00:00:00Z",
+        hostnames: ["a.example", "a.example", ""],
+        reports: [
+          { categories: [22], reportedAt: "2026-01-02T00:00:00Z" },
+          { categories: [18, 22], reportedAt: "2026-01-01T00:00:00Z" },
+        ],
+      },
+    });
+    const f = await abuseIpdbSource.check("1.2.3.4", signal);
+    expect(f).toMatchObject({
+      malicious: true,
+      allowlisted: false,
+      score: 100,
+      geo: { isp: "Example ISP", countryCode: "CN" },
+      relations: [{ value: "a.example", type: "domain", relation: "rDNS" }],
+      details: {
+        reportWindowDays: 90,
+        firstReported: "2026-01-01T00:00:00Z",
+        hostnames: ["a.example", "a.example", ""],
+      },
+    });
+  });
+
+  it("leaves optional context out of a bare answer", async () => {
+    vi.stubEnv("ABUSEIPDB_API_KEY", "k");
+    reply({ data: { abuseConfidenceScore: 0, hostnames: [] } });
+    const f = await abuseIpdbSource.check("1.2.3.4", signal);
+    expect(f.geo).toBeUndefined();
+    expect(f.relations).toBeUndefined();
+    expect(f.details).toMatchObject({
+      reportCategories: undefined,
+      reportWindowDays: undefined,
+      hostnames: undefined,
+    });
+    reply({ data: { countryCode: "US" } });
+    expect((await abuseIpdbSource.check("1.2.3.4", signal)).geo).toEqual({ countryCode: "US" });
+  });
+
+  it("surfaces the API's error detail, the status, timeouts and errors", async () => {
+    vi.stubEnv("ABUSEIPDB_API_KEY", "k");
+    reply({ errors: [{ detail: "Daily limit" }] }, 429);
+    expect((await abuseIpdbSource.check("1.2.3.4", signal)).error).toBe("Daily limit");
+    reply(null, 500);
+    expect((await abuseIpdbSource.check("1.2.3.4", signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await abuseIpdbSource.check("1.2.3.4", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await abuseIpdbSource.check("1.2.3.4", signal)).error).toBe("boom");
+  });
+});
+
+describe("abuseipdb sparse reports", () => {
+  it("skips reports without categories", () => {
+    expect(categoryBreakdown([{}])).toEqual([]);
+  });
+
+  it("treats a missing total as a complete list", () => {
+    expect(reportLog({ reports: [{ reportedAt: "2026-01-01T00:00:00Z" }] })?.firstReported).toBe(
+      "2026-01-01T00:00:00Z",
+    );
   });
 });

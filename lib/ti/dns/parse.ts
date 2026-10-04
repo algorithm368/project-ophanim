@@ -15,7 +15,8 @@ export function extractDmarc(txt: string[]): string | undefined {
 
 /** "10 mail.example.com" -> "mail.example.com". */
 export function normalizeMxHosts(mx: string[]): string[] {
-  return mx.map((m) => m.split(/\s+/).pop() ?? m);
+  // split() never returns an empty list, so there is always a last word.
+  return mx.map((m) => m.split(/\s+/).pop()!);
 }
 
 /**

@@ -81,3 +81,12 @@ describe("reverseDnsSource", () => {
     expect(f.error).toContain("resolver exploded");
   });
 });
+
+describe("reverseDnsSource edge paths", () => {
+  it("needs no key", () => expect(reverseDnsSource.isEnabled()).toBe(true));
+
+  it("maps a timeout", async () => {
+    vi.mocked(dohQuery).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await reverseDnsSource.check("8.8.8.8", signal())).status).toBe("timeout");
+  });
+});

@@ -44,3 +44,20 @@ describe("resolveFamily", () => {
     expect(resolveFamily({})).toBeUndefined();
   });
 });
+
+describe("parseFamilyFromDetections — remaining shapes", () => {
+  it("skips blank labels and falls back to a long lowercase token", () => {
+    expect(parseFamilyFromDetections(["", "trojan.qakbot.zzzz", "malware.qakbot.yy"])).toBe("qakbot");
+  });
+
+  it("counts a token capitalized when any label capitalizes it", () => {
+    expect(parseFamilyFromDetections(["emotet.abc", "Emotet.def", "Other.x"])).toBe("emotet");
+  });
+});
+
+describe("parseFamilyFromDetections — ties", () => {
+  it("breaks an equal count toward the longer token, then the earlier one", () => {
+    expect(parseFamilyFromDetections(["Alpha.Charlie"])).toBe("Charlie");
+    expect(parseFamilyFromDetections(["Alpha.Bravo"])).toBe("Alpha");
+  });
+});

@@ -430,3 +430,35 @@ describe("sortRelationsForTable", () => {
     expect(input.map((r) => r.value)).toEqual(before);
   });
 });
+
+describe("relations — remaining shapes", () => {
+  it("reports a domain result as itself", () => {
+    const domain = { ...baseIp, ip: undefined, domain: "evil.example" } as unknown as DomainCheckResult;
+    expect(relationsFor(domain)).toMatchObject({ value: "evil.example", type: "domain" });
+  });
+
+  it("keeps a tiered pivot with no named sources at its tier", () => {
+    expect(
+      mergeRelations([{ value: "a.test", type: "domain", relation: "contacts", tier: "observed" }])[0]
+        .tier,
+    ).toBe("observed");
+  });
+
+  it("adopts the sources and the confirmed tier of a later duplicate", () => {
+    const [rel] = mergeRelations([
+      { value: "a.test", type: "domain", relation: "contacts", tier: "observed" },
+      { value: "A.test", type: "domain", relation: "contacts", sources: ["triage"], tier: "confirmed" },
+    ]);
+    expect(rel).toMatchObject({ sources: ["triage"], tier: "confirmed" });
+  });
+
+  it("orders within a tier by relation, unknown relations last, then by value", () => {
+    const rows = sortRelationsForTable([
+      { value: "z", type: "domain", relation: "made-up" },
+      { value: "b", type: "domain", relation: "contacts" },
+      { value: "a", type: "domain", relation: "contacts" },
+      { value: "c", type: "hash", relation: "similar" },
+    ]);
+    expect(rows.map((r) => r.value)).toEqual(["a", "b", "c", "z"]);
+  });
+});

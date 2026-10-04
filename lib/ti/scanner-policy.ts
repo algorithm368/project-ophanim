@@ -57,8 +57,8 @@ const SCAN_CATEGORIES = new Set([
  */
 const BEYOND_SCANNING: ThreatType[] = ["c2", "malware", "ransomware", "phishing"];
 
+/** Only asked of sources that answered: applyScannerPolicy filters first. */
 function reportsMoreThanScanning(s: SourceResult): boolean {
-  if (s.status !== "ok") return false;
   return (s.categories ?? []).some((c) => {
     const type = classifyCategory(c);
     return type !== undefined && BEYOND_SCANNING.includes(type);

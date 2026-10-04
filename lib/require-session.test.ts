@@ -35,3 +35,15 @@ describe("requireSession", () => {
     expect((await requireSession())?.status).toBe(401);
   });
 });
+
+describe("requireSession under next dev", () => {
+  it("waves every caller through, as the proxy does", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    try {
+      expect(await requireSession()).toBeNull();
+      expect(authMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

@@ -60,3 +60,29 @@ describe("ipWhoIsSource.check failure handling", () => {
     });
   });
 });
+
+describe("ipWhoIsSource.check success", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => vi.mocked(getJson).mockReset());
+
+  it("needs no key", () => expect(ipWhoIsSource.isEnabled()).toBe(true));
+
+  it("returns geo with a place summary", async () => {
+    vi.mocked(getJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { success: true, city: "Lyon", country: "France" },
+      text: "",
+    });
+    const f = await ipWhoIsSource.check("1.2.3.4", signal);
+    expect(f.status).toBe("ok");
+    expect(f.summary).toBe("Lyon, France");
+  });
+
+  it("maps timeouts and errors", async () => {
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await ipWhoIsSource.check("1.2.3.4", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await ipWhoIsSource.check("1.2.3.4", signal)).error).toBe("boom");
+  });
+});

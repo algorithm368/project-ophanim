@@ -197,8 +197,8 @@ function reconcileCity(
   for (const { id, geo } of inputs) {
     const raw = geo.city;
     if (typeof raw !== "string" || raw.trim() === "") continue;
+    // Never empty: normalizeKey only trims and folds a name that is not blank.
     const key = normalizeKey(raw);
-    if (key === "") continue;
     const rawWeight = getWeight(id, "city");
     const w = rawWeight * scale(id);
     reporting++;
@@ -328,7 +328,8 @@ function reconcileCoordinates(
 
   if (points.length === 0) return undefined;
 
-  const reportingWeight = points.reduce((s, p) => s + p.raw, 0) || points.length;
+  // Every provider carries a positive coords weight, so this is never zero.
+  const reportingWeight = points.reduce((s, p) => s + p.raw, 0);
   const coverage = Math.min(1, reportingWeight / CORROBORATION_TARGET);
 
   if (points.length === 1) {
@@ -449,18 +450,16 @@ function reconcileCountry(inputs: GeoInput[]): {
   if (reporting === 0 || reportingWeight === 0)
     return { dissenters: new Set(), decisive: false };
 
-  const authority = authorityFor("country");
+  // No authority override here: weights.ts deliberately names none for
+  // country, since RDAP's allocation country is not where an address is.
   const ranked = [...votes.values()].sort(
     (a, b) => b.weight - a.weight || b.ids.length - a.ids.length,
   );
-  const authoritativeVote = authority
-    ? ranked.find((v) => v.ids.includes(authority))
-    : undefined;
-  const winner = authoritativeVote ?? ranked[0];
+  const winner = ranked[0];
   const agreement = winner.ids.length / reporting;
   const coverage = Math.min(1, reportingWeight / CORROBORATION_TARGET);
   const score = (winner.weight / reportingWeight) * coverage;
-  const confidence: Confidence = authoritativeVote ? "high" : tierFromScore(score);
+  const confidence: Confidence = tierFromScore(score);
   const losers = ranked.filter((v) => v !== winner);
   const alternatives = losers.map((v) => ({
     value: v.name || v.code,

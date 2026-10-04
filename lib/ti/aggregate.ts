@@ -1,4 +1,5 @@
 import type { CheckStats, ScoreBreakdown, SourceResult, Verdict } from "./types";
+import { sourceWeight } from "./weight";
 
 export const FLAG_THRESHOLD = 40;
 
@@ -84,7 +85,7 @@ function computeFloor(results: SourceResult[]): {
 } | null {
   const malicious = results.filter(
     (r) =>
-      r.status === "ok" && (r.source.weight ?? 1) > 0 && r.malicious === true,
+      r.status === "ok" && sourceWeight(r.source) > 0 && r.malicious === true,
   );
   if (malicious.length === 0) return null;
 
@@ -93,10 +94,10 @@ function computeFloor(results: SourceResult[]): {
   // a bare reduce() throws on an empty array and that guard is one edit away
   // from someone else's refactor.
   const strongest = malicious.reduce(
-    (a, b) => ((b.source.weight ?? 1) > (a.source.weight ?? 1) ? b : a),
+    (a, b) => (sourceWeight(b.source) > sourceWeight(a.source) ? b : a),
     malicious[0],
   );
-  const highWeight = (strongest.source.weight ?? 1) >= FLOOR_MIN_WEIGHT;
+  const highWeight = sourceWeight(strongest.source) >= FLOOR_MIN_WEIGHT;
 
   let floor: number | null = null;
   if (highWeight) floor = MALICIOUS_FLOOR;
@@ -143,7 +144,7 @@ export function aggregateRisk(results: SourceResult[]): {
     (r) =>
       r.status === "ok" &&
       typeof r.score === "number" &&
-      (r.source.weight ?? 1) > 0,
+      sourceWeight(r.source) > 0,
   );
 
   if (scored.length === 0) {
@@ -155,7 +156,7 @@ export function aggregateRisk(results: SourceResult[]): {
   let effectiveMax = 0;
   let dominant = scored[0];
   for (const r of scored) {
-    const weight = r.source.weight ?? 1;
+    const weight = sourceWeight(r.source);
     const score = r.score as number;
     weightSum += weight;
     weightedScoreSum += score * weight;
@@ -166,7 +167,9 @@ export function aggregateRisk(results: SourceResult[]): {
     }
   }
 
-  const weightedAvg = weightSum > 0 ? weightedScoreSum / weightSum : 0;
+  // Never a division by zero: every scored source has a positive weight, and
+  // there is at least one.
+  const weightedAvg = weightedScoreSum / weightSum;
   let risk = Math.round(
     MAX_SIGNAL_WEIGHT * effectiveMax + CONSENSUS_WEIGHT * weightedAvg,
   );
@@ -214,7 +217,7 @@ export function aggregateRisk(results: SourceResult[]): {
   // it as a lone voice would punish a thin panel for being thin, which is what
   // `scoreConfidence()` is for.
   const flagging = scored.filter(
-    (r) => r.malicious === true || (r.score ?? 0) >= FLAG_THRESHOLD,
+    (r) => r.malicious === true || (r.score as number) >= FLAG_THRESHOLD,
   ).length;
   const corroboration =
     breakdown.floorApplied || flagging === scored.length

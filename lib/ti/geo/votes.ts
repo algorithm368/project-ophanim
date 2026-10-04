@@ -1,5 +1,5 @@
 import type { Confidence, GeoResolution, ResolvedField } from "../types";
-import { authorityFor, type GeoField } from "./weights";
+import { authorityFor } from "./weights";
 
 type VoteStatus = "win" | "dissent" | "absent" | "scatter";
 
@@ -55,10 +55,6 @@ export function providerLabel(id: string): string {
   return PROVIDER_LABEL[id] ?? id;
 }
 
-function geoFieldFor(key: VoteColumn["key"]): GeoField {
-  return key === "coordinates" ? "coords" : key;
-}
-
 /** Build a column for a reconciled string field (country, city, asn). */
 function stringColumn(
   key: "country" | "city" | "asn",
@@ -66,7 +62,7 @@ function stringColumn(
   field: ResolvedField<string> | undefined,
 ): VoteColumn | null {
   if (!field) return null;
-  const authority = authorityFor(geoFieldFor(key));
+  const authority = authorityFor(key);
   const cells: Record<string, VoteCell> = {};
   for (const id of field.sources) {
     cells[id] = authority === id ? { status: "win", authority: true } : { status: "win" };

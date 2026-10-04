@@ -109,3 +109,7 @@ describe("trancoSource.check", () => {
     expect((await trancoSource.check("x.com", signal())).status).toBe("timeout");
   });
 });
+
+describe("trancoSource.isEnabled", () => {
+  it("needs no key", () => expect(trancoSource.isEnabled()).toBe(true));
+});

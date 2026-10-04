@@ -106,3 +106,9 @@ describe("applyScannerPolicy", () => {
     expect(applyScannerPolicy("malicious", [shodan, bare]).capped).toBe(true);
   });
 });
+
+describe("isIdentifiedScanner — an identification with no labels", () => {
+  it("is not an identification", () => {
+    expect(isIdentifiedScanner([{ ...shodan, categories: undefined }])).toBe(false);
+  });
+});

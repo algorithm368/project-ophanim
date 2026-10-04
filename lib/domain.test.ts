@@ -55,3 +55,20 @@ describe("parseDomain", () => {
     expect(parseDomain("example.com")?.isReserved).toBe(true);
   });
 });
+
+describe("parseDomain — awkward input", () => {
+  it("reads a schemeless path and an address with userinfo", () => {
+    expect(parseDomain("evil.example/login")?.domain).toBe("evil.example");
+    expect(parseDomain("user@evil.example")?.domain).toBe("evil.example");
+  });
+
+  it("falls back to the text before the first slash when it is not a URL", () => {
+    expect(parseDomain("a b.example/x")).toBeNull();
+    expect(parseDomain("http://[x/evil.example")).toBeNull();
+  });
+
+  it("rejects input that strips down to nothing", () => {
+    expect(parseDomain(".")).toBeNull();
+    expect(parseDomain(":443")).toBeNull();
+  });
+});

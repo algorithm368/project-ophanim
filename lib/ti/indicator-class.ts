@@ -91,9 +91,9 @@ function infraRole(hostname?: string, ports?: number[]): string | undefined {
 }
 
 /** "More than 500 names" or "234 names", never the first dressed as the
- *  second. */
+ *  second. Always plural: both callers have already required a crowd. */
 function tenantWords(t: { count: number; atCeiling: boolean }): string {
-  return `${t.atCeiling ? "More than " : ""}${t.count} name${t.count === 1 ? "" : "s"}`;
+  return `${t.atCeiling ? "More than " : ""}${t.count} names`;
 }
 
 /** One rung of the ladder: it recognises its own case or stands aside. */
@@ -129,7 +129,7 @@ const anonymizer: Rung = ({ geo }) =>
         label: "Anonymizer",
         short: "Anonymizer",
         caption: "anonymizing proxy or VPN",
-        phrase: geo?.isHosting
+        phrase: geo.isHosting
           ? "an anonymizer (proxy or VPN) on hosting/datacenter infrastructure"
           : "an anonymizer (proxy or VPN)",
         tail: ", so the real origin is hidden",
@@ -215,9 +215,10 @@ const corporate: Rung = ({ networkClass, geo }) =>
  *  just as happily as a server's does, and "the score is about this machine" is
  *  exactly the wrong thing to say about a lease. isMobile vetoes for the same
  *  reason even when isHosting is set alongside it; see the mobile rung. */
-const singleHost: Rung = ({ ptr, geo, tenancy }) => {
+const singleHost: Rung = ({ ptr, geo }) => {
+  // No tenancy check: sharedHost sits above this on the ladder and has already
+  // claimed any address with SHARED or more names on it.
   if (!ptr?.forwardConfirmed || !geo?.isHosting || geo.isMobile) return null;
-  if ((tenancy?.count ?? 0) >= SHARED) return null;
   return {
     label: "Single host",
     short: "Single host",
@@ -525,9 +526,10 @@ const parked: DomainRung = ({ ctx }) => {
  * inherits whatever the service is filed as.
  */
 const categorised: DomainRung = ({ ctx }) => {
-  const cat = contentCategory(ctx?.categories);
+  const categories = ctx?.categories ?? [];
+  const cat = contentCategory(categories);
   if (!cat) return null;
-  const rest = (ctx?.categories ?? []).filter((c) => c !== cat && !CATEGORY_NOISE.test(c));
+  const rest = categories.filter((c) => c !== cat && !CATEGORY_NOISE.test(c));
   return {
     label: cat,
     short: cat,
@@ -754,7 +756,8 @@ export function classifyHashLabel(ev: HashEvidence = {}): SubjectClass {
     phrase: "a file",
     tail: "",
     desc: "No file metadata was returned.",
-    sources: ev.known ? ["file metadata"] : [],
+    // Known by definition: an unknown file without a type stopped at `unseen`.
+    sources: ["file metadata"],
   };
 }
 

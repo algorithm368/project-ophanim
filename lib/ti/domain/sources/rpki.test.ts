@@ -102,3 +102,38 @@ describe("rpkiSource.check", () => {
     expect(f.summary).toBeUndefined();
   });
 });
+
+describe("rpkiSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => {
+    mockResolveA.mockReset();
+    mockGetJson.mockReset();
+  });
+
+  it("needs no key", () => expect(rpkiSource.isEnabled()).toBe(true));
+
+  it("reads a failed network-info call as unannounced", async () => {
+    mockResolveA.mockResolvedValue(["1.2.3.4"]);
+    mockGetJson.mockResolvedValue({ ok: false, status: 500, data: null, text: "" });
+    expect((await rpkiSource.check("a.example", signal)).summary).toBe(
+      "1.2.3.4 is not announced in BGP",
+    );
+  });
+
+  it("says no ROA is published when the validator returns no status", async () => {
+    mockResolveA.mockResolvedValue(["1.2.3.4"]);
+    mockGetJson
+      .mockResolvedValueOnce(networkInfo("1.2.3.0/24", ["64500"]))
+      .mockResolvedValueOnce({ ok: true, status: 200, data: { data: {} }, text: "" });
+    expect((await rpkiSource.check("a.example", signal)).summary).toBe(
+      "1.2.3.4 (1.2.3.0/24, AS64500) RPKI origin: no ROA published",
+    );
+  });
+
+  it("maps a thrown resolution to timeout or error", async () => {
+    mockResolveA.mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await rpkiSource.check("a.example", signal)).status).toBe("timeout");
+    mockResolveA.mockRejectedValue(new Error("boom"));
+    expect((await rpkiSource.check("a.example", signal)).error).toBe("boom");
+  });
+});

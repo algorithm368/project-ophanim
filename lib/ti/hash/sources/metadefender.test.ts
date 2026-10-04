@@ -87,3 +87,50 @@ describe("metadefenderHashSource.check — definitive-flag wiring (P1.1)", () =>
     expect(f.malicious).toBe(true);
   });
 });
+
+describe("metadefenderHashSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const H = "a".repeat(64);
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => vi.mocked(getJson).mockReset());
+
+  it("needs no key", () => expect(metadefenderHashSource.isEnabled()).toBe(true));
+
+  it("reports nothing on record as no signal", async () => {
+    reply({ mdcloud: null, filescan_reports: null });
+    expect((await metadefenderHashSource.check(H, signal)).summary).toBe(
+      "Not seen by MetaDefender / Filescan",
+    );
+  });
+
+  it("summarizes sandbox reports alone, or a bare verdict", async () => {
+    reply({ overall_verdict: "suspicious", filescan_reports: [{ verdict: "suspicious" }], sha256: "AB" });
+    const f = await metadefenderHashSource.check(H, signal);
+    expect(f.summary).toBe("1 sandbox report(s); verdict: suspicious");
+    expect(f.details).toMatchObject({ detectedEngines: undefined, totalEngines: undefined });
+    expect(f.hashContext).toEqual({ sha256: "ab" });
+    reply({ overall_verdict: "benign" });
+    expect((await metadefenderHashSource.check(H, signal)).summary).toBe(
+      "Reputation data; verdict: benign",
+    );
+  });
+
+  it("reads an empty engine block as zero of zero", async () => {
+    reply({ mdcloud: {} });
+    const f = await metadefenderHashSource.check(H, signal);
+    expect(f.summary).toBe("MetaDefender 0/0 engines; verdict: unknown");
+    expect(f.categories).toEqual([]);
+  });
+
+  it("maps failures, error bodies and timeouts", async () => {
+    reply({ detail: "not found" });
+    expect((await metadefenderHashSource.check(H, signal)).error).toBe("HTTP 200");
+    reply(null, 500);
+    expect((await metadefenderHashSource.check(H, signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await metadefenderHashSource.check(H, signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await metadefenderHashSource.check(H, signal)).error).toBe("boom");
+  });
+});

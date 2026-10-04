@@ -89,7 +89,8 @@ export async function bulkGeolocate(
   const byIpRow = new Map(ipapiRows.map((row) => [row.ip, row]));
   const ipApiByIp = new Map<string, GeoContext>();
   for (const row of ipapiRows) {
-    if (row.status === "ok" && row.geo) ipApiByIp.set(row.ip, row.geo);
+    // Only an ok row carries geo.
+    if (row.geo) ipApiByIp.set(row.ip, row.geo);
   }
 
   // 3. Transpose into per-IP reconciliation inputs.
@@ -129,7 +130,8 @@ export async function bulkGeolocate(
   return ips.map((parsed) => {
     // Safe: mapBatchResults(ips, …) yields one row per ips[i].ip; caller dedupes.
     const base = byIpRow.get(parsed.ip)!;
-    const resolution = reconcileGeoInputs(perIp.get(parsed.ip) ?? []);
+    // Safe for the same reason: transposeByIp keys every address it was given.
+    const resolution = reconcileGeoInputs(perIp.get(parsed.ip)!);
     if (!resolution) return base;
     return {
       ip: base.ip,

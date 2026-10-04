@@ -1231,3 +1231,166 @@ describe("buildDomainNarrative — resolution detail", () => {
     expect(text).not.toContain("mail handled by");
   });
 });
+
+describe("narrative — domain, file and IP wording left uncovered", () => {
+  const domain = (over: Partial<DomainCheckResult>): DomainCheckResult => ({
+    domain: "example.com",
+    checkedAt: "2026-05-30T00:00:00Z",
+    riskScore: 0,
+    verdict: "clean",
+    sources: [],
+    stats: makeStats(),
+    ...over,
+  });
+  const file = (over: Partial<HashCheckResult>): HashCheckResult => ({
+    hash: "c".repeat(64),
+    algorithm: "sha256",
+    checkedAt: "2026-05-30T00:00:00Z",
+    riskScore: 0,
+    verdict: "clean",
+    sources: [],
+    stats: makeStats(),
+    ...over,
+  });
+
+  it("says one day, and names a category with neither age nor registrar", () => {
+    expect(domainAged(1)).toContain("1 day ago");
+    const text = buildDomainNarrative(domain({ context: { categories: ["Technology"] } })).join(" ");
+    expect(text).toContain("It is categorized as technology.");
+  });
+
+  it("names the registrar alongside an age", () => {
+    const text = buildDomainNarrative(
+      domain({ context: { ageDays: 400, registrar: "Example Registrar" } }),
+    ).join(" ");
+    expect(text).toContain("through Example Registrar");
+  });
+
+  it("describes a file by name alone, and a file nothing describes", () => {
+    expect(buildHashNarrative(file({ context: { fileName: "a.bin" } })).join(" ")).toContain(
+      'It has been seen as "a.bin".',
+    );
+    const bare = buildHashNarrative(
+      file({ verdict: "malicious", riskScore: 80, sources: [makeSource({ name: "Feed", status: "error" })] }),
+    ).join(" ");
+    expect(bare).toContain("No source returned metadata describing the file.");
+    const scored = buildHashNarrative(
+      file({ verdict: "malicious", riskScore: 80, sources: [makeSource({ name: "Feed", score: 80, malicious: true })] }),
+    ).join(" ");
+    expect(scored).not.toContain("No source returned metadata");
+  });
+
+  it("explains an unrated file with no context as unknown", () => {
+    expect(buildHashNarrative(file({ verdict: "unknown" })).join(" ")).toContain(
+      "No threat-intel source has this SHA-256 hash on record",
+    );
+  });
+
+  it("reads AbuseIPDB and prior verdicts into the history clause", () => {
+    const ipResult = (sources: SourceResult[], history?: CheckResult["history"]): string =>
+      buildNarrative({
+        ip: "1.2.3.4",
+        checkedAt: "2026-05-29T00:00:00Z",
+        riskScore: 0,
+        verdict: "clean",
+        geo: { asn: "15169", isp: "Example" },
+        sources,
+        history,
+        stats: makeStats(),
+      }).join(" ");
+    const noScore = ipResult([makeSource({ name: "AbuseIPDB", details: { totalReports: 4 } })]);
+    expect(noScore).toContain("no significant AbuseIPDB reports");
+    expect(noScore).toContain("(15169)");
+    const noCount = ipResult([makeSource({ name: "AbuseIPDB", score: 90, details: {} })]);
+    expect(noCount).not.toContain("AbuseIPDB report");
+    const quiet = [makeSource({ name: "Feodo", score: 0 })];
+    const bad = ipResult(quiet, [{ riskScore: 80, verdict: "malicious", checkedAt: "2026-05-01T00:00:00Z" }]);
+    expect(bad).toContain("prior malicious history");
+    const good = ipResult(quiet, [{ riskScore: 0, verdict: "clean", checkedAt: "2026-05-01T00:00:00Z" }]);
+    expect(good).toContain("no prior malicious history");
+  });
+
+  it("leaves usage types out of the reasons, and ranks a scoreless flag", () => {
+    const text = threatSentences(
+      {
+        riskScore: 80,
+        verdict: "malicious",
+        checkedAt: "2026-05-29T00:00:00Z",
+        sources: [
+          makeSource({ name: "AbuseIPDB", score: 90, malicious: true, categories: ["Fixed Line ISP", "hacking"] }),
+          makeSource({ name: "Feodo", malicious: true, categories: ["botnet-c2"] }),
+        ],
+        stats: makeStats({ flagged: 2 }),
+      },
+      "address",
+    ).join(" ");
+    expect(text).not.toContain("Fixed Line ISP");
+  });
+});
+
+describe("narrative — summaries and tallies left uncovered", () => {
+  it("caps the behaviour sentence at five phrases", () => {
+    const text = hashBehaviorSummary({
+      behaviorTags: ["PERSISTENCE", "CRYPTO", "RANSOM", "SELF_DELETE", "DOWNLOADER", "KEYLOGGER"],
+    });
+    expect(text).not.toContain("logs keystrokes");
+  });
+
+  it("credits sandbox analysis when no sandbox is named", () => {
+    expect(hashCleanSummary({ sandboxVerdict: { sandboxes: [] } }).join(" ")).toContain(
+      "Detonated in sandbox analysis",
+    );
+  });
+
+  it("skips blank and 'none' categories and counts a source once per category", () => {
+    const cats = aggregateCategories([
+      makeSource({ name: "Feed", categories: ["", "None", "botnet", "Botnet"] }),
+    ]);
+    expect(cats).toEqual([{ name: "botnet", count: 2, sources: ["Feed"] }]);
+  });
+
+  it("names a place once when the city and region are the same", () => {
+    const text = buildNarrative({
+      ip: "1.2.3.4",
+      checkedAt: "2026-05-29T00:00:00Z",
+      riskScore: 0,
+      verdict: "clean",
+      geo: { city: "Singapore", region: "Singapore", country: "Singapore" },
+      sources: [],
+      stats: makeStats(),
+    }).join(" ");
+    expect(text).toContain("geolocated to Singapore.");
+  });
+
+  it("orders scoreless flags behind scored ones", () => {
+    const text = threatSentences(
+      {
+        riskScore: 80,
+        verdict: "malicious",
+        checkedAt: "2026-05-29T00:00:00Z",
+        sources: [
+          makeSource({ name: "Feodo", malicious: true }),
+          makeSource({ name: "AbuseIPDB", score: 90, malicious: true }),
+          makeSource({ name: "Tor", malicious: true }),
+        ],
+        stats: makeStats({ flagged: 3 }),
+      },
+      "address",
+    ).join(" ");
+    expect(text).toContain("Flagged by AbuseIPDB");
+  });
+
+  it("says nothing about identity when a file carries no type, size or name", () => {
+    const text = buildHashNarrative({
+      hash: "c".repeat(64),
+      algorithm: "sha256",
+      checkedAt: "2026-05-30T00:00:00Z",
+      riskScore: 0,
+      verdict: "clean",
+      context: { tags: ["x"] },
+      sources: [],
+      stats: makeStats(),
+    });
+    expect(text.join(" ")).not.toContain("It is");
+  });
+});

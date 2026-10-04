@@ -298,3 +298,34 @@ describe("sharedLocations / sameLocationNotes", () => {
     expect(sameLocationNotes([ash1, mos1])).toEqual([]);
   });
 });
+
+describe("geo summary — thin rows", () => {
+  const coded = (ip: string, city?: string): GeoRow => ({
+    ip,
+    version: 4,
+    status: "ok",
+    geo: { countryCode: "US", city },
+  });
+
+  it("names a country by its code when no name is known", () => {
+    expect(originReport([coded("1.1.1.1")])).toContain("US (US) accounts for 1 address");
+    expect(sameCountryNote([coded("1.1.1.1"), coded("1.1.1.2")])).toBe(
+      "All 2 addresses resolve to the same country, US (US).",
+    );
+    expect(sharedLocations([coded("1.1.1.1", "Ashburn"), coded("1.1.1.2", "Ashburn")])[0].place).toBe(
+      "Ashburn, US (US)",
+    );
+  });
+
+  it("says one address in the singular when it could not be located", () => {
+    expect(originReport([{ ip: "203.0.113.7", version: 4, status: "error", error: "x" }])).toBe(
+      "None of the 1 address could be geolocated.",
+    );
+  });
+
+  it("prints an ASN it cannot canonicalize as given", () => {
+    expect(originReport([named("1.1.1.1", "Australia", "AU", { asn: "weird" })])).toContain(
+      "announced by weird",
+    );
+  });
+});

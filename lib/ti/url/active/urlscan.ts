@@ -102,7 +102,14 @@ export async function submitScan(
   apiKey: string,
   signal: AbortSignal,
 ): Promise<ActiveScan> {
-  let last: ActiveScan | null = null;
+  // Overwritten by every attempt; what is left after the loop is the last
+  // tier's quota error.
+  let last: ActiveScan = {
+    target,
+    engine: "urlscan",
+    status: "error",
+    error: "Submission failed",
+  };
   for (const visibility of VISIBILITY_ORDER) {
     try {
       const { status, data } = await postJson<SubmitResponse>(
@@ -118,16 +125,15 @@ export async function submitScan(
       // target would be refused again, and retrying would waste the next tier.
       if (status !== 429) return scan;
     } catch (err) {
-      last = {
+      return {
         target,
         engine: "urlscan",
         status: "error",
         error: isTimeout(err) ? "Submission timed out" : errorMessage(err),
       };
-      return last;
     }
   }
-  return last ?? { target, engine: "urlscan", status: "error", error: "Submission failed" };
+  return last;
 }
 
 /** Poll one submitted scan once. */

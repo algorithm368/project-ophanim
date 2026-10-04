@@ -204,3 +204,41 @@ describe("distillCloudflareResult", () => {
     expect(d.redirects).toEqual([]);
   });
 });
+
+describe("distillCloudflareResult — lists and malformed rows", () => {
+  it("reads cookies, certificates and console messages", () => {
+    const d = distillCloudflareResult({
+      data: {
+        cookies: [{ name: "sid", domain: "a.test", secure: true, httpOnly: true }, {}],
+        console: [{ message: { text: "from message" } }, { text: "bare" }, {}],
+      },
+      lists: { certificates: [{ subjectName: "a.test", issuer: "CA" }] },
+    });
+    expect(d.cookies).toEqual([
+      { name: "sid", domain: "a.test", secure: true, httpOnly: true },
+      { name: "", domain: undefined, secure: false, httpOnly: false },
+    ]);
+    expect(d.certificates).toEqual([
+      { subject: "a.test", issuer: "CA", validFrom: undefined, validTo: undefined },
+    ]);
+    expect(d.consoleMessages).toEqual(["from message", "bare"]);
+  });
+
+  it("skips history hops without both ends", () => {
+    const d = distillCloudflareResult({
+      page: { history: [{ url: "https://a.test/" }, {}, { url: "https://b.test/" }] },
+    });
+    expect(d.redirects).toEqual([]);
+  });
+
+  it("ignores sitemap rows that are not lists, not strings, or not URLs", () => {
+    const d = distillCloudflareResult({
+      meta: {
+        processors: {
+          robotsTxt: { data: [{ sitemaps: "x" }, { sitemaps: [7, "not a url", "https://b.test/s.xml"] }] },
+        },
+      },
+    });
+    expect(d.siblingDomains).toEqual(["b.test"]);
+  });
+});

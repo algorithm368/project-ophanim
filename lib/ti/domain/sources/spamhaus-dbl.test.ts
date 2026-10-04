@@ -1,5 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { classifyDbl, isAbusedLegit, isBlockedCode } from "./spamhaus-dbl";
+import { describe, expect, it, vi } from "vitest";
+import { classifyDbl, isAbusedLegit, isBlockedCode, spamhausDblSource } from "./spamhaus-dbl";
+
+const dnsAnswer = vi.hoisted(() => ({ current: [] as string[] | Error | string }));
+
+vi.mock("node:dns/promises", () => ({
+  Resolver: class {
+    async resolve4(): Promise<string[]> {
+      const a = dnsAnswer.current;
+      if (Array.isArray(a)) return a;
+      throw a;
+    }
+  },
+}));
+
+const dnsError = (code: string) => Object.assign(new Error(code), { code });
+
 
 describe("isBlockedCode / isAbusedLegit", () => {
   it("identifies the refused/open-resolver sentinels", () => {
@@ -56,5 +71,32 @@ describe("classifyDbl", () => {
     expect(classifyDbl(["127.0.1.9"])).toMatchObject({
       meanings: ["listed (127.0.1.9)"],
     });
+  });
+});
+
+describe("spamhausDblSource.check", () => {
+  const signal = new AbortController().signal;
+  const check = (answer: string[] | Error | string) => {
+    dnsAnswer.current = answer;
+    return spamhausDblSource.check("a.example", signal);
+  };
+
+  it("needs no key", () => expect(spamhausDblSource.isEnabled()).toBe(true));
+
+  it("maps listings, refusals and misses", async () => {
+    expect(await check(["127.0.1.4"])).toMatchObject({
+      malicious: true,
+      score: 80,
+      summary: "Listed on Spamhaus DBL: phishing domain",
+    });
+    expect((await check(["127.0.1.255"])).summary).toBe("Query refused (open-resolver limit)");
+    expect((await check([])).summary).toBe("Not listed");
+    expect((await check(dnsError("ENOTFOUND"))).summary).toBe("Not listed");
+    expect((await check(dnsError("ENODATA"))).summary).toBe("Not listed");
+  });
+
+  it("reports resolver failures, thrown Errors or not", async () => {
+    expect(await check(dnsError("ETIMEOUT"))).toEqual({ status: "error", error: "ETIMEOUT" });
+    expect(await check("weird")).toEqual({ status: "error", error: "weird" });
   });
 });

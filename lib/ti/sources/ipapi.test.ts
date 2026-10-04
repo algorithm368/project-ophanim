@@ -74,3 +74,41 @@ describe("ipApiSource.check failure handling", () => {
     });
   });
 });
+
+describe("ipApiSource.check success", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => vi.mocked(getJson).mockReset());
+  const reply = (data: unknown) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: true, status: 200, data, text: "" });
+
+  it("needs no key", () => expect(ipApiSource.isEnabled()).toBe(true));
+
+  it("summarizes the place and network and lists every flag", async () => {
+    reply({
+      status: "success",
+      city: "Ashburn",
+      country: "United States",
+      as: "AS14618 Amazon.com, Inc.",
+      proxy: true,
+      hosting: true,
+      mobile: true,
+    });
+    const f = await ipApiSource.check("3.3.3.3", signal);
+    expect(f.summary).toBe("Ashburn, United States (AS14618 Amazon.com, Inc.)");
+    expect(f.categories).toEqual(["proxy/VPN/Tor", "hosting/datacenter", "mobile"]);
+  });
+
+  it("marks a flagless answer with none and no ASN suffix", async () => {
+    reply({ status: "success", country: "Japan" });
+    const f = await ipApiSource.check("3.3.3.3", signal);
+    expect(f.summary).toBe("Japan");
+    expect(f.details).toMatchObject({ flags: ["none"] });
+  });
+
+  it("maps timeouts and errors", async () => {
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await ipApiSource.check("3.3.3.3", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await ipApiSource.check("3.3.3.3", signal)).error).toBe("boom");
+  });
+});

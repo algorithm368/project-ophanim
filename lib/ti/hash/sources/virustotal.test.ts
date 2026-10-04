@@ -201,3 +201,101 @@ describe("virusTotalHashSource.check — definitive-flag wiring (P1.1)", () => {
     expect(f.hashContext?.signer).toBeUndefined();
   });
 });
+
+describe("importedDllsFromVt — sparse entries", () => {
+  it("skips nameless libraries and leaves a zero function count undefined", () => {
+    const dlls = importedDllsFromVt([
+      { library_name: "" },
+      {},
+      { library_name: "zz_a.dll" },
+      { library_name: "zz_b.dll", imported_functions: ["f"] },
+    ]);
+    expect(dlls).toEqual([
+      { name: "zz_b.dll", count: 1 },
+      { name: "zz_a.dll", count: undefined },
+    ]);
+    expect(
+      importedDllsFromVt([{ library_name: "zz_c.dll" }, { library_name: "zz_d.dll" }]).map(
+        (d) => d.name,
+      ),
+    ).toEqual(["zz_c.dll", "zz_d.dll"]);
+  });
+});
+
+describe("virusTotalHashSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const H = "a".repeat(64);
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "");
+    expect(virusTotalHashSource.isEnabled()).toBe(false);
+    expect(await virusTotalHashSource.check(H, signal)).toEqual({ status: "skipped" });
+  });
+
+  it("names the threat label, detections, DLLs, votes and relations", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    expect(virusTotalHashSource.isEnabled()).toBe(true);
+    reply({
+      data: {
+        attributes: {
+          last_analysis_stats: { malicious: 2, harmless: 1, suspicious: 1, undetected: 1, timeout: 1 },
+          popular_threat_classification: {
+            suggested_threat_label: "trojan.x",
+            popular_threat_name: [{ value: "x" }],
+          },
+          last_analysis_results: { Eng: { category: "malicious", result: "Trojan.X" } },
+          pe_info: { import_list: [{ library_name: "kernel32.dll", imported_functions: ["a"] }] },
+          total_votes: { malicious: 2 },
+          tags: ["peexe"],
+        },
+        relationships: {
+          contacted_ips: { data: [{ id: "5.6.7.8", type: "ip_address" }] },
+        },
+      },
+    });
+    const f = await virusTotalHashSource.check(H, signal);
+    expect(f.summary).toBe("2/6 engines detect this file as trojan.x");
+    expect(f.categories).toEqual(["trojan.x", "peexe"]);
+    expect(f.hashContext).toMatchObject({ malwareFamily: "x", importedDlls: [{ name: "kernel32.dll", count: 1 }] });
+    expect(f.details).toMatchObject({
+      harmlessEngines: 1,
+      detections: ["Trojan.X"],
+      communityVotes: { harmless: 0, malicious: 2 },
+    });
+    expect(f.relations?.length).toBeGreaterThan(0);
+  });
+
+  it("counts harmless-only votes and leaves the rest out of a bare answer", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    reply({ data: { attributes: { total_votes: { harmless: 1 } } } });
+    const f = await virusTotalHashSource.check(H, signal);
+    expect(f.summary).toBe("0/0 engines detect this file");
+    expect(f.details).toMatchObject({ harmlessEngines: 0, detections: undefined, communityVotes: { harmless: 1, malicious: 0 } });
+    expect(f.hashContext).toMatchObject({ importedDlls: undefined, detectionNames: undefined });
+    expect(f.relations).toBeUndefined();
+    reply({ data: { attributes: { last_analysis_stats: {}, total_votes: {} } } });
+    expect((await virusTotalHashSource.check(H, signal)).details).toMatchObject({
+      communityVotes: undefined,
+    });
+  });
+
+  it("maps 404, errors and timeouts", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    reply(null, 404);
+    expect((await virusTotalHashSource.check(H, signal)).summary).toBe("File not found in VirusTotal");
+    reply({ error: { message: "Quota" } }, 429);
+    expect((await virusTotalHashSource.check(H, signal)).error).toBe("Quota");
+    reply(null, 500);
+    expect((await virusTotalHashSource.check(H, signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await virusTotalHashSource.check(H, signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await virusTotalHashSource.check(H, signal)).error).toBe("boom");
+  });
+});

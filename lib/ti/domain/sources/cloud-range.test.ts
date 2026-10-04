@@ -139,3 +139,33 @@ describe("domain cloudRangeSource.check", () => {
     expect(f.status).toBe("timeout");
   });
 });
+
+describe("domain cloudRangeSource.check — remaining paths", () => {
+  afterEach(() => {
+    resetCloudPrefixCache();
+    vi.mocked(getJson).mockReset();
+    vi.mocked(getText).mockReset();
+    vi.mocked(dohQuery).mockReset();
+  });
+
+  it("needs no key", () => expect(cloudRangeSource.isEnabled()).toBe(true));
+
+  it("leaves the region detail out when the block has none", async () => {
+    vi.mocked(getJson).mockResolvedValue(EMPTY_JSON);
+    vi.mocked(getText).mockResolvedValue(CF_LIST);
+    vi.mocked(dohQuery).mockImplementation(dohByType(aRecord("104.16.0.1"), cnameRecord()));
+    expect((await cloudRangeSource.check("example.com", signal())).summary).toBe(
+      "Resolves behind Cloudflare, announced in 104.16.0.0/13",
+    );
+  });
+
+  it("reports a resolver failure as an error", async () => {
+    vi.mocked(getJson).mockResolvedValue(EMPTY_JSON);
+    vi.mocked(getText).mockResolvedValue(CF_LIST);
+    vi.mocked(dohQuery).mockRejectedValue(new Error("resolver down"));
+    expect(await cloudRangeSource.check("example.com", signal())).toEqual({
+      status: "error",
+      error: "resolver down",
+    });
+  });
+});

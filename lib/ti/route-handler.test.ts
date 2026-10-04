@@ -5,13 +5,16 @@ import { NextRequest } from "next/server";
 // observable without Redis. recordHistory returns what it wrote, which is
 // what lets the route append locally instead of calling getHistory again;
 // getHistory is a spy so tests can assert how many round trips it took.
-const { store, getHistorySpy, recordHealthSpy } = vi.hoisted(() => ({
+const { store, history, getHistorySpy, recordHealthSpy } = vi.hoisted(() => ({
   store: [] as Array<Record<string, unknown>>,
+  // When set, recordHistory dedupes the point, as it does within the hour.
+  history: { dedupe: false },
   getHistorySpy: vi.fn(),
   recordHealthSpy: vi.fn(),
 }));
 vi.mock("@/lib/ti/history", () => ({
   recordHistory: async (_k: string, _v: string, snap: Record<string, unknown>) => {
+    if (history.dedupe) return null;
     store.push(snap);
     return snap;
   },
@@ -75,6 +78,7 @@ async function readEvents(res: Response): Promise<NdjsonEvent[]> {
 
 beforeEach(() => {
   store.length = 0;
+  history.dedupe = false;
   getHistorySpy.mockReset().mockImplementation(async () => [...store]);
   recordHealthSpy.mockReset().mockResolvedValue(undefined);
 });
@@ -221,5 +225,32 @@ describe("source health", () => {
     await route.GET(get());
     await readEvents(await route.POST(streamPost({ ip: "1.1.1.1" })));
     expect(recordHealthSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("makeIndicatorRoute input handling", () => {
+  function post(body: string) {
+    return new NextRequest("http://localhost/api/check", { method: "POST", body });
+  }
+
+  it("refuses an invalid indicator on GET and POST", async () => {
+    const { GET, POST } = makeRoute();
+    expect((await GET(new NextRequest("http://localhost/api/check"))).status).toBe(422);
+    expect((await POST(post('{"ip":7}'))).status).toBe(422);
+  });
+
+  it("refuses a body that is not JSON", async () => {
+    const { POST } = makeRoute();
+    const res = await POST(post("not json"));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid JSON body" });
+  });
+
+  it("keeps the prior history when the new point was deduped", async () => {
+    history.dedupe = true;
+    store.push({ riskScore: 5, verdict: "clean", checkedAt: "2025-12-31T00:00:00Z" });
+    const { GET } = makeRoute();
+    const body = (await (await GET(get())).json()) as { history: unknown[] };
+    expect(body.history).toHaveLength(1);
   });
 });

@@ -1,9 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getJson } from "../../http";
+
+vi.mock("../../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
 import {
   delegationStatus,
   eventDate,
   registrarName,
   scoreForAge,
+  rdapSource,
 } from "./rdap";
 
 describe("scoreForAge", () => {
@@ -67,5 +75,85 @@ describe("delegationStatus", () => {
     expect(delegationStatus(undefined)).toBeUndefined();
     expect(delegationStatus(false)).toBe("unsigned");
     expect(delegationStatus(true)).toBe("signed");
+  });
+});
+
+describe("rdapSource.check", () => {
+  const signal = new AbortController().signal;
+  const day = 86_400_000;
+  const now = Date.UTC(2026, 5, 1);
+  const iso = (daysAgo: number) => new Date(now - daysAgo * day).toISOString();
+  const registrar = {
+    roles: ["registrar"],
+    vcardArray: ["vcard", [["fn", {}, "text", "Example Registrar"]]] as [string, unknown[]],
+  };
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("needs no key", () => expect(rdapSource.isEnabled()).toBe(true));
+
+  it("flags a days-old registration and a registry hold", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    reply({
+      events: [{ eventAction: "registration", eventDate: iso(3) }],
+      entities: [registrar],
+      nameservers: [{ ldhName: "NS1.EXAMPLE" }, {}],
+      status: ["client hold"],
+      secureDNS: { delegationSigned: true },
+    });
+    const f = await rdapSource.check("www.evil.example", signal);
+    expect(vi.mocked(getJson).mock.calls[0][0]).toBe("https://rdap.org/domain/evil.example");
+    expect(f).toMatchObject({
+      score: 55,
+      categories: ["registry-hold"],
+      summary: "Registered 3 day(s) ago, newly created, via Example Registrar",
+      domainContext: { nameservers: ["ns1.example"], dnssec: "signed" },
+    });
+  });
+
+  it("describes older registrations in years, with or without a registrar", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    reply({ events: [{ eventAction: "registration", eventDate: iso(800) }] });
+    expect((await rdapSource.check("old.example", signal)).summary).toBe("Registered 2 year(s) ago");
+    reply({ events: [{ eventAction: "registration", eventDate: iso(100) }], status: ["pendingDelete"] });
+    const f = await rdapSource.check("old.example", signal);
+    expect(f.summary).toBe("Registered <1 year(s) ago");
+    expect(f.score).toBe(35);
+  });
+
+  it("falls back when there is no usable registration date", async () => {
+    reply({ entities: [registrar] });
+    expect((await rdapSource.check("a.example", signal)).summary).toBe(
+      "Registered via Example Registrar",
+    );
+    reply({ events: [{ eventAction: "registration", eventDate: "garbage" }] });
+    expect((await rdapSource.check("a.example", signal)).summary).toBe(
+      "Registration data available",
+    );
+  });
+
+  it("keeps an unparseable name whole", async () => {
+    reply({});
+    await rdapSource.check("not a domain", signal);
+    expect(vi.mocked(getJson).mock.calls[0][0]).toBe("https://rdap.org/domain/not a domain");
+  });
+
+  it("maps 404, errors and timeouts", async () => {
+    reply(null, 404);
+    expect((await rdapSource.check("a.example", signal)).summary).toBe("No RDAP record found");
+    reply({ title: "Bad Request" }, 400);
+    expect((await rdapSource.check("a.example", signal)).error).toBe("Bad Request");
+    reply(null, 500);
+    expect((await rdapSource.check("a.example", signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await rdapSource.check("a.example", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await rdapSource.check("a.example", signal)).error).toBe("boom");
   });
 });

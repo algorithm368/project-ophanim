@@ -69,3 +69,9 @@ describe("decodeCaa", () => {
     expect(decodeCaa("\\# 2 zz zz")).toBe("\\# 2 zz zz");
   });
 });
+
+describe("decodeCaa — an empty record", () => {
+  it("keeps the raw form when the decoded record says nothing", () => {
+    expect(decodeCaa("\\# 2 00 00")).toBe("\\# 2 00 00");
+  });
+});

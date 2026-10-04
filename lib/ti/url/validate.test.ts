@@ -55,3 +55,12 @@ describe("urlIndicatorProblem", () => {
     ).toBe(400);
   });
 });
+
+describe("urlIndicatorProblem — hosts that are neither", () => {
+  it("rejects a host that is not a usable domain", () => {
+    expect(urlIndicatorProblem("http://localhost/")).toEqual({
+      message: "Invalid host in URL",
+      status: 400,
+    });
+  });
+});

@@ -143,3 +143,57 @@ describe("greyNoiseSource.check — quota exhaustion", () => {
     );
   });
 });
+
+describe("greyNoiseSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+    vi.mocked(getCachedGreyNoiseIdentification).mockReset();
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("GREYNOISE_API_KEY", "");
+    expect(greyNoiseSource.isEnabled()).toBe(false);
+    expect(await greyNoiseSource.check("1.2.3.4", signal)).toEqual({ status: "skipped" });
+  });
+
+  it("labels an active scanner and a RIOT service", async () => {
+    vi.stubEnv("GREYNOISE_API_KEY", "k");
+    expect(greyNoiseSource.isEnabled()).toBe(true);
+    reply({ classification: "benign", noise: true, riot: true, name: "Shodan" });
+    const f = await greyNoiseSource.check("1.2.3.4", signal);
+    expect(f.categories).toEqual(["internet-scanner", "common-business-service", "benign"]);
+    expect(f.summary).toBe("benign (Shodan) (active scanner)");
+    expect(f.allowlisted).toBe(true);
+  });
+
+  it("calls a classless answer unknown", async () => {
+    vi.stubEnv("GREYNOISE_API_KEY", "k");
+    reply({});
+    expect((await greyNoiseSource.check("1.2.3.4", signal)).summary).toBe("unknown");
+  });
+
+  it("maps 404, quota wording, errors and timeouts", async () => {
+    vi.stubEnv("GREYNOISE_API_KEY", "k");
+    reply(null, 404);
+    expect((await greyNoiseSource.check("1.2.3.4", signal)).summary).toBe(
+      "Not observed scanning the internet",
+    );
+    vi.mocked(getCachedGreyNoiseIdentification).mockResolvedValue(null);
+    reply({ message: "Daily limit reached" });
+    expect((await greyNoiseSource.check("1.2.3.4", signal)).summary).toBe("Daily limit reached");
+    reply(null, 429);
+    expect((await greyNoiseSource.check("1.2.3.4", signal)).summary).toBe("Daily quota exceeded");
+    reply({ message: "invalid key" }, 401);
+    expect((await greyNoiseSource.check("1.2.3.4", signal)).error).toBe("invalid key");
+    reply(null, 500);
+    expect((await greyNoiseSource.check("1.2.3.4", signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await greyNoiseSource.check("1.2.3.4", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await greyNoiseSource.check("1.2.3.4", signal)).error).toBe("boom");
+  });
+});

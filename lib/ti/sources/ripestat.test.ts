@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ripeStatSource, ripestatFinding, rpkiCategories } from "./ripestat";
+import {
+  fetchNetworkInfo,
+  fetchRpkiStatus,
+  ripeStatSource,
+  ripestatFinding,
+  rpkiCategories,
+} from "./ripestat";
 import { getJson } from "../http";
 
 describe("rpkiCategories", () => {
@@ -85,5 +91,47 @@ describe("ripeStatSource.check ASN selection", () => {
     expect(finding.status).toBe("ok");
     expect(finding.categories).toEqual([]);
     expect((finding.details as { rpkiStatus?: unknown })?.rpkiStatus).toBeUndefined();
+  });
+});
+
+describe("ripestat remaining paths", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => vi.mocked(getJson).mockReset());
+
+  it("needs no key", () => expect(ripeStatSource.isEnabled()).toBe(true));
+
+  it("fetchRpkiStatus folds a thrown probe into null", async () => {
+    vi.mocked(getJson).mockRejectedValue(new Error("down"));
+    expect(await fetchRpkiStatus("1", "1.0.0.0/24", signal)).toBeNull();
+  });
+
+  it("fetchNetworkInfo returns the data block, or undefined on failure", async () => {
+    reply({ data: { prefix: "1.0.0.0/24", asns: ["13335"] } });
+    expect(await fetchNetworkInfo("1.0.0.1", signal)).toEqual({
+      prefix: "1.0.0.0/24",
+      asns: ["13335"],
+    });
+    reply(null, 500);
+    expect(await fetchNetworkInfo("1.0.0.1", signal)).toBeUndefined();
+    reply(null);
+    expect(await fetchNetworkInfo("1.0.0.1", signal)).toBeUndefined();
+  });
+
+  it("reads an announced prefix with no ASN list", () => {
+    expect(ripestatFinding({ prefix: "1.0.0.0/24" }).summary).toBe("Announced as 1.0.0.0/24");
+    expect(ripestatFinding(undefined).summary).toBe("Not announced in BGP");
+  });
+
+  it("handles an empty answer, HTTP failures and thrown errors", async () => {
+    reply({});
+    expect((await ripeStatSource.check("1.0.0.1", signal)).summary).toBe("Not announced in BGP");
+    reply(null, 500);
+    expect((await ripeStatSource.check("1.0.0.1", signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await ripeStatSource.check("1.0.0.1", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await ripeStatSource.check("1.0.0.1", signal)).error).toBe("boom");
   });
 });

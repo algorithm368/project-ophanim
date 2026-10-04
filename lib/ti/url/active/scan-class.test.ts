@@ -491,3 +491,96 @@ describe("fileNameOf", () => {
     expect(fileNameOf("not a url")).toBeUndefined();
   });
 });
+
+describe("scan-class — remaining readings", () => {
+  it("reads a name with no extension, and no URL, as nothing in particular", () => {
+    expect(fileNameOf(undefined)).toBeUndefined();
+    const c = classifyScan(merged({ mimeType: "application/octet-stream", finalUrl: undefined }, {}, { targets: ["https://site.test/README"] }), NOW);
+    expect(c).toMatchObject({ kind: "file", label: "File", caption: "served as application/octet-stream" });
+  });
+
+  it("names an archive by its extension alone", () => {
+    const c = classifyScan(merged({ mimeType: "application/octet-stream", finalUrl: "https://site.test/x.tgz" }), NOW);
+    expect(c.label).toBe("Archive");
+  });
+
+  it("captions a served download by its type when the sniffer gave no description", () => {
+    const c = classifyScan(
+      merged({
+        downloads: [{ url: "https://site.test/", filename: "a.bin", mimeType: "application/x-foo", size: 2048 }],
+      }),
+      NOW,
+    );
+    expect(c.caption).toBe("application/x-foo, 2 KB");
+  });
+
+  it("names a started download by its URL, or counts it when it has no name", () => {
+    const named = classifyScan(
+      merged({ downloads: [{ url: "https://cdn.test/get/setup.exe" }] }),
+      NOW,
+    );
+    expect(named.caption).toBe("downloads setup.exe");
+    const bare = classifyScan(merged({ downloads: [{ url: "https://cdn.test/" }] }), NOW);
+    expect(bare.caption).toBe("downloads 1 file");
+  });
+
+  it("dates an older login page in months", () => {
+    const c = classifyScan(
+      merged({ domainAgeDays: 90 }, { passwordField: true, forms: [SAME_SITE] }),
+      NOW,
+    );
+    expect(c.caption).toBe("form posts to the same site, domain registered 3 months ago");
+  });
+
+  it("reads a page with no status and no title as an ordinary page", () => {
+    expect(classifyScan(merged({ httpStatus: undefined }), NOW).kind).toBe("page");
+  });
+
+  it("names a port per URL, keeping a target it cannot parse as written", () => {
+    const c = classifyScan(
+      merged({}, {}, {
+        perTarget: [
+          reading("not a url", { httpStatus: "404" }),
+          reading("http://1.2.3.4/", { httpStatus: "404" }),
+        ],
+      }),
+      NOW,
+    );
+    expect(c.caption).toBe("HTTP 404 on not a url, HTTP 404 on :80, nothing deployed at /");
+  });
+
+  it("falls back to the fold when no URL was read, even with no targets", () => {
+    const c = classifyScan(merged({ httpStatus: "500", finalUrl: undefined }, {}, { targets: [] }), NOW);
+    expect(c).toMatchObject({ kind: "default", label: "Error page", caption: "HTTP 500" });
+    expect(describeScan(merged({ finalUrl: undefined }, {}, { targets: [] }), c)).toBeUndefined();
+  });
+
+  it("describes files by what they run on, falling back to the file kind", () => {
+    const file = (over: Partial<ScanDetail>, targets = ["https://site.test/"]) => {
+      const m = merged({ mimeType: "application/octet-stream", ...over }, {}, { targets });
+      return describeScan(m, classifyScan(m, NOW));
+    };
+    expect(file({ finalUrl: "https://site.test/app.apk" })).toBe(
+      "An Android app, app.apk, delivered straight from site.test.",
+    );
+    expect(file({ finalUrl: "https://site.test/tool.jar" })).toBe(
+      "A Java program, tool.jar, delivered straight from site.test.",
+    );
+    expect(file({ finalUrl: "https://site.test/x.zip" })).toBe(
+      "An archive, x.zip, delivered straight from site.test.",
+    );
+    expect(file({ finalUrl: undefined, domain: "site.test" }, ["x"])).toBe(
+      "A file delivered straight from site.test.",
+    );
+    expect(file({ finalUrl: undefined }, ["x"])).toBe("A file delivered straight from x.");
+    const typeless = merged({ mimeType: undefined, downloads: [{ url: "https://site.test/", filename: "a.dat" }] });
+    expect(describeScan(typeless, classifyScan(typeless, NOW))).toBe(
+      "A file, a.dat, delivered straight from site.test.",
+    );
+  });
+
+  it("says nothing about an owner whose name is only a network handle", () => {
+    const m = merged({ asnName: "FOO-NET - " });
+    expect(describeScan(m, classifyScan(m, NOW))).toBe("A web page on site.test.");
+  });
+});

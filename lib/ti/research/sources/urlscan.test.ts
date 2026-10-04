@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { parseUrlScan } from "./urlscan";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseUrlScan, urlScanProvider } from "./urlscan";
+import { getJson } from "../../http";
+
+vi.mock("../../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
 
 describe("parseUrlScan", () => {
   it("maps search results to normalized scan items", () => {
@@ -66,5 +73,47 @@ describe("parseUrlScan", () => {
 
   it("skips entries without an id", () => {
     expect(parseUrlScan({ results: [{ page: {}, task: {} }] })).toEqual([]);
+  });
+});
+
+describe("parseUrlScan — bare result", () => {
+  it("leaves the page URL empty when neither page nor task carries one", () => {
+    expect(parseUrlScan({ results: [{ _id: "x" }] })[0].pageUrl).toBe("");
+  });
+});
+
+describe("urlScanProvider.check", () => {
+  const signal = new AbortController().signal;
+  const res = (data: unknown, status = 200) => ({ ok: status < 400, status, data, text: "" });
+  afterEach(() => vi.mocked(getJson).mockReset());
+
+  it("needs no key", () => expect(urlScanProvider.isEnabled()).toBe(true));
+
+  it("queries by IP or domain and pluralizes the summary", async () => {
+    vi.mocked(getJson).mockResolvedValue(res({ results: [{ _id: "a" }] }));
+    const one = await urlScanProvider.check("1.2.3.4", "ip", signal);
+    expect(vi.mocked(getJson).mock.calls[0][0]).toContain(encodeURIComponent("ip:1.2.3.4"));
+    expect(one.summary).toBe("1 recent scan");
+    vi.mocked(getJson).mockResolvedValue(res({ results: [{ _id: "a" }, { _id: "b" }] }));
+    const two = await urlScanProvider.check("a.example", "domain", signal);
+    expect(two.summary).toBe("2 recent scans");
+    expect(two.link).toBe(`https://urlscan.io/search/#${encodeURIComponent("domain:a.example")}`);
+  });
+
+  it("reports no scans, rate limits, failures and errors", async () => {
+    vi.mocked(getJson).mockResolvedValue(res({ results: [] }));
+    expect((await urlScanProvider.check("a.example", "domain", signal)).status).toBe("empty");
+    vi.mocked(getJson).mockResolvedValue(res(null, 429));
+    expect((await urlScanProvider.check("a.example", "domain", signal)).error).toBe(
+      "URLScan rate limit reached",
+    );
+    vi.mocked(getJson).mockResolvedValue(res(null, 500));
+    expect((await urlScanProvider.check("a.example", "domain", signal)).error).toBe(
+      "URLScan HTTP 500",
+    );
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await urlScanProvider.check("a.example", "domain", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await urlScanProvider.check("a.example", "domain", signal)).error).toBe("boom");
   });
 });

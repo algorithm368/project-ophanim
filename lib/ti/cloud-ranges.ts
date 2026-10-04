@@ -181,7 +181,7 @@ const download = sharedLoader(async (signal): Promise<CloudPrefix[]> => {
     prefixes.push(...parseGcp(gcp.value.data));
   }
   if (cloudflare.status === "fulfilled" && cloudflare.value.ok) {
-    prefixes.push(...parseCloudflare(cloudflare.value.text ?? ""));
+    prefixes.push(...parseCloudflare(cloudflare.value.text));
   }
   if (azure.status === "fulfilled") {
     prefixes.push(...azure.value);

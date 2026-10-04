@@ -64,3 +64,17 @@ describe("domainFcrdnsSource.check", () => {
     expect(f.details?.forwardConfirmed).toBe(false);
   });
 });
+
+describe("domainFcrdnsSource — remaining paths", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => mockResolveA.mockReset());
+
+  it("needs no key", () => expect(domainFcrdnsSource.isEnabled()).toBe(true));
+
+  it("maps a thrown resolution to timeout or error", async () => {
+    mockResolveA.mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await domainFcrdnsSource.check("a.example", signal)).status).toBe("timeout");
+    mockResolveA.mockRejectedValue(new Error("boom"));
+    expect((await domainFcrdnsSource.check("a.example", signal)).error).toBe("boom");
+  });
+});

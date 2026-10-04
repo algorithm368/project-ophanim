@@ -130,7 +130,7 @@ export function fileKind(
 const servedFile: Rung = ({ m }) => {
   const d = m.detail;
   const download = servedDownload(m);
-  const fileMime = Boolean(d.mimeType) && !DOCUMENT_MIME.test(d.mimeType ?? "");
+  const fileMime = Boolean(d.mimeType && !DOCUMENT_MIME.test(d.mimeType));
   if (!download && !fileMime) return null;
 
   const name = download?.filename ?? fileNameOf(d.finalUrl ?? m.targets[0]);
@@ -204,8 +204,9 @@ const lure: Rung = ({ m }) => {
   return { kind: "lure", label: "Download lure", caption };
 };
 
+/** An age past NEW_DOMAIN_DAYS, in months or years. Younger names never get
+ *  here: harvestSignals has already made a harvest of their page. */
 function ageWords(days: number): string {
-  if (days < 30) return ago(days);
   const years = Math.floor(days / 365);
   if (years >= 1) return `${count(years, "year")} ago`;
   return `${count(Math.floor(days / 30), "month")} ago`;
@@ -322,9 +323,10 @@ const defaultPage: Rung = ({ m }) => {
 /** What the site says it is about, when Cloudflare has filed it. */
 const categorised: Rung = ({ m }) => {
   const d = m.detail;
-  const cat = contentCategory(d.contentCategories);
+  const categories = d.contentCategories ?? [];
+  const cat = contentCategory(categories);
   if (!cat) return null;
-  const rest = (d.contentCategories ?? []).filter((c) => c !== cat && contentCategory([c]));
+  const rest = categories.filter((c) => c !== cat && contentCategory([c]));
   const via = d.categoryInheritedFrom ? `, via ${d.categoryInheritedFrom}` : "";
   const caption = rest.length ? rest.join(", ").toLowerCase() : "filed by Cloudflare";
   return { kind: "categorised", label: cat, caption: `${caption}${via}` };
@@ -342,7 +344,7 @@ function clip(text: string, max = 60): string {
  * page that loaded, and silent about the markup when nobody read it, because
  * an unread page did not show "no password field", it showed nothing.
  */
-const page: Rung = ({ m }) => ({
+const page = ({ m }: Context): ScanClass => ({
   kind: "page",
   label: "Web page",
   caption: m.capability.error
@@ -360,7 +362,6 @@ const LADDER: Rung[] = [
   parked,
   defaultPage,
   categorised,
-  page,
 ];
 
 /** ", reached in 3 hops from bit.ly" when the trip ended somewhere other than
@@ -384,10 +385,14 @@ export function classifyScan(
     const hit = rung(ctx);
     if (!hit) continue;
     if (hit.kind === "no-answer") return hit;
-    return { ...hit, caption: `${hit.caption}${reachedFrom(m)}` };
+    return withTrip(hit, m);
   }
-  // Unreachable: `page` always answers. Kept so the return type is honest.
-  return { kind: "page", label: "Web page", caption: "untitled" };
+  // `page` always answers, so it is the floor rather than the last rung.
+  return withTrip(page(ctx), m);
+}
+
+function withTrip(hit: ScanClass, m: MergedIndicator): ScanClass {
+  return { ...hit, caption: `${hit.caption}${reachedFrom(m)}` };
 }
 
 /** "a" or "an", by the sound of the first letter. Good enough for the nouns

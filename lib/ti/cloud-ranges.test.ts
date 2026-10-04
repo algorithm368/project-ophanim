@@ -160,3 +160,14 @@ describe("extractAzureJsonUrl", () => {
     expect(extractAzureJsonUrl("<html>no link here</html>")).toBeUndefined();
   });
 });
+
+describe("parseAzure — sparse service tags", () => {
+  it("skips tags with no properties or no prefixes, and IPv6 blocks", () => {
+    expect(
+      parseAzure({
+        values: [{}, { properties: {} }, { properties: { addressPrefixes: ["2603:1000::/40", "20.0.0.0/8"] } }],
+      }),
+    ).toEqual([{ cidr: "20.0.0.0/8", provider: "Microsoft Azure", region: undefined, service: undefined }]);
+    expect(parseAzure({})).toEqual([]);
+  });
+});

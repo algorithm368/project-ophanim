@@ -214,3 +214,19 @@ describe("threatTypeOf", () => {
     expect(t?.also).toEqual(["brute force"]);
   });
 });
+
+describe("threatTypeOf — a meta with no weight", () => {
+  it("counts the source at full weight", () => {
+    const s = src({ id: "feed", categories: ["botnet"], malicious: true });
+    delete (s.source as { weight?: number }).weight;
+    expect(threatTypeOf([s], { verdict: "malicious" })).not.toBeNull();
+  });
+});
+
+describe("threatTypeOf — sources that do not get a say", () => {
+  it("ignores a weightless context source, and one that answered with no score", () => {
+    const context = src({ id: "ripestat", categories: ["botnet"], malicious: true, weight: 0 });
+    const unscored = src({ id: "otx", categories: ["phishing"] });
+    expect(threatTypeOf([context, unscored], { verdict: "malicious" })).toBeNull();
+  });
+});

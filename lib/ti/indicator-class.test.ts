@@ -507,3 +507,53 @@ describe("hashEvidence", () => {
     expect(hashEvidence(undefined, [src({ id: "malpedia" })]).known).toBe(false);
   });
 });
+
+describe("indicator-class — remaining wording", () => {
+  it("names a single host by its reverse name, or generically", () => {
+    const geo = { isHosting: true };
+    expect(classifyIpLabel({ geo, ptr: { forwardConfirmed: true, hostname: "a.test" } }).desc).toMatch(/^a\.test forward-confirms/);
+    expect(classifyIpLabel({ geo, ptr: { forwardConfirmed: true } }).desc).toMatch(/^The reverse name forward-confirms/);
+    // A crowd on the address makes it a shared host before it can be a single one.
+    expect(
+      classifyIpLabel({ geo, ptr: { forwardConfirmed: true }, tenancy: { count: 5, atCeiling: false } }).label,
+    ).toBe("Shared host");
+  });
+
+  it("says one day for a domain registered yesterday", () => {
+    expect(classifyDomainLabel({ ctx: { ageDays: 1 } }).caption).toBe("registered 1 day ago");
+  });
+
+  it("falls back to a generic caption for a lone category", () => {
+    expect(classifyDomainLabel({ ctx: { categories: ["Technology"], ageDays: 400 } }).caption).toBe(
+      "categorised content",
+    );
+  });
+
+  it("dates an established domain under a year, one year, and several", () => {
+    expect(classifyDomainLabel({ ctx: { ageDays: 200 } })).toMatchObject({
+      caption: "registered under a year ago",
+      desc: "Registered under a year ago.",
+    });
+    expect(classifyDomainLabel({ ctx: { ageDays: 400 } }).caption).toBe("registered 1 year ago");
+  });
+
+  it("describes an ordinary file without a name, and a known file with no metadata", () => {
+    expect(classifyHashLabel({ known: true, ctx: { fileType: "PE32" } }).desc).toBe(
+      "Known file, no malware family attributed.",
+    );
+    expect(classifyHashLabel({ known: true }).sources).toEqual(["file metadata"]);
+  });
+});
+
+describe("indicator-class — anonymizers and named files", () => {
+  it("places an anonymizer on hosting infrastructure when it is there", () => {
+    expect(classifyIpLabel({ geo: { isProxy: true, isHosting: true } }).phrase).toMatch(/hosting\/datacenter/);
+    expect(classifyIpLabel({ geo: { isProxy: true } }).phrase).toBe("an anonymizer (proxy or VPN)");
+  });
+
+  it("quotes the name an ordinary file was seen as", () => {
+    expect(classifyHashLabel({ known: true, ctx: { fileType: "PE32", fileName: "a.exe" } }).desc).toBe(
+      'Seen as "a.exe".',
+    );
+  });
+});

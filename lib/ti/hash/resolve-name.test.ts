@@ -121,3 +121,23 @@ describe("resolveFileName", () => {
     expect(out.fileName).toBeUndefined();
   });
 });
+
+describe("resolveFileName — remaining shapes", () => {
+  it("drops the hash with an extension on it", () => {
+    const sha256 = "a".repeat(64);
+    expect(resolveFileName([src("s1", { fileName: `${sha256}.exe` })], { sha256 }).fileName).toBeUndefined();
+  });
+
+  it("skips a non-string entry in a source's name list", () => {
+    const out = resolveFileName(
+      [src("s1", { fileNames: [42 as unknown as string, "real.exe"] })],
+      NO_HASHES,
+    );
+    expect(out.fileNames).toEqual(["real.exe"]);
+  });
+
+  it("orders names one source offered equally by spelling", () => {
+    const out = resolveFileName([src("s1", { fileNames: ["zeta.exe", "Alpha.exe"] })], NO_HASHES);
+    expect(out.fileNames).toEqual(["Alpha.exe", "zeta.exe"]);
+  });
+});

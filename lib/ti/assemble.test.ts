@@ -192,3 +192,29 @@ describe("assembleHashResult context union", () => {
     expect(r.context?.mitreTechniques).toEqual([{ id: "T1105" }, { id: "T1547" }]);
   });
 });
+
+describe("assemble — remaining shapes", () => {
+  it("marks the breakdown when an identified scanner was held at suspicious", () => {
+    const r = assembleIpResult(
+      "71.6.146.185",
+      [
+        ok("scanner-id", 0, 0, { allowlisted: true, categories: ["research-scanner"] }),
+        ok("abuseipdb", 1, 100, { malicious: true, categories: ["Port Scan"] }),
+      ],
+      "2026-01-01T00:00:00Z",
+    );
+    expect(r.verdict).toBe("suspicious");
+    expect(r.scoreBreakdown?.scannerCapped).toBe(true);
+  });
+
+  it("does not take a SHA-1 query echoed back as a file name for a name", () => {
+    const sha1 = "a".repeat(40);
+    const r = assembleHashResult(
+      sha1,
+      "sha1",
+      [ok("vt", 1, 0, { hashContext: { fileName: sha1 } })],
+      "2026-01-01T00:00:00Z",
+    );
+    expect(r.context?.fileName).toBeUndefined();
+  });
+});

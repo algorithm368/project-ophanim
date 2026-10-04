@@ -113,3 +113,24 @@ describe("buildVoteTable", () => {
     expect(providerLabel("ip-api")).toBe("ip-api");
   });
 });
+
+describe("buildVoteTable — remaining shapes", () => {
+  it("counts outlying providers in a clustered coordinates vote", () => {
+    const table = buildVoteTable(
+      res({
+        coordinates: rf({ lat: 1, lon: 1 }, {
+          sources: ["ip-api"],
+          alternatives: [{ value: { lat: 9, lon: 9 }, sources: ["ipinfo"] }],
+        }),
+      }),
+    )!;
+    expect(table.fields[0].winner).toBe("clustered, 1 outlying");
+  });
+
+  it("keeps two unknown providers in the order they were seen, after the known ones", () => {
+    const table = buildVoteTable(
+      res({ country: rf("US", { sources: ["zz-b", "ip-api", "zz-a"] }) }),
+    )!;
+    expect(table.providers).toEqual(["ip-api", "zz-b", "zz-a"]);
+  });
+});

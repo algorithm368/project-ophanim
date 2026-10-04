@@ -7,6 +7,7 @@ import {
 } from "./aggregate";
 import { BENIGN_REASON, type BenignReason } from "./benign";
 import type { ScoreBreakdown, SourceResult } from "./types";
+import { sourceWeight } from "./weight";
 
 /**
  * One labelled number from the arithmetic behind the score.
@@ -58,13 +59,13 @@ function withoutDominant(
     (s) =>
       s.status === "ok" &&
       typeof s.score === "number" &&
-      (s.source.weight ?? 1) > 0 &&
+      sourceWeight(s.source) > 0 &&
       s.source.id !== dominantId,
   );
-  const weight = rest.reduce((n, s) => n + (s.source.weight ?? 1), 0);
+  const weight = rest.reduce((n, s) => n + sourceWeight(s.source), 0);
   if (weight === 0) return null;
   const sum = rest.reduce(
-    (n, s) => n + (s.source.weight ?? 1) * (s.score as number),
+    (n, s) => n + sourceWeight(s.source) * (s.score as number),
     0,
   );
   return { average: Math.round(sum / weight), count: rest.length };
@@ -113,7 +114,7 @@ export function scoreRationale(
     (s) =>
       s.status === "ok" &&
       typeof s.score === "number" &&
-      (s.source.weight ?? 1) > 0,
+      sourceWeight(s.source) > 0,
   );
   if (!bd || scored.length === 0) return null;
 
@@ -129,7 +130,7 @@ export function scoreRationale(
     {
       label: "strongest",
       value: dominant?.score ?? bd.effectiveMax,
-      note: `${dominantName}, weight ${dominant?.source.weight ?? 1}, ${times(MAX_SIGNAL_WEIGHT)}`,
+      note: `${dominantName}, weight ${sourceWeight(dominant?.source)}, ${times(MAX_SIGNAL_WEIGHT)}`,
     },
     {
       label: "consensus",
