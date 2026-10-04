@@ -317,3 +317,113 @@ describe("sandboxRuntime — ip_traffic shapes", () => {
     expect(ips).toEqual(["ip 9.9.9.9"]);
   });
 });
+
+describe("virustotal-sandbox helpers — edge cases", () => {
+  it("ranks a low severity above info", () => {
+    expect(severityRank("IMPACT_SEVERITY_LOW")).toBe(2);
+  });
+
+  it("reads an all-whitespace registry key as no key", () => {
+    expect(normalizeRegKey("   ")).toBeUndefined();
+  });
+
+  it("links techniques to signatures defensively", () => {
+    const b: VtBehaviourSummary["data"] = {
+      signature_matches: [
+        { id: "0", name: "Alpha" },
+        { name: "  " },
+        { name: "alpha" },
+        { name: "Beta" },
+        { id: "9", name: "Gamma" },
+      ],
+      mitre_attack_techniques: [
+        { refs: [{ ref: "#signature_matches", value: "0" }] },
+        { id: "T1", refs: [{ ref: "#other", value: "0" }, { ref: "#signature_matches" }] },
+        {
+          id: "T2",
+          refs: [
+            { ref: "#signature_matches", value: "0" },
+            { ref: "#signature_matches", value: "0" },
+          ],
+        },
+        { id: "T3" },
+      ],
+    };
+    expect(sandboxCapabilities(b)).toEqual([
+      { label: "Alpha", mitre: ["T2"] },
+      { label: "Beta" },
+      { label: "Gamma" },
+    ]);
+    expect(sandboxCapabilities(b, 1)).toEqual([{ label: "Alpha", mitre: ["T2"] }]);
+  });
+
+  it("keeps the more severe of two entries for one technique, whichever comes first", () => {
+    expect(
+      sandboxMitre({
+        mitre_attack_techniques: [
+          { id: "T1", severity: "IMPACT_SEVERITY_HIGH", signature_description: "hi" },
+          { id: "T1", severity: "IMPACT_SEVERITY_LOW", signature_description: "lo" },
+          { id: "T2", signature_description: " " },
+        ],
+      }),
+    ).toEqual([
+      { id: "T1", name: "hi" },
+      { id: "T2", name: undefined },
+    ]);
+  });
+});
+
+describe("virusTotalSandboxSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.spyOn(http, "getJson").mockResolvedValue({ ok: status < 400, status, data, text: "" } as never);
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("reports whether a key is configured", () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "");
+    expect(virusTotalSandboxSource.isEnabled()).toBe(false);
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    expect(virusTotalSandboxSource.isEnabled()).toBe(true);
+  });
+
+  it("summarizes runtime-only behaviour, with tags", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    reply({ data: { command_executions: ["cmd /c whoami"], tags: ["PERSISTENCE"] } });
+    const f = await virusTotalSandboxSource.check(SHA, signal);
+    expect(f.summary).toBe("Sandbox: 0 behaviours, 0 techniques");
+    expect(f.hashContext).toMatchObject({
+      capabilities: undefined,
+      mitreTechniques: undefined,
+      behaviorTags: ["PERSISTENCE"],
+    });
+  });
+
+  it("calls a report with nothing readable no report", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    reply({ data: { mitre_attack_techniques: [{}], signature_matches: [{}] } });
+    const f = await virusTotalSandboxSource.check(SHA, signal);
+    expect(f.summary).toBe("No sandbox behaviour report");
+    expect(f.hashContext?.behaviorTags).toBeUndefined();
+  });
+
+  it("surfaces an API error message, timeouts and errors", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    reply({ error: { message: "Quota exceeded" } }, 429);
+    expect((await virusTotalSandboxSource.check(SHA, signal)).error).toBe("Quota exceeded");
+    vi.restoreAllMocks();
+    reply(null, 500);
+    expect((await virusTotalSandboxSource.check(SHA, signal)).error).toBe("HTTP 500");
+    vi.restoreAllMocks();
+    reply({}, 500);
+    expect((await virusTotalSandboxSource.check(SHA, signal)).error).toBe("HTTP 500");
+    vi.restoreAllMocks();
+    vi.spyOn(http, "getJson").mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await virusTotalSandboxSource.check(SHA, signal)).status).toBe("timeout");
+    vi.restoreAllMocks();
+    vi.spyOn(http, "getJson").mockRejectedValue(new Error("boom"));
+    expect((await virusTotalSandboxSource.check(SHA, signal)).error).toBe("boom");
+  });
+});

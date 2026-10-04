@@ -164,3 +164,23 @@ describe("distanceBands / medianKm", () => {
     expect(medianKm("anchor", new Map([["anchor", 0]]))).toBeUndefined();
   });
 });
+
+describe("distance — remaining shapes", () => {
+  it("refuses a non-finite position and names an unlabelled one", () => {
+    expect(pointOf(at("9.9.9.9", { lat: Number.NaN, lon: 1 }))).toBeUndefined();
+    expect(pointOf(at("9.9.9.9", { lat: 1, lon: 1 }))?.label).toBe("Unknown place");
+  });
+
+  it("moves the hub to a later, busier site", () => {
+    // Sydney is the busiest single site, so it is looked at first; Frankfurt
+    // has more addresses within reach once its neighbours are counted.
+    const cgn = at("6.6.6.6", { lat: 50.94, lon: 6.96, city: "Cologne", country: "Germany" });
+    const spread = spreadOf([s1, at("3.3.3.4", SYD), f1, a1, cgn]);
+    expect(spread.hub?.label).not.toBe("Sydney, Australia");
+  });
+
+  it("speaks of several country-level positions in the plural", () => {
+    const note = spreadNote(spreadOf([f1, u1, at("4.4.4.5", { lat: 10, lon: 10, country: "Chad" })]));
+    expect(note).toContain("2 positions are only country level, so distances to them are approximate.");
+  });
+});

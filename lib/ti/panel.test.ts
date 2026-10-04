@@ -50,3 +50,21 @@ describe("lastSeenLabel", () => {
     expect(lastSeenLabel(ip(), NOW)).toBe("no record");
   });
 });
+
+describe("activityStat — files and fresh sightings", () => {
+  it("reads a file's own last-seen date and calls a sighting this hour under an hour", () => {
+    const file = {
+      hash: "a".repeat(64),
+      algorithm: "sha256",
+      verdict: "malicious",
+      riskScore: 90,
+      checkedAt: new Date(NOW).toISOString(),
+      context: { lastSeen: "2026-09-13T00:10:00Z" },
+      sources: [],
+      stats: stats(0),
+    } as unknown as CheckResult;
+    // Sightings are kept to the day, so "this hour" is the first hour after midnight.
+    const justAfterMidnight = Date.UTC(2026, 8, 13, 0, 30);
+    expect(activityStat(file, justAfterMidnight)).toMatchObject({ value: "Live", detail: "under an hour" });
+  });
+});

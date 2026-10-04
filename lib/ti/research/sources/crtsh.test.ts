@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { parseCrtsh } from "./crtsh";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { crtshProvider, parseCrtsh } from "./crtsh";
+import { getJson } from "../../http";
+
+vi.mock("../../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
 
 describe("parseCrtsh", () => {
   const payload = [
@@ -46,5 +53,59 @@ describe("parseCrtsh", () => {
   it("returns empties for a malformed payload", () => {
     expect(parseCrtsh(null, "evil.com")).toEqual({ certs: [], subdomains: [] });
     expect(parseCrtsh({}, "evil.com")).toEqual({ certs: [], subdomains: [] });
+  });
+});
+
+describe("parseCrtsh — sparse entries", () => {
+  it("tolerates null entries and missing fields", () => {
+    expect(parseCrtsh([null, {}], "a.example")).toEqual({
+      certs: [
+        { issuer: "Unknown CA", commonName: undefined, notBefore: undefined, notAfter: undefined },
+        { issuer: "Unknown CA", commonName: undefined, notBefore: undefined, notAfter: undefined },
+      ],
+      subdomains: [],
+    });
+  });
+});
+
+describe("crtshProvider.check", () => {
+  const signal = new AbortController().signal;
+  const res = (data: unknown, status = 200) => ({ ok: status < 400, status, data, text: "" });
+  afterEach(() => vi.mocked(getJson).mockReset());
+
+  it("needs no key", () => expect(crtshProvider.isEnabled()).toBe(true));
+
+  it("summarizes certs and subdomains", async () => {
+    vi.mocked(getJson).mockResolvedValue(
+      res([{ name_value: "www.a.example", issuer_name: "CA" }]),
+    );
+    const f = await crtshProvider.check("a.example", "domain", signal);
+    expect(f.summary).toBe("1 certs, 1 subdomain");
+    expect(f.link).toBe("https://crt.sh/?q=a.example");
+    expect(getJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the subdomain count when there are none", async () => {
+    vi.mocked(getJson).mockResolvedValue(res([{ name_value: "a.example" }]));
+    expect((await crtshProvider.check("a.example", "domain", signal)).summary).toBe("1 certs");
+  });
+
+  it("retries a flaky failure once, then reports nothing found", async () => {
+    vi.mocked(getJson).mockResolvedValueOnce(res(null, 502)).mockResolvedValueOnce(res(null));
+    expect((await crtshProvider.check("a.example", "domain", signal)).status).toBe("empty");
+    expect(getJson).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a definitive client error", async () => {
+    vi.mocked(getJson).mockResolvedValue(res(null, 400));
+    expect((await crtshProvider.check("a.example", "domain", signal)).status).toBe("empty");
+    expect(getJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps timeouts and errors", async () => {
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await crtshProvider.check("a.example", "domain", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await crtshProvider.check("a.example", "domain", signal)).error).toBe("boom");
   });
 });

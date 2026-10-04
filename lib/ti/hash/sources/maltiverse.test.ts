@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { classificationScore, maltiverseSource } from "./maltiverse";
 import * as http from "../../http";
 
@@ -129,5 +129,55 @@ describe("maltiverseSource", () => {
       new AbortController().signal,
     );
     expect(finding.hashContext?.fileNames).toEqual(["only.exe"]);
+  });
+});
+
+describe("maltiverseSource — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const H = "a".repeat(64);
+  const reply = (data: unknown, status = 200) =>
+    vi.spyOn(http, "getJson").mockResolvedValue({ ok: status < 400, status, data, text: "" } as never);
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("needs no key, but sends one when configured", async () => {
+    expect(maltiverseSource.isEnabled()).toBe(true);
+    vi.stubEnv("MALTIVERSE_API_KEY", "k");
+    const spy = reply({ classification: "malicious", tag: ["rat", "", "rat"], blacklist: [{}] });
+    const f = await maltiverseSource.check(H, signal);
+    expect(spy.mock.calls[0][2]).toEqual({ Authorization: "Bearer k" });
+    expect(f.hashContext?.tags).toEqual(["rat"]);
+    expect(f.details).toEqual({ tags: ["rat"] });
+    expect(f.categories).toEqual([]);
+  });
+
+  it("leaves optional parts out of a bare answer", async () => {
+    vi.stubEnv("MALTIVERSE_API_KEY", "");
+    const spy = reply({});
+    const f = await maltiverseSource.check(H, signal);
+    expect(spy.mock.calls[0][2]).toEqual({});
+    expect(f.summary).toBe("Maltiverse classification: unknown");
+    expect(f.details).toBeUndefined();
+    expect(f.relations).toBeUndefined();
+    expect(f.hashContext).toMatchObject({ fileNames: undefined, detectionNames: undefined });
+  });
+
+  it("maps 404, error bodies, timeouts and errors", async () => {
+    reply(null, 404);
+    expect((await maltiverseSource.check(H, signal)).summary).toBe("Not indexed by Maltiverse");
+    vi.restoreAllMocks();
+    reply({ error: "rate limited" });
+    expect((await maltiverseSource.check(H, signal)).error).toBe("rate limited");
+    vi.restoreAllMocks();
+    reply(null, 500);
+    expect((await maltiverseSource.check(H, signal)).error).toBe("HTTP 500");
+    vi.restoreAllMocks();
+    vi.spyOn(http, "getJson").mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await maltiverseSource.check(H, signal)).status).toBe("timeout");
+    vi.restoreAllMocks();
+    vi.spyOn(http, "getJson").mockRejectedValue(new Error("boom"));
+    expect((await maltiverseSource.check(H, signal)).error).toBe("boom");
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTimeline, phaseSpan } from "@/lib/ti/timeline";
+import { buildTimeline, phaseSpan, reportActivity } from "@/lib/ti/timeline";
 import type {
   CheckResult,
   DomainCheckResult,
@@ -423,5 +423,29 @@ describe("AbuseIPDB reports", () => {
 
   it("has no activity when no source dated its reports", () => {
     expect(buildTimeline(ip([abuse({ totalReports: 5 })]), NOW).activity).toBeUndefined();
+  });
+});
+
+describe("timeline — remaining shapes", () => {
+  it("keeps a source's earliest row when a later one follows it", () => {
+    const t = buildTimeline(
+      domain([
+        pdns(
+          ["5.6.7.8", "2023-06-01T00:00:00Z", "2024-03-01T00:00:00Z"],
+          ["1.2.3.4", "2024-01-01T00:00:00Z", "2024-02-01T00:00:00Z"],
+        ),
+      ]),
+      NOW,
+    );
+    expect(t.events.find((e) => e.kind === "first-resolved")?.detail).toBe("to 5.6.7.8");
+  });
+
+  it("tallies reports with default window and counts, skipping days after today", () => {
+    const activity = reportActivity(
+      [src({ id: "abuseipdb", details: { reportDays: [{ day: "2026-10-01", count: 2 }, { day: "2027-01-01", count: 9 }] } })],
+      NOW.getTime(),
+    );
+    expect(activity).toMatchObject({ windowDays: 90, itemized: 0, total: 0 });
+    expect(activity?.weeks.reduce((n, w) => n + w.count, 0)).toBe(2);
   });
 });

@@ -148,3 +148,36 @@ describe("bulk limits from the environment", () => {
     expect(bulkRdapMax()).toBe(0);
   });
 });
+
+describe("fetchRdapCountries / fetchFreeIpApiGeo — answers", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => vi.mocked(getJson).mockReset());
+
+  it("does nothing for no IPs", async () => {
+    expect((await fetchRdapCountries([], signal, 2)).size).toBe(0);
+    expect((await fetchFreeIpApiGeo([], signal, 2)).size).toBe(0);
+    expect(getJson).not.toHaveBeenCalled();
+  });
+
+  it("keeps an RDAP allocation only when it names a country", async () => {
+    vi.mocked(getJson).mockImplementation(async (url: string) => {
+      if (url.endsWith("1.1.1.1")) return { ok: true, status: 200, text: "", data: { country: "AU" } };
+      if (url.endsWith("2.2.2.2")) return { ok: true, status: 200, text: "", data: { name: "NET" } };
+      return { ok: false, status: 404, text: "", data: null };
+    });
+    const out = await fetchRdapCountries(["1.1.1.1", "2.2.2.2", "3.3.3.3"], signal, 2);
+    expect([...out.keys()]).toEqual(["1.1.1.1"]);
+  });
+
+  it("drops a freeipapi answer that names no country", async () => {
+    vi.mocked(getJson).mockImplementation(async (url: string) =>
+      url.endsWith("1.1.1.1")
+        ? { ok: true, status: 200, text: "", data: { countryName: "Australia" } }
+        : { ok: true, status: 200, text: "", data: { cityName: "Nowhere" } },
+    );
+    const out = await fetchFreeIpApiGeo(["1.1.1.1", "2.2.2.2"], signal, 2);
+    expect([...out.keys()]).toEqual(["1.1.1.1"]);
+    vi.mocked(getJson).mockResolvedValue({ ok: false, status: 500, text: "", data: null });
+    expect((await fetchFreeIpApiGeo(["1.1.1.1"], signal, 1)).size).toBe(0);
+  });
+});

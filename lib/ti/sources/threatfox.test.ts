@@ -87,3 +87,59 @@ describe("threatFoxWindow", () => {
     });
   });
 });
+
+describe("threatFoxSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(postJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(postJson).mockReset();
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "");
+    expect(threatFoxSource.isEnabled()).toBe(false);
+    expect(await threatFoxSource.check("1.2.3.4", signal)).toEqual({ status: "skipped" });
+  });
+
+  it("names the malware, types and tags of a hit", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    expect(threatFoxSource.isEnabled()).toBe(true);
+    reply({
+      query_status: "ok",
+      data: [
+        { malware: "win.cobalt", malware_printable: "Cobalt Strike", threat_type: "botnet_cc", confidence_level: 90, tags: ["cs"] },
+        { malware: "win.qakbot", tags: null },
+      ],
+    });
+    const f = await threatFoxSource.check("1.2.3.4", signal);
+    expect(f.summary).toBe("Linked to Cobalt Strike, win.qakbot across 2 IOC(s)");
+    expect(f.categories).toEqual(["botnet_cc", "Cobalt Strike", "win.qakbot", "cs"]);
+    expect(f.score).toBe(90);
+  });
+
+  it("falls back to a generic malware name", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    reply({ query_status: "ok", data: [{}] });
+    expect((await threatFoxSource.check("1.2.3.4", signal)).summary).toBe(
+      "Linked to malware across 1 IOC(s)",
+    );
+  });
+
+  it("maps no_result, error bodies, timeouts and errors", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    reply({ query_status: "no_result" });
+    expect((await threatFoxSource.check("1.2.3.4", signal)).score).toBe(0);
+    reply({ query_status: "illegal_search_term", data: "Invalid IOC" });
+    expect((await threatFoxSource.check("1.2.3.4", signal)).error).toBe("Invalid IOC");
+    reply({ query_status: "unknown_auth_key" });
+    expect((await threatFoxSource.check("1.2.3.4", signal)).error).toBe("unknown_auth_key");
+    reply(null, 502);
+    expect((await threatFoxSource.check("1.2.3.4", signal)).error).toBe("HTTP 502");
+    vi.mocked(postJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await threatFoxSource.check("1.2.3.4", signal)).status).toBe("timeout");
+    vi.mocked(postJson).mockRejectedValue(new Error("boom"));
+    expect((await threatFoxSource.check("1.2.3.4", signal)).error).toBe("boom");
+  });
+});

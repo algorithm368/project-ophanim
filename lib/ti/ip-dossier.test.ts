@@ -422,3 +422,71 @@ describe("dossier surfaces the sources added for benign evidence and dating", ()
     expect(g?.fields.some((f) => f.label === "Feed history")).not.toBe(true);
   });
 });
+
+describe("ip dossier — remaining rows", () => {
+  const value = (g: ReturnType<typeof buildThreatActivity>, label: string) =>
+    g?.fields.find((f) => f.label === label)?.value;
+
+  it("names a mobile network and a Tor relay", () => {
+    const g = buildHostClassification(
+      mkResult({ geo: { isMobile: true }, sources: [finding("tor-project", { categories: ["tor", "tor-relay"] })] }),
+    );
+    expect(value(g, "Assignment type")).toBe("Mobile network");
+    expect(value(g, "Anonymization")).toBe("Tor relay");
+  });
+
+  it("prints an unknown port bare and collapses repeated software, with or without a version", () => {
+    const g = buildExposedServices(
+      mkResult({
+        sources: [
+          finding("shodan-internetdb", {
+            details: {
+              ports: [31337, 22],
+              cpes: ["cpe:/a:openbsd:openssh", "cpe:/a:openbsd:openssh", "cpe:/a:nginx:nginx:1.2"],
+            },
+          }),
+        ],
+      }),
+    );
+    expect(value(g, "Open ports")).toMatch(/31337$/);
+    const software = g?.fields.find((f) => f.label !== "Open ports")?.value ?? "";
+    expect(software).toMatch(/nginx 1\.2/i);
+  });
+
+  it("names an organisation distinct from the provider and the network", () => {
+    const g = buildNetworkProvenance(mkResult({ geo: { org: "Acme Labs", isp: "Acme", asnOrg: "Acme Net" } }));
+    expect(value(g, "Organization")).toBe("Acme Labs");
+  });
+
+  it("lists ET Open, falls back on scanning and C2 wording", () => {
+    const g = buildThreatActivity(
+      mkResult({
+        sources: [
+          finding("et-open", { malicious: true }),
+          finding("greynoise", { categories: ["internet-scanner"] }),
+          finding("feodo", { malicious: true, details: {} }),
+        ],
+      }),
+    );
+    expect(value(g, "Blocklist listings")).toBe("ET Open");
+    expect(value(g, "Observed activity")).toBe("internet-scanner");
+    expect(value(g, "Command and control")).toBe("Botnet C2");
+    const bare = buildThreatActivity(mkResult({ sources: [finding("greynoise", { malicious: true })] }));
+    expect(value(bare, "Observed activity")).toBe("Observed scanning");
+  });
+
+  it("speaks of one domain, one resolution and one source in the singular", () => {
+    const r = mkResult({
+      passiveDns: [{ value: "a.test", type: "domain" }],
+      sources: [finding("reverse-ip", { details: { domainCount: 1 } })],
+    });
+    const g = buildRelationships(r);
+    expect(value(g, "Hosted domains")).toBe("1 domain");
+    expect(value(g, "Passive DNS")).toBe("1 historical resolution");
+    expect(buildIpDossier(r).footer).toMatch(/^Enriched from 1 source,/);
+    const two = buildRelationships(
+      mkResult({ passiveDns: [{ value: "a.test", type: "domain" }, { value: "b.test", type: "domain" }] }),
+    );
+    expect(value(two, "Passive DNS")).toBe("2 historical resolutions");
+  });
+});

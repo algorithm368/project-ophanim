@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { answers, resolveA, UNFILTERED_RESOLVERS, type DohResponse } from "./doh";
+import { answers, dohQuery, resolveA, UNFILTERED_RESOLVERS, type DohResponse } from "./doh";
 import { getJson } from "../http";
 
 vi.mock("../http", async (importOriginal) => {
@@ -80,5 +80,25 @@ describe("UNFILTERED_RESOLVERS", () => {
     const urls = Object.values(UNFILTERED_RESOLVERS);
     expect(urls.length).toBeGreaterThanOrEqual(2);
     for (const url of urls) expect(url.startsWith("https://")).toBe(true);
+  });
+});
+
+describe("dohQuery / answers / resolveA — remaining shapes", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => vi.mocked(getJson).mockReset());
+
+  it("asks without the DO bit unless told to", async () => {
+    vi.mocked(getJson).mockResolvedValue({ ok: true, status: 200, text: "", data: { Status: 0 } });
+    await dohQuery("https://r.test/dns-query", "plain.test", "MX", signal);
+    expect(vi.mocked(getJson).mock.calls[0][0]).toBe("https://r.test/dns-query?name=plain.test&type=MX");
+  });
+
+  it("keeps an answer that carries no type", () => {
+    expect(answers({ Status: 0, Answer: [{ data: "x.test." }] } as DohResponse)).toEqual(["x.test"]);
+  });
+
+  it("returns nothing when the resolver gave no answer section", async () => {
+    vi.mocked(getJson).mockResolvedValue({ ok: true, status: 200, text: "", data: { Status: 3 } });
+    expect(await resolveA("nx.test", signal)).toEqual([]);
   });
 });

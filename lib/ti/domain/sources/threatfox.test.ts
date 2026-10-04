@@ -83,3 +83,70 @@ describe("threatFoxDomainSource.check newest sighting", () => {
     expect(finding.lastSeen).toBeUndefined();
   });
 });
+
+describe("threatFoxDomainSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(postJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(postJson).mockReset();
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "");
+    expect(threatFoxDomainSource.isEnabled()).toBe(false);
+    expect(await threatFoxDomainSource.check("a.example", signal)).toEqual({ status: "skipped" });
+  });
+
+  it("names the malware on an exact-host hit, ignoring other hosts", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    expect(threatFoxDomainSource.isEnabled()).toBe(true);
+    reply({
+      query_status: "ok",
+      data: [
+        { ioc: "a.example", ioc_type: "domain", malware: "win.x", malware_printable: "X", threat_type: "botnet_cc", confidence_level: 70, tags: ["t"] },
+        { ioc: "a.example:443", ioc_type: "domain", malware: "win.y", tags: null },
+        { ioc: "https://sub.a.example/p", ioc_type: "url", malware: "win.z" },
+      ],
+    });
+    const f = await threatFoxDomainSource.check("A.example", signal);
+    expect(f).toMatchObject({
+      score: 70,
+      categories: ["botnet_cc", "X", "win.y", "t"],
+      summary: "Linked to X, win.y across 2 IOC(s)",
+    });
+  });
+
+  it("falls back to a generic malware name", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    reply({ query_status: "ok", data: [{ ioc: "a.example" }] });
+    expect((await threatFoxDomainSource.check("a.example", signal)).summary).toBe(
+      "Linked to malware across 1 IOC(s)",
+    );
+  });
+
+  it("reports no hit for no_result and for substring-only matches", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    reply({ query_status: "no_result" });
+    expect((await threatFoxDomainSource.check("a.example", signal)).score).toBe(0);
+    reply({ query_status: "ok", data: [{ ioc: "b.a.example" }] });
+    expect((await threatFoxDomainSource.check("a.example", signal)).summary).toBe(
+      "No malware IOCs reference this domain",
+    );
+  });
+
+  it("maps error bodies, timeouts and errors", async () => {
+    vi.stubEnv("THREATFOX_API_KEY", "k");
+    reply({ query_status: "illegal", data: "Invalid IOC" });
+    expect((await threatFoxDomainSource.check("a.example", signal)).error).toBe("Invalid IOC");
+    reply({ query_status: "unknown_auth_key" });
+    expect((await threatFoxDomainSource.check("a.example", signal)).error).toBe("unknown_auth_key");
+    reply(null, 502);
+    expect((await threatFoxDomainSource.check("a.example", signal)).error).toBe("HTTP 502");
+    vi.mocked(postJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await threatFoxDomainSource.check("a.example", signal)).status).toBe("timeout");
+    vi.mocked(postJson).mockRejectedValue(new Error("boom"));
+    expect((await threatFoxDomainSource.check("a.example", signal)).error).toBe("boom");
+  });
+});

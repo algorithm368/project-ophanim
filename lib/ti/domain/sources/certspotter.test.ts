@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { issuerLabel, parseCertspotter } from "./certspotter";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { certSpotterSource, issuerLabel, parseCertspotter } from "./certspotter";
+import { getJson } from "../../http";
+
+vi.mock("../../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
 
 describe("issuerLabel", () => {
   it("prefers the organization, falls back to CN", () => {
@@ -64,5 +71,72 @@ describe("parseCertspotter", () => {
       "example.com",
     );
     expect(certificates[0].issuer).toBe("Google Trust Services");
+  });
+});
+
+describe("issuerLabel / parseCertspotter edge cases", () => {
+  it("returns the DN itself when it has neither O nor CN", () => {
+    expect(issuerLabel("C=US")).toBe("C=US");
+  });
+
+  it("skips a bare wildcard and falls back to the first SAN off the apex", () => {
+    const { certificates, subdomains } = parseCertspotter(
+      [{ dns_names: ["*.", "other.test"] }, {}],
+      "a.example",
+    );
+    expect(subdomains).toEqual([]);
+    expect(certificates[0]).toMatchObject({ commonName: "*.", issuer: "Unknown CA" });
+    expect(certificates[1].commonName).toBeUndefined();
+  });
+});
+
+describe("certSpotterSource.check", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("needs no key, but sends one when configured", async () => {
+    expect(certSpotterSource.isEnabled()).toBe(true);
+    vi.stubEnv("CERTSPOTTER_API_KEY", "k");
+    reply([]);
+    await certSpotterSource.check("www.a.example", signal);
+    const [url, , headers] = vi.mocked(getJson).mock.calls[0];
+    expect(url).toContain("domain=a.example");
+    expect(headers).toEqual({ Authorization: "Bearer k" });
+  });
+
+  it("summarizes certificates, subdomains and shared-cert domains", async () => {
+    vi.stubEnv("CERTSPOTTER_API_KEY", "");
+    reply([{ dns_names: ["a.example", "www.a.example", "b.test"] }]);
+    const f = await certSpotterSource.check("a.example", signal);
+    expect(vi.mocked(getJson).mock.calls[0][2]).toEqual({});
+    expect(f.summary).toBe("1 certificate in CT logs, 1 subdomain");
+    expect(f.relations).toEqual([{ value: "b.test", type: "domain", relation: "sharedCert" }]);
+  });
+
+  it("omits subdomain and relation parts when there are none", async () => {
+    reply([{ dns_names: ["not a domain"] }]);
+    const f = await certSpotterSource.check("not a domain", signal);
+    expect(f.summary).toBe("1 certificate in CT logs");
+    expect(f.relations).toBeUndefined();
+  });
+
+  it("maps empty, rate-limited, failed and thrown lookups", async () => {
+    reply([]);
+    expect((await certSpotterSource.check("a.example", signal)).summary).toBe(
+      "No certificate-transparency records",
+    );
+    reply(null, 429);
+    expect((await certSpotterSource.check("a.example", signal)).status).toBe("rate_limited");
+    reply({ not: "a list" });
+    expect((await certSpotterSource.check("a.example", signal)).error).toBe("HTTP 200");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await certSpotterSource.check("a.example", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await certSpotterSource.check("a.example", signal)).error).toBe("boom");
   });
 });

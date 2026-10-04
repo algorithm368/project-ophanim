@@ -776,3 +776,36 @@ describe("the vitals strip", () => {
     expect(vital(buildIdentity(hash({})), "seen")?.value).toBe("Never recorded");
   });
 });
+
+describe("identity — remaining fields", () => {
+  it("keeps a malformed country code as written", () => {
+    expect(countryName("!!")).toBe("!!");
+  });
+
+  it("names the organisation only when it adds to the provider and the network", () => {
+    const org = (geo: CheckResult["geo"]) => find(buildIdentity(ip({ geo })), "org");
+    expect(org({ org: "Acme", isp: "Acme" })?.absent).toBe(true);
+    expect(org({ org: "Acme", asnOrg: "Acme" })?.absent).toBe(true);
+    expect(org({ org: "Acme Labs", isp: "Acme", asnOrg: "AS1 Acme" })?.value).toBe("Acme Labs");
+  });
+
+  it("lists the software Shodan saw, with a version when it has one", () => {
+    const rec = buildIdentity(
+      ip({
+        sources: [
+          src({
+            id: "shodan-internetdb",
+            details: { cpes: ["cpe:/a:nginx:nginx:1.25.3", "cpe:/a:openbsd:openssh"] },
+          }),
+        ],
+      }),
+    );
+    expect(find(rec, "software")?.value).toMatch(/nginx 1\.25\.3/i);
+  });
+});
+
+describe("caaIssuers — unquoted records", () => {
+  it("takes the last word when the authority is not quoted", () => {
+    expect(caaIssuers(["0 issue letsencrypt.org", '0 issue ";"'])).toEqual(["letsencrypt.org"]);
+  });
+});

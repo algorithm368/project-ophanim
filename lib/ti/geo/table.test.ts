@@ -199,3 +199,42 @@ describe("export", () => {
     expect(cells[cols.indexOf("org")]).toBe("'-Dash ISP");
   });
 });
+
+describe("geo table — edge cases", () => {
+  it("orders an uncompressed IPv6 address, and equal or short addresses", () => {
+    expect(ipSortKey("2001:db8:0:0:0:0:0:1")).toEqual([6, 0x2001, 0xdb8, 0, 0, 0, 0, 0, 1]);
+    expect(compareIps("1.1.1.1", "1.1.1.1")).toBe(0);
+    expect(compareIps("1.2.3", "1.2.3.4")).toBeLessThan(0);
+    expect(compareIps("1.2.3.4", "1.2.3")).toBeGreaterThan(0);
+  });
+
+  it("sinks rows without a country, and sorts by distance with none measured", () => {
+    const blank = ok("9.9.9.9", {});
+    expect(sortRows([blank, google], "country", "asc").map((r) => r.ip)).toEqual([
+      "8.8.8.8",
+      "9.9.9.9",
+    ]);
+    expect(sortRows([vpn, phone], "distance", "asc").map((r) => r.ip)).toEqual([
+      "10.0.0.10",
+      "10.0.0.9",
+    ]);
+  });
+
+  it("exports no org for an error row or a row that names none", () => {
+    const [failed, bare] = exportRecords([dead, ok("9.9.9.9", {})]);
+    expect(failed.org).toBeNull();
+    expect(bare.org).toBeNull();
+  });
+});
+
+describe("networksOf — a network spanning countries", () => {
+  it("lists its countries most common first", () => {
+    const net = { asn: "AS13335 Cloudflare", asnOrg: "Cloudflare" };
+    const [group] = networksOf([
+      ok("1.1.1.1", { ...net, countryCode: "US" }),
+      ok("1.1.1.2", { ...net, countryCode: "AU" }),
+      ok("1.1.1.3", { ...net, countryCode: "AU" }),
+    ]);
+    expect(group.countries).toEqual(["AU", "US"]);
+  });
+});

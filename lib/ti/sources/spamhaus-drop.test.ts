@@ -160,3 +160,39 @@ describe("spamhausDropSource — per-family feed selection", () => {
     expect(f.error).toContain("503");
   });
 });
+
+describe("spamhausDropSource edge paths", () => {
+  const signal = () => new AbortController().signal;
+  afterEach(() => {
+    vi.doUnmock("../http");
+    vi.resetModules();
+  });
+
+  async function withGetText(getText: () => Promise<unknown>) {
+    vi.resetModules();
+    vi.doMock("../http", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../http")>();
+      return { ...actual, getText: vi.fn(getText) };
+    });
+    return (await import("./spamhaus-drop")).spamhausDropSource;
+  }
+
+  it("needs no key, and leaves the SBL id out when the block has none", async () => {
+    const source = await withGetText(async () => ({
+      ok: true,
+      status: 200,
+      text: '{"cidr":"1.19.0.0/16"}',
+    }));
+    expect(source.isEnabled()).toBe(true);
+    expect((await source.check("1.19.5.5", signal())).summary).toBe(
+      "Within Spamhaus DROP netblock 1.19.0.0/16",
+    );
+  });
+
+  it("maps a timeout", async () => {
+    const source = await withGetText(async () => {
+      throw new DOMException("t", "TimeoutError");
+    });
+    expect((await source.check("1.19.5.5", signal())).status).toBe("timeout");
+  });
+});

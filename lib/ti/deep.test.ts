@@ -99,3 +99,41 @@ describe("collectPassiveDns", () => {
     expect(out?.map((r) => r.value)).toEqual(["b.com", "a.com"]);
   });
 });
+
+describe("deep collectors — undated and blank records", () => {
+  it("keys and sorts certificates with no expiry or common name", () => {
+    const certs = collectCertificates([
+      src("a", {
+        certificates: [
+          { issuer: "CA", sans: [] },
+          { issuer: "CA", sans: [] },
+          { issuer: "CA", notAfter: "2027-01-01", commonName: "a.test", sans: [] },
+          { issuer: "CB", sans: [] },
+          { issuer: "CC", notAfter: "2026-01-01", sans: [] },
+        ],
+      }),
+    ]);
+    expect(certs?.map((c) => c.notAfter)).toEqual(["2027-01-01", "2026-01-01", undefined, undefined]);
+  });
+
+  it("skips blank values and widens windows whichever side is missing", () => {
+    const pdns = collectPassiveDns([
+      src("a", {
+        passiveDns: [
+          { value: "  ", type: "ip" },
+          { value: "1.1.1.1", type: "ip", firstSeen: "2024-05-01", lastSeen: "2024-06-01" },
+          { value: "1.1.1.1", type: "ip", recordType: "A" },
+          { value: "1.1.1.1", type: "ip", firstSeen: "2024-01-01", lastSeen: "2024-09-01" },
+          { value: "1.1.1.1", type: "ip", firstSeen: "2024-07-01", lastSeen: "2024-02-01" },
+          { value: "2.2.2.2", type: "ip" },
+          { value: "2.2.2.2", type: "ip", firstSeen: "2024-03-01", lastSeen: "2024-03-02" },
+        ],
+      }),
+    ]);
+    expect(pdns).toEqual([
+      { value: "2.2.2.2", type: "ip", firstSeen: "2024-03-01", lastSeen: "2024-03-02", recordType: undefined },
+      { value: "1.1.1.1", type: "ip", firstSeen: "2024-01-01", lastSeen: "2024-09-01", recordType: "A" },
+    ].sort((a, b) => b.lastSeen.localeCompare(a.lastSeen)));
+    expect(collectPassiveDns([src("a", { passiveDns: [{ value: "x", type: "domain" }, { value: "y", type: "domain" }] })])).toHaveLength(2);
+  });
+});

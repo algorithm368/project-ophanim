@@ -140,3 +140,45 @@ describe("scoreRationale", () => {
     expect(r?.note).toContain("EICAR");
   });
 });
+
+describe("scoreRationale — sparse breakdowns", () => {
+  it("names a generic strongest source when no source dominated", () => {
+    const r = scoreRationale({
+      riskScore: 60,
+      sources: [src("abuseipdb", 100)],
+      scoreBreakdown: breakdown({ dominantSourceId: undefined, effectiveMax: 90 }),
+    });
+    expect(r?.terms[0]).toEqual({
+      label: "strongest",
+      value: 90,
+      note: "strongest source, weight 1, ×60%",
+    });
+  });
+
+  it("drops the others row when the dominant source is the only one that scored", () => {
+    const r = scoreRationale({
+      riskScore: 60,
+      sources: [src("abuseipdb", 100)],
+      scoreBreakdown: breakdown(),
+    });
+    expect(rowsOf(r).others).toBeUndefined();
+  });
+
+  it("falls back the same way when the dominant source is not in the list", () => {
+    const r = scoreRationale({
+      riskScore: 60,
+      sources: lone,
+      scoreBreakdown: breakdown({ dominantSourceId: "gone" }),
+    });
+    expect(r?.terms[0].note).toMatch(/^strongest source/);
+  });
+
+  it("adds a row when a research scanner was held at suspicious", () => {
+    const r = scoreRationale({
+      riskScore: 50,
+      sources: lone,
+      scoreBreakdown: breakdown({ scannerCapped: true }),
+    });
+    expect(rowsOf(r).capped).toBe("scanner");
+  });
+});

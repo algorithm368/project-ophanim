@@ -80,3 +80,50 @@ describe("dnsSource.check — resolver consensus", () => {
     expect(c?.respondingResolvers).toBeLessThan(c?.totalResolvers ?? 0);
   });
 });
+
+describe("dnsSource.check — summaries and failures", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => vi.mocked(dohQuery).mockReset());
+
+  it("needs no key", () => expect(dnsSource.isEnabled()).toBe(true));
+
+  it("leads with IPv6 when there is no A record, and names the mail host", async () => {
+    vi.mocked(dohQuery).mockImplementation(async (resolver, _name, type) => {
+      if (type === "A" && /cloudflare|google/.test(String(resolver))) throw new Error("down");
+      if (type === "AAAA") {
+        return { Status: 0, Answer: [{ type: 28, data: "2001:db8::1" }, { type: 28, data: "2001:db8::2" }] };
+      }
+      if (type === "MX") return { Status: 0, Answer: [{ type: 15, data: "10 mx.example.com." }] };
+      return { Status: 0 };
+    });
+    const f = await dnsSource.check("example.com", signal);
+    expect(f.summary).toBe(
+      "Live infrastructure at check time. Apex resolves to 2001:db8::1 (+1 more host). Mail routed via mx.example.com.",
+    );
+  });
+
+  it("says so when the resolvers split on the A record", async () => {
+    let n = 0;
+    vi.mocked(dohQuery).mockImplementation(async (_resolver, _name, type) =>
+      type === "A"
+        ? { Status: 0, Answer: [{ type: 1, data: `10.0.0.${++n}` }] }
+        : { Status: 0 },
+    );
+    const f = await dnsSource.check("example.com", signal);
+    expect(f.summary).toMatch(/Resolvers split on the A record/);
+  });
+
+  it("describes a zone with no apex address", async () => {
+    vi.mocked(dohQuery).mockResolvedValue({ Status: 0 });
+    expect((await dnsSource.check("example.com", signal)).summary).toMatch(
+      /^DNS zone present but no A\/AAAA/,
+    );
+  });
+
+  it("maps a failed record query to timeout or error", async () => {
+    vi.mocked(dohQuery).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await dnsSource.check("example.com", signal)).status).toBe("timeout");
+    vi.mocked(dohQuery).mockRejectedValue(new Error("boom"));
+    expect((await dnsSource.check("example.com", signal)).error).toBe("boom");
+  });
+});

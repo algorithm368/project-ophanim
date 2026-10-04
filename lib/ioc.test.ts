@@ -134,3 +134,14 @@ describe("iocFromPath", () => {
     expect(iocFromPath(pathname)).toBeNull();
   });
 });
+
+describe("iocFromPath / extractIps — edge cases", () => {
+  it("reads a blank or malformed segment as no indicator", () => {
+    expect(iocFromPath("/check/%20")).toBeNull();
+    expect(iocFromPath("/check/%E0%A4%A")).toBeNull();
+  });
+
+  it("skips the empty token a leading separator leaves", () => {
+    expect(extractIps(", 8.8.8.8").map((p) => p.ip)).toEqual(["8.8.8.8"]);
+  });
+});

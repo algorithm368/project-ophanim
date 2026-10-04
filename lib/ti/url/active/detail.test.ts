@@ -188,3 +188,21 @@ describe("distillResult", () => {
     expect(distillResult(RESULT).downloads).toEqual([]);
   });
 });
+
+describe("distillResult — partial rows", () => {
+  it("drops half-recorded redirects and reads certificates and console lines", () => {
+    const d = distillResult({
+      data: {
+        redirects: [{ from: "https://a.test/" }, { to: "https://b.test/" }],
+        cookies: [{}],
+        console: [{ message: { text: "m" } }, { text: "t" }, {}],
+      },
+      lists: { certificates: [{ subjectName: "a.test", validFrom: 0 }, {}] },
+    });
+    expect(d.redirects).toEqual([]);
+    expect(d.cookies).toEqual([{ name: "", domain: undefined, secure: false, httpOnly: false }]);
+    expect(d.consoleMessages).toEqual(["m", "t"]);
+    expect(d.certificates?.[0]).toMatchObject({ subject: "a.test", validFrom: "1970-01-01T00:00:00.000Z" });
+    expect(d.certificates?.[1].validFrom).toBeUndefined();
+  });
+});

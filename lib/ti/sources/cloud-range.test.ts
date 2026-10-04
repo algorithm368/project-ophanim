@@ -170,3 +170,52 @@ describe("cloudRangeSource.check", () => {
     expect(f.error).toContain("No provider list");
   });
 });
+
+describe("cloudRangeSource meta paths", () => {
+  afterEach(() => {
+    resetCloudPrefixCache();
+    vi.mocked(getJson).mockReset();
+    vi.mocked(getText).mockReset();
+  });
+
+  it("needs no key", () => expect(cloudRangeSource.isEnabled()).toBe(true));
+
+  it("reports a timeout when the caller's deadline has passed", async () => {
+    vi.mocked(getJson).mockResolvedValue(AWS);
+    vi.mocked(getText).mockResolvedValue(CF);
+    const expired = AbortSignal.abort(new DOMException("t", "TimeoutError"));
+    expect((await cloudRangeSource.check("3.5.140.1", expired)).status).toBe("timeout");
+  });
+
+  it("reports an error when a provider list is malformed enough to throw", async () => {
+    vi.mocked(getJson).mockResolvedValue({ ok: true, status: 200, data: { prefixes: "x" }, text: "" });
+    vi.mocked(getText).mockResolvedValue(CF);
+    const f = await cloudRangeSource.check("3.5.140.1", signal());
+    expect(f.status).toBe("error");
+  });
+});
+
+describe("cloudPrefixes — Azure's two hops failing", () => {
+  afterEach(() => {
+    resetCloudPrefixCache();
+    vi.mocked(getJson).mockReset();
+    vi.mocked(getText).mockReset();
+  });
+
+  it("drops only Azure when the index page or the JSON it names fails", async () => {
+    vi.mocked(getJson).mockImplementation(async (url: string) =>
+      url.includes("download.microsoft.com")
+        ? { ok: false, status: 404, data: null, text: "" }
+        : { ok: true, status: 200, data: {}, text: "" },
+    );
+    vi.mocked(getText).mockImplementation(async (url: string) =>
+      url.includes("cloudflare.com") ? CF : { ...AZURE_INDEX, ok: false, status: 503 },
+    );
+    expect((await cloudPrefixes(signal())).map((p) => p.provider)).toEqual(["Cloudflare"]);
+    resetCloudPrefixCache();
+    vi.mocked(getText).mockImplementation(async (url: string) =>
+      url.includes("cloudflare.com") ? CF : AZURE_INDEX,
+    );
+    expect((await cloudPrefixes(signal())).map((p) => p.provider)).toEqual(["Cloudflare"]);
+  });
+});

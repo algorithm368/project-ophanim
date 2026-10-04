@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   analyzeDom,
   EMPTY_CAPABILITY,
+  fetchCapability,
   refusalReason,
 } from "@/lib/ti/url/active/capability";
 
@@ -144,5 +145,71 @@ describe("refusalReason", () => {
     await expect(
       refusalReason(new Response("<html>oops</html>", { status: 502 })),
     ).resolves.toBe("DOM unavailable, HTTP 502");
+  });
+});
+
+describe("analyzeDom — edge cases", () => {
+  it("reads single-quoted and unquoted actions, and an empty one as none", () => {
+    const forms = analyzeDom(
+      "<form action='/a'><form action=/b><form action=\"\">",
+      "https://site.test/page",
+    ).forms;
+    expect(forms.map((f) => f.action)).toEqual([
+      "https://site.test/a",
+      "https://site.test/b",
+      "https://site.test/page",
+    ]);
+  });
+
+  it("compares hosts without a registrable domain by their name", () => {
+    const [form] = analyzeDom('<form action="http://10.0.0.1/x">', "http://10.0.0.1/").forms;
+    expect(form.crossDomain).toBe(false);
+  });
+
+  it("keeps hrefs that will not resolve against an unparseable page URL", () => {
+    const dom = analyzeDom('<form action="x"><a href="">e</a><a href="y.exe">d</a>', "not a url");
+    expect(dom.forms).toEqual([{ action: "x", crossDomain: false }]);
+    expect(dom.downloadLinks).toEqual([]);
+  });
+
+  it("caps the forms and links it lists", () => {
+    const many = (n: number, f: (i: number) => string) => Array.from({ length: n }, (_, i) => f(i)).join("");
+    const dom = analyzeDom(
+      many(10, (i) => `<form action="/f${i}">`) + many(10, (i) => `<a href="/d${i}.exe">`),
+      "https://site.test/",
+    );
+    expect(dom.forms).toHaveLength(8);
+    expect(dom.downloadLinks).toHaveLength(8);
+  });
+});
+
+describe("fetchCapability", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads the scanner's DOM copy", async () => {
+    vi.stubGlobal("fetch", async () => new Response('<input type="password">'));
+    expect((await fetchCapability("https://dom.test/", PAGE, {}, signal)).passwordField).toBe(true);
+  });
+
+  it("reports why the DOM was refused", async () => {
+    vi.stubGlobal("fetch", async () => new Response('{"message":"DOM not available."}', { status: 400 }));
+    expect(await fetchCapability("https://dom.test/", PAGE, {}, signal)).toEqual({
+      ...EMPTY_CAPABILITY,
+      error: "DOM not available",
+    });
+  });
+
+  it("reports a timeout or network failure as an error, not an empty reading", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new DOMException("t", "TimeoutError");
+    });
+    expect((await fetchCapability("https://dom.test/", PAGE, {}, signal)).error).toBe(
+      "DOM fetch timed out",
+    );
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("reset");
+    });
+    expect((await fetchCapability("https://dom.test/", PAGE, {}, signal)).error).toBe("reset");
   });
 });

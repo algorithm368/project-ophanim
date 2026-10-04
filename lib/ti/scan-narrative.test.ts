@@ -318,3 +318,60 @@ describe("buildScanNarrative, as a property", () => {
     expect(onlyStatus).not.toMatch(/certificate|registered|password|redirect/i);
   });
 });
+
+describe("buildScanNarrative — remaining wording", () => {
+  const hops = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ from: `https://h${i}.test/`, to: `https://h${i + 1}.test/` }));
+
+  it("counts two hops as twice and more as times", () => {
+    const at = "https://end.test/";
+    expect(buildScanNarrative(merged({ detail: detail({ finalUrl: at, redirects: hops(2) }) })).join(" ")).toContain(
+      "redirects twice",
+    );
+    expect(buildScanNarrative(merged({ detail: detail({ finalUrl: at, redirects: hops(3) }) })).join(" ")).toContain(
+      "redirects 3 times",
+    );
+  });
+
+  it("does not compare against a target that is not a URL", () => {
+    const text = buildScanNarrative(
+      merged({ target: "not a url", detail: detail({ finalUrl: "https://end.test/", httpStatus: "200" }) }),
+    ).join(" ");
+    expect(text).toContain("This URL answered HTTP 200 when it was visited.");
+  });
+
+  it("mentions a password field on an untitled page", () => {
+    expect(
+      buildScanNarrative(merged({ capability: capability({ passwordField: true }) })).join(" "),
+    ).toContain("The page that loaded carries a password field.");
+  });
+
+  it("names a download it cannot place on a host without a host", () => {
+    const text = buildScanNarrative(
+      merged({ capability: capability({ downloadLinks: ["setup.exe"] }) }),
+    ).join(" ");
+    expect(text).toContain("It links to 1 file that executes when opened, setup.exe.");
+  });
+
+  it("speaks of several sibling domains in the plural", () => {
+    const text = buildScanNarrative(
+      merged({ detail: detail({ siblingDomains: ["a.test", "b.test"] }) }),
+    ).join(" ");
+    expect(text).toContain("sibling domains");
+  });
+
+  it("says an engine was still scanning, or names its status when it gave no error", () => {
+    const text = buildScanNarrative(
+      merged({
+        engines: ["urlscan"],
+        detail: detail({ httpStatus: "200" }),
+        incomplete: [
+          { engine: "cloudflare", status: "running" },
+          { engine: "urlscan", status: "error" },
+        ],
+      }),
+    ).join(" ");
+    expect(text).toContain("Cloudflare was still scanning.");
+    expect(text).toContain("did not finish (error)");
+  });
+});

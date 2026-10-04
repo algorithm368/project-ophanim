@@ -92,3 +92,21 @@ describe("looksLikeUrl", () => {
     expect(looksLikeUrl(input)).toBe(expected);
   });
 });
+
+describe("url helpers — edge cases", () => {
+  it("has no host for a URL without one", () => {
+    expect(hostFromUrl("file:///etc/passwd")).toBeUndefined();
+  });
+
+  it("does not read empty input as a URL", () => {
+    expect(looksLikeUrl("   ")).toBe(false);
+  });
+
+  it("rejects a host that is only the root dot", () => {
+    expect(parseUrl("https://./")).toBeNull();
+  });
+
+  it("keeps a username given without a password", () => {
+    expect(parseUrl("https://admin@a.test/")?.userinfo).toBe("admin");
+  });
+});

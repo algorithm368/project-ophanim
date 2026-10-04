@@ -107,9 +107,20 @@ describe("readHealth", () => {
   });
 
   it("drops entries it cannot parse", async () => {
-    pipeline.exec.mockResolvedValue([["not json", { s: "ok", ms: 1, t: 1 }], [], []]);
+    pipeline.exec.mockResolvedValue([
+      ["not json", { s: "ok", ms: 1, t: 1 }, null, { s: 1 }, { s: "ok", ms: "1" }, { s: "ok", ms: 1 }],
+      [],
+      [],
+    ]);
     const board = await readHealth(groups);
     expect(board?.rows.find((r) => r.type === "ip" && r.id === "a")?.runs).toBe(1);
+  });
+
+  it("reads a short reply as empty lists, with nothing newest", async () => {
+    pipeline.exec.mockResolvedValue([]);
+    const board = await readHealth(groups);
+    expect(board?.rows.every((r) => r.runs === 0)).toBe(true);
+    expect(board?.newestAt).toBeNull();
   });
 
   it("is null when the read fails", async () => {

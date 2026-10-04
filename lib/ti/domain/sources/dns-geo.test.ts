@@ -104,3 +104,41 @@ describe("dnsGeoSource.check", () => {
     expect(f.status).toBe("timeout");
   });
 });
+
+describe("dnsGeoSource.check — remaining paths", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(dohQuery).mockReset();
+    vi.mocked(ipApiSource.check).mockReset();
+    vi.mocked(freeIpApiSource.check).mockReset();
+  });
+
+  it("needs no key", () => expect(dnsGeoSource.isEnabled()).toBe(true));
+
+  it("treats a throwing provider as a non-vote", async () => {
+    mockUnanimousA("142.250.4.101");
+    vi.mocked(ipApiSource.check).mockRejectedValue(new Error("boom"));
+    mockGeo(freeIpApiSource, undefined);
+    const f = await dnsGeoSource.check("example.jp", SIGNAL);
+    expect(f.summary).toBe("No provider located the resolved IP(s)");
+  });
+
+  it("names a country without a city", async () => {
+    mockUnanimousA("142.250.4.101");
+    mockGeo(ipApiSource, { country: "Japan", countryCode: "JP" });
+    mockGeo(freeIpApiSource, { country: "Japan", countryCode: "JP" });
+    const f = await dnsGeoSource.check("example.jp", SIGNAL);
+    expect(f.summary).toBe("Japan, from 1 resolved IP(s)");
+  });
+
+  it("reports an unexpected failure as an error", async () => {
+    mockUnanimousA("142.250.4.101");
+    vi.spyOn(ipApiSource, "isEnabled").mockImplementation(() => {
+      throw new Error("broken provider");
+    });
+    expect(await dnsGeoSource.check("example.jp", SIGNAL)).toEqual({
+      status: "error",
+      error: "broken provider",
+    });
+  });
+});

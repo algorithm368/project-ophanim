@@ -337,3 +337,10 @@ describe("resolveConfidence", () => {
     expect(resolveConfidence(consensus({ totalResolvers: 0 }))).toBeNull();
   });
 });
+
+describe("scoreConfidence — answers without a score", () => {
+  it("measures no agreement when nobody who responded gave a number", () => {
+    const c = scoreConfidence({ sources: [src({ status: "ok" }), src({ status: "ok", id: "t" })] });
+    expect(c?.agreement).toBe(0);
+  });
+});

@@ -69,3 +69,15 @@ describe("abuseContact", () => {
     expect(abuseContact([{ roles: ["registrant"] }])).toBeUndefined();
   });
 });
+
+describe("abuseContact without contact details", () => {
+  it("is undefined when the abuse entity publishes neither email nor org", () => {
+    expect(abuseContact([{ roles: ["abuse"], vcardArray: ["vcard", []] }])).toBeUndefined();
+  });
+
+  it("falls back to fn when there is no org", () => {
+    expect(
+      abuseContact([{ roles: ["abuse"], vcardArray: ["vcard", [["fn", {}, "text", "NOC"]]] }]),
+    ).toEqual({ email: undefined, org: "NOC" });
+  });
+});

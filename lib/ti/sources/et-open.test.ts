@@ -77,3 +77,23 @@ describe("etOpenSource.check", () => {
     expect(finding.error).toContain("503");
   });
 });
+
+describe("etOpenSource edge paths", () => {
+  async function freshSource(fail: unknown) {
+    vi.resetModules();
+    const http = await import("@/lib/ti/http");
+    vi.mocked(http.getText).mockRejectedValue(fail);
+    return (await import("./et-open")).etOpenSource;
+  }
+
+  it("needs no key", async () => {
+    expect((await freshSource(new Error("unused"))).isEnabled()).toBe(true);
+  });
+
+  it("maps a timeout and a thrown error", async () => {
+    const timedOut = await freshSource(new DOMException("t", "TimeoutError"));
+    expect((await timedOut.check("1.2.3.4", signal())).status).toBe("timeout");
+    const broken = await freshSource(new Error("boom"));
+    expect((await broken.check("1.2.3.4", signal())).error).toBe("boom");
+  });
+});

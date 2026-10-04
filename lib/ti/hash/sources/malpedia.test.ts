@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { familyToMalpediaIds, fetchFamilyDescription } from "./malpedia";
 import * as http from "../../http";
 
@@ -51,5 +51,44 @@ describe("fetchFamilyDescription", () => {
     const info = await fetchFamilyDescription("Nope", new AbortController().signal);
     expect(info).toBeUndefined();
     vi.restoreAllMocks();
+  });
+});
+
+describe("fetchFamilyDescription — partial entries", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => vi.restoreAllMocks());
+
+  it("accepts a hit with only references, or only a description", async () => {
+    vi.spyOn(http, "getJson").mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { description: "  ", urls: ["https://r.example"] },
+      text: "",
+    } as never);
+    expect(await fetchFamilyDescription("X", signal)).toEqual({
+      description: undefined,
+      refs: ["https://r.example"],
+    });
+    vi.restoreAllMocks();
+    vi.spyOn(http, "getJson").mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { description: "A loader" },
+      text: "",
+    } as never);
+    expect(await fetchFamilyDescription("X", signal)).toEqual({
+      description: "A loader",
+      refs: undefined,
+    });
+  });
+
+  it("skips an empty entry", async () => {
+    vi.spyOn(http, "getJson").mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { urls: [] },
+      text: "",
+    } as never);
+    expect(await fetchFamilyDescription("X", signal)).toBeUndefined();
   });
 });

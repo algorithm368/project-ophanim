@@ -81,3 +81,12 @@ describe("cloudProvider provenance", () => {
     expect(cloudProvider("AS64500", "Example University")).toBeUndefined();
   });
 });
+
+describe("cloudProvider — an ASN it cannot read", () => {
+  it("falls through to the org name", () => {
+    expect(cloudProvider("not an asn", "Amazon.com, Inc.")).toEqual(
+      cloudProvider(undefined, "Amazon.com, Inc."),
+    );
+    expect(cloudProvider("not an asn")).toBeUndefined();
+  });
+});

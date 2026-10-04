@@ -62,3 +62,31 @@ describe("runSource error/summary coercion", () => {
     expect(result.error).toBe("HTTP 500");
   });
 });
+
+describe("runSource — skips, odd values and throws", () => {
+  it("names the key a disabled source needs, or just says it is disabled", async () => {
+    const keyed: TiSource = {
+      ...fakeSource({}),
+      meta: { ...fakeSource({}).meta, keyEnv: "FAKE_KEY" },
+      isEnabled: () => false,
+    };
+    expect((await runSource(keyed, "x")).summary).toBe("Set FAKE_KEY to enable");
+    const off: TiSource = { ...fakeSource({}), isEnabled: () => false };
+    expect(await runSource(off, "x")).toMatchObject({ status: "skipped", summary: "Disabled" });
+  });
+
+  it("stringifies a summary that is neither text nor an object", async () => {
+    expect((await runSource(fakeSource({ status: "ok", summary: 42 }), "x")).summary).toBe("42");
+  });
+
+  it("turns a throw into an error result, Error or not", async () => {
+    const throwing = (value: unknown): TiSource => ({
+      ...fakeSource({}),
+      check: async () => {
+        throw value;
+      },
+    });
+    expect((await runSource(throwing(new Error("boom")), "x")).error).toBe("boom");
+    expect((await runSource(throwing("plain"), "x")).error).toBe("plain");
+  });
+});

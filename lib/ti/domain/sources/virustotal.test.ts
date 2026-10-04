@@ -181,3 +181,105 @@ describe("virusTotalDomainSource.check — definitive-flag wiring (P1.1)", () =>
     expect(f.malicious).toBe(true);
   });
 });
+
+describe("virustotal domain helpers — edge cases", () => {
+  it("normalizes a sparse certificate", () => {
+    expect(
+      vtCertificate(
+        { subject: {}, issuer: { CN: "CA" }, validity: { not_before: "garbage" } },
+        "a.example",
+      ).certificate,
+    ).toEqual({ issuer: "CA", commonName: undefined, sans: [], firstSeen: undefined, notAfter: undefined });
+    expect(vtCertificate({}, "a.example").certificate?.issuer).toBe("Unknown CA");
+  });
+
+  it("defaults CAA flag and tag, and keeps CNAME and TXT", () => {
+    expect(
+      vtDnsContext([
+        { type: "CAA", value: "letsencrypt.org" },
+        { type: "CNAME", value: "b.example" },
+        { type: "TXT", value: "v=spf1 -all" },
+      ]),
+    ).toEqual({
+      caa: ['0 issue "letsencrypt.org"'],
+      cname: ["b.example"],
+      txt: ["v=spf1 -all"],
+    });
+  });
+
+  it("orders equal-priority labels by count, then alphabetically", () => {
+    expect(normalizeCategories({ a: "Zebra", b: "Zebra", c: "Apple", d: "Mango" })).toEqual([
+      "Zebra",
+      "Apple",
+      "Mango",
+    ]);
+  });
+
+  it("leaves a closing paren with no opener alone", () => {
+    expect(normalizeCategories({ a: "weird)" })).toEqual(["Weird)"]);
+  });
+});
+
+describe("virusTotalDomainSource.check — remaining paths", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("is skipped without a key", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "");
+    expect(virusTotalDomainSource.isEnabled()).toBe(false);
+    expect(await virusTotalDomainSource.check("a.example", signal)).toEqual({ status: "skipped" });
+  });
+
+  it("assembles certificate, subdomains and shared-cert relations", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    expect(virusTotalDomainSource.isEnabled()).toBe(true);
+    reply({
+      data: {
+        attributes: {
+          last_analysis_stats: { malicious: 1, suspicious: 1, harmless: 1, undetected: 1, timeout: 1 },
+          categories: { v: "news" },
+          last_https_certificate: {
+            issuer: { O: "Org" },
+            extensions: { subject_alternative_name: ["a.example", "www.a.example", "b.test"] },
+          },
+        },
+      },
+    });
+    const f = await virusTotalDomainSource.check("a.example", signal);
+    expect(f.summary).toBe("1/5 vendors flagged malicious, 1 suspicious");
+    expect(f.subdomains).toEqual(["www.a.example"]);
+    expect(f.certificates).toHaveLength(1);
+    expect(f.relations).toEqual([{ value: "b.test", type: "domain", relation: "sharedCert" }]);
+    expect(f.domainContext?.categories).toEqual(["News & media"]);
+  });
+
+  it("leaves optional parts out of a bare answer", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    reply({ data: { attributes: {} } });
+    const f = await virusTotalDomainSource.check("a.example", signal);
+    expect(f.summary).toBe("0/0 vendors flagged malicious");
+    expect(f.certificates).toBeUndefined();
+    expect(f.subdomains).toBeUndefined();
+    expect(f.relations).toBeUndefined();
+    expect(f.details).toMatchObject({ harmlessVendors: 0 });
+    reply({ data: { attributes: { last_analysis_stats: {} } } });
+    expect((await virusTotalDomainSource.check("a.example", signal)).status).toBe("ok");
+  });
+
+  it("maps errors and timeouts", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "k");
+    reply({ error: { message: "Not found" } }, 404);
+    expect((await virusTotalDomainSource.check("a.example", signal)).error).toBe("Not found");
+    reply(null, 500);
+    expect((await virusTotalDomainSource.check("a.example", signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await virusTotalDomainSource.check("a.example", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await virusTotalDomainSource.check("a.example", signal)).error).toBe("boom");
+  });
+});

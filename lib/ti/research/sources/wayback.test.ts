@@ -260,3 +260,65 @@ describe("parseWayback", () => {
     expect(parseWayback(null)).toEqual({ snapshots: [] });
   });
 });
+
+describe("parseWayback — malformed rows", () => {
+  it("returns no snapshots when no row is a list", () => {
+    expect(parseWayback([["timestamp", "original"], "junk"])).toEqual({ snapshots: [] });
+  });
+
+  it("reads an empty last row as no last-seen date", () => {
+    expect(parseWayback([["timestamp", "original"], []]).lastSeen).toBeUndefined();
+  });
+
+  it("skips rows with a bad timestamp or no URL", () => {
+    expect(parseWayback([["timestamp", "original"], [], ["2024", "https://a.test/"], ["20240101000000"]])).toEqual({
+      firstSeen: undefined,
+      lastSeen: "2024-01-01T00:00:00.000Z",
+      snapshots: [],
+    });
+  });
+});
+
+describe("waybackProvider.check — remaining paths", () => {
+  const signal = () => new AbortController().signal;
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Availability replies in call order (the age query is always first), and a
+   *  fixed CDX reply. A reply that is an Error is thrown. */
+  function stubSequence(cdx: Reply, available: (Reply | Error)[]) {
+    const queue = [...available];
+    vi.stubGlobal("fetch", async (input: string | URL) => {
+      const reply = String(input).includes("/cdx/search/cdx") ? cdx : queue.shift();
+      if (reply instanceof Error) throw reply;
+      if (!reply) throw new Error("network down");
+      return new Response(JSON.stringify(reply.body ?? null), { status: reply.status ?? 200 });
+    });
+  }
+
+  it("needs no key", () => expect(waybackProvider.isEnabled()).toBe(true));
+
+  it("keeps a fallback capture whose timestamp it cannot read out of the snapshots", async () => {
+    stubSequence({ status: 503 }, [{ status: 500 }, { body: availableAt("garbage") }]);
+    const f = await waybackProvider.check("a.test", "domain", signal());
+    expect(f.status).toBe("ok");
+    expect(f.data).toEqual({ type: "wayback", snapshots: [] });
+  });
+
+  it("reports a timeout when the caller's own budget ends during the index query", async () => {
+    vi.stubGlobal("fetch", async (_input: string | URL, init?: RequestInit) => {
+      if (init?.signal?.aborted) throw new DOMException("t", "TimeoutError");
+      throw new Error("unreachable");
+    });
+    const expired = AbortSignal.abort(new DOMException("t", "TimeoutError"));
+    expect((await waybackProvider.check("a.test", "domain", expired)).status).toBe("timeout");
+  });
+
+  it("reports a fallback that times out after a failed one as a timeout", async () => {
+    stubSequence({ status: 503 }, [
+      { status: 500 },
+      new Error("blip"),
+      new DOMException("t", "TimeoutError"),
+    ]);
+    expect((await waybackProvider.check("a.test", "domain", signal())).status).toBe("timeout");
+  });
+});

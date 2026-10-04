@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { describeTenancy, isQuotaExceeded, parseReverseIp } from "./reverse-ip";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { describeTenancy, isQuotaExceeded, parseReverseIp, reverseIpSource } from "./reverse-ip";
+import { getText } from "../http";
+
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../http")>();
+  return { ...actual, getText: vi.fn() };
+});
 
 /** n distinct hostnames, for exercising the two ceilings. */
 const names = (n: number) => Array.from({ length: n }, (_, i) => `h${i}.example.test`);
@@ -79,5 +85,32 @@ describe("isQuotaExceeded", () => {
 
   it("is false for a normal result body", () => {
     expect(isQuotaExceeded("dns.google\nexample.com")).toBe(false);
+  });
+});
+
+describe("reverseIpSource.check", () => {
+  const signal = new AbortController().signal;
+  const reply = (text: string, status = 200) =>
+    vi.mocked(getText).mockResolvedValue({ ok: status < 400, status, data: null, text });
+  afterEach(() => vi.mocked(getText).mockReset());
+
+  it("needs no key", () => expect(reverseIpSource.isEnabled()).toBe(true));
+
+  it("lists co-hosted domains", async () => {
+    reply("a.example\nb.example\n");
+    const f = await reverseIpSource.check("1.2.3.4", signal);
+    expect(f.details).toMatchObject({ domainCount: 2 });
+    expect(f.raw).toBe("a.example\nb.example");
+  });
+
+  it("maps the quota message, HTTP failures, timeouts and errors", async () => {
+    reply("API count exceeded - Increase Quota with Membership");
+    expect((await reverseIpSource.check("1.2.3.4", signal)).status).toBe("rate_limited");
+    reply("", 500);
+    expect((await reverseIpSource.check("1.2.3.4", signal)).error).toBe("HTTP 500");
+    vi.mocked(getText).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await reverseIpSource.check("1.2.3.4", signal)).status).toBe("timeout");
+    vi.mocked(getText).mockRejectedValue(new Error("boom"));
+    expect((await reverseIpSource.check("1.2.3.4", signal)).error).toBe("boom");
   });
 });

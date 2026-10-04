@@ -44,3 +44,10 @@ describe("scanTargetsFor", () => {
     expect(scanTargetsFor("not a url", "url")).toEqual([]);
   });
 });
+
+describe("scanTargetsFor — mislabelled indicators", () => {
+  it("returns nothing for an IP or domain that does not parse as one", () => {
+    expect(scanTargetsFor("not-an-ip", "ip")).toEqual([]);
+    expect(scanTargetsFor("not a domain", "domain")).toEqual([]);
+  });
+});

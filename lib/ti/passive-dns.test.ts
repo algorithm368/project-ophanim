@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { parseMnemonicPdns } from "./passive-dns";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { makeMnemonicPassiveDnsSource, parseMnemonicPdns } from "./passive-dns";
+import { getJson } from "./http";
+
+vi.mock("./http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./http")>();
+  return { ...actual, getJson: vi.fn() };
+});
+
 
 const A_ROW = {
   query: "evil.example.com",
@@ -41,5 +48,41 @@ describe("parseMnemonicPdns", () => {
     const txt = [{ query: "example.com", answer: "v=spf1 -all", rrtype: "txt" }];
     expect(parseMnemonicPdns(txt, "domain")).toEqual([]);
     expect(parseMnemonicPdns(txt, "ip")).toEqual([]);
+  });
+});
+
+describe("parseMnemonicPdns — rows without a type", () => {
+  it("skips them", () => {
+    expect(parseMnemonicPdns([{ answer: "1.2.3.4" }], "domain")).toEqual([]);
+  });
+});
+
+describe("makeMnemonicPassiveDnsSource", () => {
+  const source = makeMnemonicPassiveDnsSource({ id: "pdns", lookup: "domain" });
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, status = 200) =>
+    vi.mocked(getJson).mockResolvedValue({ ok: status < 400, status, data, text: "" });
+  afterEach(() => vi.mocked(getJson).mockReset());
+
+  it("needs no key", () => expect(source.isEnabled()).toBe(true));
+
+  it("counts resolutions, singular and plural", async () => {
+    reply({ data: [{ rrtype: "A", answer: "1.2.3.4" }] });
+    expect((await source.check("a.example", signal)).summary).toBe("1 passive-DNS resolution");
+    reply({ data: [{ rrtype: "A", answer: "1.2.3.4" }, { rrtype: "AAAA", answer: "::1" }] });
+    expect((await source.check("a.example", signal)).summary).toBe("2 passive-DNS resolutions");
+  });
+
+  it("reports no records, rate limits, failures and errors", async () => {
+    reply({});
+    expect((await source.check("a.example", signal)).summary).toBe("No passive-DNS records");
+    reply(null, 429);
+    expect((await source.check("a.example", signal)).status).toBe("rate_limited");
+    reply(null, 500);
+    expect((await source.check("a.example", signal)).error).toBe("HTTP 500");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await source.check("a.example", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await source.check("a.example", signal)).error).toBe("boom");
   });
 });

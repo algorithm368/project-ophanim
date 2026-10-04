@@ -138,3 +138,17 @@ describe("parseIP", () => {
     expect(parseIP("not-an-ip")).toBeNull();
   });
 });
+
+describe("parseIP — IPv6 edge cases", () => {
+  it("rejects an embedded IPv4 tail that is not an address", () => {
+    expect(parseIP("::ffff:999.1.1.1")).toBeNull();
+  });
+
+  it("rejects a :: that stands for no groups at all", () => {
+    expect(parseIP("1:2:3:4::5:6:7:8")).toBeNull();
+  });
+
+  it("does not compress a single zero group", () => {
+    expect(parseIP("2001:db8:1:0:1:1:1:1")?.ip).toBe("2001:db8:1:0:1:1:1:1");
+  });
+});

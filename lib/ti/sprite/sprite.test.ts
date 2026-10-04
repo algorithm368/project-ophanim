@@ -19,6 +19,7 @@ import {
   seedOf,
   silhouette16,
   spriteLayers,
+  spriteOutline,
   outlineRects,
   toLayers,
   type Layer,
@@ -321,5 +322,32 @@ describe("outlineRects", () => {
     const grid = composeGrid({ body: key, mood: "hostile", seed: SEEDS[2] });
     for (const r of outlineRects(grid))
       for (let i = 0; i < r.w; i++) expect(isInk(grid[r.y]?.[r.x + i])).toBe(false);
+  });
+});
+
+describe("sprite engine — edge cases", () => {
+  it("reads an empty part sheet as no parts", () => {
+    expect(partSheet("")).toEqual([]);
+  });
+
+  it("counts cells painted off the body and knocks out an o", () => {
+    const rows = [["#", "#"], ["#", "#"]];
+    expect(paintPart(rows, ["##", "##"], ["o#", "##", "##"], 0, 0)).toBe(2);
+    expect(rows.map((r) => r.join(""))).toEqual([".#", "##"]);
+  });
+
+  it("draws an outline for every finished body", () => {
+    expect(spriteOutline({ body: FINISHED[0], mood: "calm", seed: SEEDS[0] }).length).toBeGreaterThan(0);
+  });
+
+  it("places no eyes on a body that pins them away", () => {
+    const key = FINISHED[0];
+    const saved = BODIES[key];
+    BODIES[key] = { ...saved, fixed: { ...saved.fixed, eyes: null } };
+    try {
+      expect(placements({ body: key, mood: "calm", seed: SEEDS[0] }).every((p) => !EYES.calm.includes(p.part))).toBe(true);
+    } finally {
+      BODIES[key] = saved;
+    }
   });
 });

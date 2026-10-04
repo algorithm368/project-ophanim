@@ -1,10 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getJson, postJson } from "../http";
 import {
+  bulkIpInfo,
+  ipInfoSource,
   ipInfoLiteToGeo,
   ipInfoToGeo,
   mapIpInfoBatch,
   type IpInfoResponse,
 } from "./ipinfo";
+
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../http")>();
+  return { ...actual, getJson: vi.fn(), postJson: vi.fn() };
+});
 
 describe("ipInfoLiteToGeo", () => {
   it("maps the Lite ASN + country fields to GeoContext", () => {
@@ -78,5 +86,88 @@ describe("mapIpInfoBatch", () => {
     expect(out.has("1.1.1.1")).toBe(false);
     expect(out.has("10.0.0.1")).toBe(false);
     expect(out.has("9.9.9.9")).toBe(false);
+  });
+});
+
+describe("bulkIpInfo", () => {
+  const signal = new AbortController().signal;
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(postJson).mockReset();
+  });
+
+  it("returns nothing without a token or without IPs", async () => {
+    vi.stubEnv("IPINFO_TOKEN", "");
+    expect((await bulkIpInfo(["1.1.1.1"], signal)).size).toBe(0);
+    vi.stubEnv("IPINFO_TOKEN", "t");
+    expect((await bulkIpInfo([], signal)).size).toBe(0);
+    expect(postJson).not.toHaveBeenCalled();
+  });
+
+  it("maps a batch answer", async () => {
+    vi.stubEnv("IPINFO_TOKEN", "t");
+    vi.mocked(postJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { "1.1.1.1": { country: "AU" } },
+      text: "",
+    });
+    expect((await bulkIpInfo(["1.1.1.1"], signal)).get("1.1.1.1")).toEqual({
+      countryCode: "AU",
+    });
+  });
+
+  it("degrades to empty on a failed call or a real error, but rethrows timeouts", async () => {
+    vi.stubEnv("IPINFO_TOKEN", "t");
+    vi.mocked(postJson).mockResolvedValue({ ok: false, status: 429, data: null, text: "" });
+    expect((await bulkIpInfo(["1.1.1.1"], signal)).size).toBe(0);
+    vi.mocked(postJson).mockRejectedValue(new Error("boom"));
+    expect((await bulkIpInfo(["1.1.1.1"], signal)).size).toBe(0);
+    vi.mocked(postJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    await expect(bulkIpInfo(["1.1.1.1"], signal)).rejects.toThrow("t");
+  });
+});
+
+describe("ipInfoSource.check", () => {
+  const signal = new AbortController().signal;
+  const reply = (data: unknown, ok = true) =>
+    vi.mocked(getJson).mockResolvedValue({ ok, status: ok ? 200 : 403, data, text: "" });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("is skipped without a token", async () => {
+    vi.stubEnv("IPINFO_TOKEN", "");
+    expect(ipInfoSource.isEnabled()).toBe(false);
+    expect(await ipInfoSource.check("1.1.1.1", signal)).toEqual({ status: "skipped" });
+  });
+
+  it("summarizes the network and country", async () => {
+    vi.stubEnv("IPINFO_TOKEN", "t");
+    expect(ipInfoSource.isEnabled()).toBe(true);
+    reply({ asn: "AS13335", as_name: "Cloudflare", country: "Australia" });
+    const f = await ipInfoSource.check("1.1.1.1", signal);
+    expect(f.summary).toBe("Cloudflare · Australia");
+    expect(f.geo?.asn).toBe("AS13335");
+  });
+
+  it("errors on a bogon or failed call, and maps thrown errors", async () => {
+    vi.stubEnv("IPINFO_TOKEN", "t");
+    reply({ bogon: true });
+    expect((await ipInfoSource.check("10.0.0.1", signal)).error).toBe("HTTP 200");
+    reply(null, false);
+    expect((await ipInfoSource.check("1.1.1.1", signal)).error).toBe("HTTP 403");
+    vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await ipInfoSource.check("1.1.1.1", signal)).status).toBe("timeout");
+    vi.mocked(getJson).mockRejectedValue(new Error("boom"));
+    expect((await ipInfoSource.check("1.1.1.1", signal)).error).toBe("boom");
+  });
+});
+
+describe("ipInfoToGeo edge cases", () => {
+  it("drops an unparseable loc and keeps an org without an ASN prefix whole", () => {
+    expect(ipInfoToGeo({ loc: "north,east", org: "Some Org" })).toEqual({ asnOrg: "Some Org" });
+    expect(ipInfoToGeo({})).toEqual({});
   });
 });

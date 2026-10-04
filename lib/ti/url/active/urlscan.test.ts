@@ -1,9 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   pollOutcome,
+  pollScan,
   submissionOutcome,
+  submitScan,
   verdictFromResult,
 } from "@/lib/ti/url/active/urlscan";
+import { getJson, postJson } from "@/lib/ti/http";
+import { fetchCapability } from "@/lib/ti/url/active/capability";
+import type { ActiveScan } from "@/lib/ti/url/active/types";
+
+vi.mock("@/lib/ti/http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ti/http")>();
+  return { ...actual, getJson: vi.fn(), postJson: vi.fn() };
+});
+
+vi.mock("@/lib/ti/url/active/capability", () => ({ fetchCapability: vi.fn() }));
 
 describe("submissionOutcome", () => {
   it("keeps the uuid and reports running on acceptance", () => {
@@ -86,5 +98,119 @@ describe("verdictFromResult", () => {
     expect(verdict.malicious).toBe(false);
     expect(verdict.finalUrl).toBeUndefined();
     expect(verdict.contactedDomains).toBeUndefined();
+  });
+});
+
+describe("submissionOutcome — fallbacks", () => {
+  it("derives the result URL and falls back through the error fields", () => {
+    expect(submissionOutcome("https://a.test/", "private", 200, { uuid: "u1" }).resultUrl).toBe(
+      "https://urlscan.io/result/u1/",
+    );
+    expect(submissionOutcome("https://a.test/", "private", 400, { description: "bad" }).error).toBe("bad");
+    expect(submissionOutcome("https://a.test/", "private", 500, null).error).toBe("HTTP 500");
+  });
+});
+
+describe("submitScan", () => {
+  const signal = new AbortController().signal;
+  const res = (data: unknown, status = 200) => ({ ok: status < 400, status, data, text: "" });
+  afterEach(() => vi.mocked(postJson).mockReset());
+
+  it("submits privately first", async () => {
+    vi.mocked(postJson).mockResolvedValue(res({ uuid: "u1" }));
+    const scan = await submitScan("https://a.test/", "k", signal);
+    expect(scan).toMatchObject({ status: "running", visibility: "private" });
+    expect(postJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to unlisted when the private quota is spent", async () => {
+    vi.mocked(postJson)
+      .mockResolvedValueOnce(res({ message: "quota" }, 429))
+      .mockResolvedValueOnce(res({ uuid: "u2" }));
+    expect(await submitScan("https://a.test/", "k", signal)).toMatchObject({
+      visibility: "unlisted",
+      uuid: "u2",
+    });
+  });
+
+  it("returns the last quota error when every tier is spent", async () => {
+    vi.mocked(postJson).mockResolvedValue(res({ message: "quota" }, 429));
+    expect(await submitScan("https://a.test/", "k", signal)).toMatchObject({
+      status: "error",
+      error: "quota",
+    });
+    expect(postJson).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a refused target", async () => {
+    vi.mocked(postJson).mockResolvedValue(res({ message: "blocked" }, 400));
+    expect((await submitScan("https://a.test/", "k", signal)).error).toBe("blocked");
+    expect(postJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("turns a thrown submission into an errored record", async () => {
+    vi.mocked(postJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await submitScan("https://a.test/", "k", signal)).error).toBe("Submission timed out");
+    vi.mocked(postJson).mockRejectedValue(new Error("boom"));
+    expect((await submitScan("https://a.test/", "k", signal)).error).toBe("boom");
+  });
+});
+
+describe("pollScan", () => {
+  const signal = new AbortController().signal;
+  const running: ActiveScan = {
+    target: "https://a.test/",
+    engine: "urlscan",
+    status: "running",
+    uuid: "u1",
+  };
+  const res = (data: unknown, status = 200) => ({ ok: status < 400, status, data, text: "" });
+  afterEach(() => {
+    vi.mocked(getJson).mockReset();
+    vi.mocked(fetchCapability).mockReset();
+  });
+
+  it("returns a scan without a uuid untouched", async () => {
+    const scan: ActiveScan = { target: "x", engine: "urlscan", status: "error" };
+    expect(await pollScan(scan, "k", signal)).toBe(scan);
+  });
+
+  it("reads the DOM once the scan completes, against the final URL", async () => {
+    vi.mocked(fetchCapability).mockResolvedValue({ forms: [] } as never);
+    vi.mocked(getJson).mockResolvedValue(
+      res({ page: { url: "https://final.test/" }, task: { domURL: "https://dom.test/" } }),
+    );
+    const scan = await pollScan(running, "k", signal);
+    expect(scan.status).toBe("done");
+    expect(fetchCapability).toHaveBeenCalledWith(
+      "https://dom.test/",
+      "https://final.test/",
+      { "API-Key": "k" },
+      signal,
+    );
+    expect(scan.capability).toEqual({ forms: [] });
+  });
+
+  it("falls back to the target when the result has no final URL", async () => {
+    vi.mocked(getJson).mockResolvedValue(res({ task: { domURL: "https://dom.test/" } }));
+    await pollScan(running, "k", signal);
+    expect(vi.mocked(fetchCapability).mock.calls[0][1]).toBe("https://a.test/");
+  });
+
+  it("skips the DOM when there is none, or the scan is not done", async () => {
+    vi.mocked(getJson).mockResolvedValue(res({}));
+    expect((await pollScan(running, "k", signal)).status).toBe("done");
+    vi.mocked(getJson).mockResolvedValue(res({ task: { domURL: "https://dom.test/" } }, 404));
+    expect((await pollScan(running, "k", signal)).status).toBe("running");
+    expect(fetchCapability).not.toHaveBeenCalled();
+  });
+
+  it("keeps a scan running through a network error", async () => {
+    vi.mocked(getJson).mockRejectedValue(new Error("blip"));
+    expect(await pollScan(running, "k", signal)).toMatchObject({
+      status: "running",
+      uuid: "u1",
+      error: "blip",
+    });
   });
 });
