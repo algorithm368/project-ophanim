@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   BODIES,
   BODY_KEYS,
-  HORN,
-  HORN_ZONE,
   EYES,
   MARKS,
   MOODS,
@@ -23,7 +21,6 @@ import {
   spriteLayers,
   outlineRects,
   toLayers,
-  type BodyKey,
   type Layer,
 } from "@/lib/ti/sprite";
 
@@ -85,36 +82,6 @@ describe("every body", () => {
     for (const row of g) expect(row).toMatch(/^[.#=-]{32}$/);
   });
 
-  it.each(BODY_KEYS)("%s leaves the horn zone clear", (key) => {
-    const g = BODIES[key].grid;
-    for (let y = 0; y < HORN_ZONE.rows; y++) {
-      for (let x = 0; x < HORN_ZONE.cols; x++) {
-        expect(`${key} r${y}c${x}=${g[y][x]}`).toBe(`${key} r${y}c${x}=.`);
-        const xr = SPRITE_SIZE - 1 - x;
-        expect(`${key} r${y}c${xr}=${g[y][xr]}`).toBe(`${key} r${y}c${xr}=.`);
-      }
-    }
-  });
-
-  it.each(BODY_KEYS)("%s keeps a clear cell between its ink and either horn", (key) => {
-    const g = BODIES[key].grid;
-    const horn: [number, number][] = [];
-    HORN.forEach((row, y) =>
-      [...row].forEach((c, x) => {
-        if (c === "#") horn.push([x, y], [SPRITE_SIZE - 1 - x, y]);
-      }),
-    );
-    g.forEach((row, y) =>
-      [...row].forEach((c, x) => {
-        if (!isInk(c)) return;
-        for (const [hx, hy] of horn) {
-          const near = Math.max(Math.abs(hx - x), Math.abs(hy - y)) < 2;
-          expect(near ? `${key} r${y}c${x} touches a horn` : "clear").toBe("clear");
-        }
-      }),
-    );
-  });
-
   it.each(BODY_KEYS)("%s pins a part for every mood, or none", (key) => {
     for (const pinned of Object.values(BODIES[key].fixed ?? {})) {
       if (pinned === null) continue;
@@ -127,7 +94,7 @@ describe("finished bodies", () => {
   it.each(FINISHED)("%s never has a part paint outside its outline", (key) => {
     const def = BODIES[key];
     for (const seed of SEEDS) {
-      for (const p of MOODS.flatMap((mood) => placements({ body: key, flagged: false, mood, seed }))) {
+      for (const p of MOODS.flatMap((mood) => placements({ body: key, mood, seed }))) {
         const scratch = def.grid.map((r) => [...r]);
         expect(paintPart(scratch, def.grid, p.part.grid, p.x, p.y, p.mirror)).toBe(0);
       }
@@ -135,7 +102,7 @@ describe("finished bodies", () => {
   });
 
   it.each(FINISHED)("%s produces visibly different siblings", (key) => {
-    const interiors = new Set(SEEDS.slice(0, 64).map((seed) => composeGrid({ body: key, flagged: false, mood: "calm", seed }).join("")));
+    const interiors = new Set(SEEDS.slice(0, 64).map((seed) => composeGrid({ body: key, mood: "calm", seed }).join("")));
     const free = (["eyes", "mouth", "mark"] as const).filter((s) => BODIES[key].fixed?.[s] === undefined).length;
     expect(interiors.size).toBeGreaterThanOrEqual(free >= 2 ? 16 : 4);
   });
@@ -143,7 +110,7 @@ describe("finished bodies", () => {
   it.each(FINISHED)("%s keeps its outline whatever the seed", (key) => {
     const bare = BODIES[key].grid.map((r) => [...r].map((c) => (isInk(c) ? "#" : ".")).join(""));
     for (const seed of SEEDS.slice(0, 64)) {
-      const g = composeGrid({ body: key, flagged: false, mood: MOODS[seed % 3], seed });
+      const g = composeGrid({ body: key, mood: MOODS[seed % 3], seed });
       // Knockouts may open holes inside, but nothing may appear outside.
       g.forEach((row, y) => [...row].forEach((c, x) => {
         if (isInk(c)) expect(bare[y][x]).toBe("#");
@@ -208,7 +175,7 @@ describe("house style", () => {
     expect(plate).toBeGreaterThanOrEqual(60);
     const offPlate = new Set<string>();
     for (const seed of SEEDS.slice(0, 200)) {
-      for (const p of MOODS.flatMap((mood) => placements({ body: key, flagged: false, mood, seed }))) {
+      for (const p of MOODS.flatMap((mood) => placements({ body: key, mood, seed }))) {
         p.part.grid.forEach((row, dy) => {
           const cells = p.mirror ? [...row].reverse() : [...row];
           cells.forEach((c, dx) => {
@@ -272,7 +239,7 @@ describe("the face follows the verdict", () => {
 
   it.each(FINISHED)("%s shows a different face in each mood", (key) => {
     const seed = SEEDS[2];
-    const faces = new Set(MOODS.map((mood) => composeGrid({ body: key, flagged: false, mood, seed }).join("")));
+    const faces = new Set(MOODS.map((mood) => composeGrid({ body: key, mood, seed }).join("")));
     expect(faces.size).toBe(3);
   });
 
@@ -280,22 +247,28 @@ describe("the face follows the verdict", () => {
     expect(MOUTHS.hostile).not.toContain(null);
   });
 
+  it("never gives a calm or wary face a solid dot for an eye", () => {
+    // A filled round blob with no glint reads as a blank stare, and on a tall
+    // dark body as a hooded figure. A round eye keeps its highlight instead.
+    // Hostile is exempt: it is meant to look fierce.
+    const blobs: string[] = [];
+    for (const mood of ["calm", "wary"] as const) {
+      EYES[mood].forEach((eye, i) => {
+        const rows = eye.grid.filter((r) => r.includes("#") || r.includes("-"));
+        const cols = [...rows[0]].map((_, x) => x).filter((x) => rows.some((r) => r[x] !== "."));
+        const w = cols.length;
+        const h = rows.length;
+        const cells = rows.join("");
+        const ink = [...cells].filter((c) => c === "#").length;
+        if (w >= 3 && h >= 3 && !cells.includes("-") && ink >= 0.75 * w * h) blobs.push(`${mood}[${i}]`);
+      });
+    }
+    expect(blobs).toEqual([]);
+  });
+
   it("draws every face part without knocking holes in the plate", () => {
     const parts = [...MOODS.flatMap((m) => [...EYES[m], ...MOUTHS[m]]), ...MARKS];
     for (const p of parts) if (p) expect(p.grid.join("")).not.toContain("o");
-  });
-});
-
-describe("horns", () => {
-  it.each(BODY_KEYS)("%s gains pixels and loses none when flagged", (key: BodyKey) => {
-    const seed = SEEDS[0];
-    const plain = composeGrid({ body: key, flagged: false, mood: "hostile", seed });
-    const horned = composeGrid({ body: key, flagged: true, mood: "hostile", seed });
-    expect(horned.slice(HORN_ZONE.rows)).toEqual(plain.slice(HORN_ZONE.rows));
-    expect(horned.join("")).not.toBe(plain.join(""));
-    plain.forEach((row, y) => [...row].forEach((c, x) => {
-      if (isInk(c)) expect(horned[y][x]).toBe(c);
-    }));
   });
 });
 
@@ -313,7 +286,7 @@ describe("toLayers", () => {
   });
 
   it.each(BODY_KEYS)("round-trips %s to the same drawing", (key) => {
-    const spec = { body: key, flagged: true, mood: "wary" as const, seed: SEEDS[1] };
+    const spec = { body: key, mood: "wary" as const, seed: SEEDS[1] };
     expect(layersToGrid(spriteLayers(spec))).toEqual(composeGrid(spec));
   });
 });
@@ -345,7 +318,7 @@ describe("outlineRects", () => {
   });
 
   it.each(BODY_KEYS)("never rings a cell %s inks", (key) => {
-    const grid = composeGrid({ body: key, flagged: true, mood: "hostile", seed: SEEDS[2] });
+    const grid = composeGrid({ body: key, mood: "hostile", seed: SEEDS[2] });
     for (const r of outlineRects(grid))
       for (let i = 0; i < r.w; i++) expect(isInk(grid[r.y]?.[r.x + i])).toBe(false);
   });

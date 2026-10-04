@@ -14,8 +14,9 @@ import { cn } from "@/lib/utils";
  * view box is padded by one on every side: pick `px` as a multiple of 34 to
  * keep every cell a whole number of pixels.
  *
- * Colour never carries the meaning on its own: the flagged state adds horns,
- * which is a shape difference and survives both greyscale and colour blindness.
+ * Colour never carries the meaning on its own: the face follows the verdict
+ * (calm, wary, hostile), a shape difference that survives greyscale and
+ * colour blindness.
  */
 export const Sprite = memo(function Sprite({
     spec,

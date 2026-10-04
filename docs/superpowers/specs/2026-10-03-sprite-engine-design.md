@@ -55,10 +55,10 @@ from free-backed evidence. Consequences:
 |---|---|---|---|
 | IP identity | `hosting` | datacentre / named cloud | flat-top golem |
 | | `residential` | ISP, corporate egress | steep roof, door notch in the base |
-| | `mobile` | carrier network | wide bat ears, tapers to a point |
+| | `mobile` | carrier network | the handset: antenna stub, screen as the face plate, three-row keypad |
 | | `unknown` | type unresolved | scalloped, ill-defined hem |
 | Domain identity | `site` | domain default | map pin, the only body that narrows to a point at the base |
-| | `landmark` | Tranco vouched (popular) | tower / monolith, tallest silhouette in the set |
+| | `landmark` | Tranco vouched (popular) | the obelisk: pointed tip, straight shaft, stepped plinth; eyes pinned kind (content arc when calm). Replaced a tower that read as a C2 mast |
 | | `hatchling` | registered < 30 days | cracked eggshell lower half |
 | | `husk` | NXDOMAIN | hollow, broken outline, mostly void |
 | | `courier` | MX but no A/AAAA (mail only) | envelope flap folded into the head |
@@ -151,9 +151,9 @@ Reordering a part list re-rolls every creature, and a test pins a few known
 seeds to catch it.
 
 ### Composition
-body → mark → mouth → eyes → horns (if flagged). Horns move to the 32 grid and
-stay additive, painted only in the reserved horn zone (top four rows, outer
-eight columns each side).
+body → mark → mouth → eyes. There are no horns any more (removed 2026-10-04):
+the verdict reads on the face (calm, wary, hostile) and in the colour, and the
+silhouette belongs to the class alone.
 
 ### Render
 `toRects` becomes per-tone horizontal runs. The SVG gets one `<g>` per tone with
@@ -162,13 +162,13 @@ still uses no assets.
 
 ### API
 ```ts
-type SpriteSpec = { body: BodyKey; flagged: boolean; seed: number };
+type SpriteSpec = { body: BodyKey; mood: Mood; seed: number };
 ```
 `spriteRects` becomes `spriteLayers(spec): { opacity: number; rects: Rect[] }[]`.
 
 ## Tests (lib/ti/sprite.test.ts and subject-record.test.ts)
 
-- Every body is 32×32 with valid chars; the horn zone is clear.
+- Every body is 32×32 with valid chars.
 - Parts never paint outside the body's ink. Fuzzed over 500 seeds × every body.
 - **16px silhouette test:** downsample each body 2×2 (a cell counts as ink if
   any of its pixels is ink) and require a pairwise Hamming distance of at least
@@ -181,7 +181,7 @@ type SpriteSpec = { body: BodyKey; flagged: boolean; seed: number };
 
 ## Verification
 
-`scripts/sprites.mjs` renders a contact sheet: every body × 4 seeds × flagged,
+`scripts/sprites.mjs` renders a contact sheet: every body × 4 seeds × wary and hostile faces,
 at 128 / 64 / 32 / 16px, in both themes. Every art iteration is judged on that
 PNG, not on the ASCII. The panel is checked on `/check` with a production build
 (see CLAUDE.md "Verifying changes").

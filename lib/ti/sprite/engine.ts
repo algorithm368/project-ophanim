@@ -83,7 +83,7 @@ export type BodyDef = {
 
 export type PartDef = { grid: string[] };
 
-export type SpriteSpec = { body: BodyKey; flagged: boolean; mood: Mood; seed: number };
+export type SpriteSpec = { body: BodyKey; mood: Mood; seed: number };
 export type Rect = { x: number; y: number; w: number };
 export type Layer = { tone: Tone; opacity: number; rects: Rect[] };
 
@@ -232,8 +232,8 @@ export function toLayers(grid: string[]): Layer[] {
 /**
  * The one-cell ring around the drawing: every empty cell with ink directly
  * above, below, left or right of it, merged into runs like a tone layer. It
- * may sit one cell outside the grid (x or y of -1 or SPRITE_SIZE), since horns
- * and wide bodies touch the edge, so the renderer pads its view box by one.
+ * may sit one cell outside the grid (x or y of -1 or SPRITE_SIZE), since wide
+ * bodies touch the edge, so the renderer pads its view box by one.
  *
  * Holes inside the body get the ring too: a door notch or a gap between
  * scattered fragments is part of the silhouette, and outlining it is what

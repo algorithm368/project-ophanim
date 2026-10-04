@@ -15,10 +15,10 @@ import {
   type Slot,
   type SpriteSpec,
 } from "./engine";
-import { EYES, HORN, MARKS, MOUTHS } from "./parts";
+import { EYES, MARKS, MOUTHS } from "./parts";
 
 export * from "./engine";
-export { EYES, HORN, HORN_ZONE, MARKS, MOUTHS, PUPILS } from "./parts";
+export { EYES, MARKS, MOUTHS, PUPILS } from "./parts";
 
 export const BODIES: Record<BodyKey, BodyDef> = { ...IP_BODIES, ...DOMAIN_BODIES, ...FILE_BODIES };
 
@@ -58,18 +58,11 @@ export function placements(spec: SpriteSpec): Placement[] {
   return out;
 }
 
-/** Body, then mark, mouth, eyes, then horns if flagged. */
+/** Body, then mark, mouth, eyes. */
 export function composeGrid(spec: SpriteSpec): string[] {
   const def = BODIES[spec.body];
   const rows = def.grid.map((r) => [...r]);
   for (const p of placements(spec)) paintPart(rows, def.grid, p.part.grid, p.x, p.y, p.mirror);
-  if (spec.flagged) {
-    // Horns sit outside the body, so they paint unmasked.
-    const full = Array.from({ length: SPRITE_SIZE }, () => "#".repeat(SPRITE_SIZE));
-    const w = HORN[0].length;
-    paintPart(rows, full, HORN, 0, 0);
-    paintPart(rows, full, HORN, SPRITE_SIZE - w, 0, true);
-  }
   return rows.map((r) => r.join(""));
 }
 

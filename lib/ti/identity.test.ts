@@ -240,7 +240,7 @@ describe("asnLine", () => {
 describe("assignment", () => {
   it("prefers the most specific flag, and always answers", () => {
     expect(assignment(ip({ geo: { isProxy: true, isHosting: true } }))).toBe("anonymizing proxy or VPN");
-    expect(assignment(ip({ geo: { isMobile: true, isHosting: true } }))).toBe("mobile network");
+    expect(assignment(ip({ geo: { isMobile: true, isHosting: true } }))).toBe("cellular carrier");
     expect(assignment(ip({ geo: { isHosting: true } }))).toBe("hosting or datacentre");
   });
 
@@ -564,7 +564,7 @@ describe("splitAsn", () => {
 describe("typeWord", () => {
   it("names the loudest kind of connection in one word", () => {
     expect(typeWord(ip({ geo: { isProxy: true, isHosting: true } }))).toBe("Anonymizer");
-    expect(typeWord(ip({ geo: { isMobile: true, isHosting: true } }))).toBe("Mobile");
+    expect(typeWord(ip({ geo: { isMobile: true, isHosting: true } }))).toBe("Mobile network");
     expect(typeWord(ip({ geo: { isHosting: true } }))).toBe("Hosting");
   });
 

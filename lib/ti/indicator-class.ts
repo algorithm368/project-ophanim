@@ -242,8 +242,8 @@ const mobile: Rung = ({ geo }) =>
   geo?.isMobile
     ? {
         label: "Mobile network",
-        short: "Mobile",
-        caption: "mobile network",
+        short: "Mobile network",
+        caption: "cellular carrier",
         phrase: "a mobile carrier (cellular) address",
         tail: ", which identifies a lease rather than a device",
         desc: "A mobile carrier address. It identifies a lease rather than a device, and the lease moves.",

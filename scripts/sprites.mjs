@@ -1,5 +1,5 @@
 // Contact sheet for the sprite set: each body at 128, 64, 32 and 16 px, then
-// four seeded siblings and the flagged state at 64 px, in both themes. Judge the
+// four seeded siblings and the wary and hostile faces at 64 px, in both themes. Judge the
 // art on this PNG, never on the ASCII: details that look fine in a grid vanish
 // at 16 px.
 //
@@ -34,13 +34,13 @@ function svg(spec, px) {
 }
 
 function cell(body) {
-  const base = { body, flagged: false, mood: "calm", seed: SIBLINGS[0] };
+  const base = { body, mood: "calm", seed: SIBLINGS[0] };
   const sizes = [128, 64, 32, 16].map((px) => `<span>${svg(base, px)}</span>`).join("");
-  // Three calm siblings, then the first one wary (suspicious: horns) and
-  // hostile (malicious: horns, red), which is how the verdict reads on a face.
+  // Three calm siblings, then the first one wary (suspicious) and hostile
+  // (malicious, red), which is how the verdict reads on a face.
   const sibs = SIBLINGS.slice(0, 3).map((seed) => `<span>${svg({ ...base, seed }, 64)}</span>`).join("");
-  const wary = `<span class="warn">${svg({ ...base, mood: "wary", flagged: true }, 64)}</span>`;
-  const hostile = `<span class="bad">${svg({ ...base, mood: "hostile", flagged: true }, 64)}</span>`;
+  const wary = `<span class="warn">${svg({ ...base, mood: "wary" }, 64)}</span>`;
+  const hostile = `<span class="bad">${svg({ ...base, mood: "hostile" }, 64)}</span>`;
   const tag = BODIES[body].placeholder ? " (placeholder)" : "";
   return `<figure><div class="row">${sizes}</div><div class="row">${sibs}${wary}${hostile}</div>
     <figcaption>${body}${tag}</figcaption></figure>`;
