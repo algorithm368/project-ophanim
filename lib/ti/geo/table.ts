@@ -96,7 +96,7 @@ export function ipSortKey(ip: string): number[] {
   const [head, tail = ""] = ip.split("::");
   const left = head ? head.split(":") : [];
   const right = ip.includes("::") && tail ? tail.split(":") : [];
-  const fill = Array<string>(8 - left.length - right.length).fill("0");
+  const fill = new Array<string>(8 - left.length - right.length).fill("0");
   const parts = ip.includes("::") ? [...left, ...fill, ...right] : left;
   return [6, ...parts.map((h) => Number.parseInt(h, 16))];
 }

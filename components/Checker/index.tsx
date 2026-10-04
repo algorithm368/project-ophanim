@@ -102,7 +102,7 @@ export default function Checker({
       if (initialQuery) resultsCache.current.set(initialQuery, initialResult);
       void loadCheckResults();
     } else if (initialQuery && detectIOC(initialQuery)) {
-      runCheckRef.current(initialQuery);
+      void runCheckRef.current(initialQuery);
     } else {
       inputRef.current?.focus();
     }
@@ -177,7 +177,7 @@ export default function Checker({
         // pathname === url guard in runCheck means it won't push a duplicate
         // entry for an already-canonical URL we're on (a non-canonical one
         // normalizes with a single push).
-        runCheckRef.current(canonical);
+        void runCheckRef.current(canonical);
       }
     }
 
@@ -362,7 +362,7 @@ export default function Checker({
 
   function refresh() {
     if (!result) return;
-    runCheck(indicatorOf(result), { refresh: true });
+    void runCheck(indicatorOf(result), { refresh: true });
   }
 
   // The indicator the live-research lane should fetch: the displayed result's
@@ -383,7 +383,7 @@ export default function Checker({
   function pivot(value: string) {
     setQuery(value);
     window.scrollTo({ top: 0, behavior: "smooth" });
-    runCheck(value);
+    void runCheck(value);
   }
 
   // On a populated (or in-flight) single-IOC lookup, the full hero form collapses
@@ -451,7 +451,7 @@ export default function Checker({
           type="button"
           onClick={() => {
             setQuery(value);
-            runCheck(value);
+            void runCheck(value);
           }}
           className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
         >
@@ -469,7 +469,7 @@ export default function Checker({
       onRetry={() => runCheck(query)}
       onExample={(s) => {
         setQuery(s);
-        runCheck(s);
+        void runCheck(s);
       }}
     />
   );

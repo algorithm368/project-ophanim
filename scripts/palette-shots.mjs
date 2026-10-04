@@ -47,7 +47,8 @@ for (const path of PATHS) {
       if (!vars) return;
       const s = document.createElement("style");
       s.id = "pal";
-      s.textContent = `html.dark{${Object.entries(vars).map(([k, v]) => `--${k}:${v}`).join(";")}}`;
+      const decls = Object.entries(vars).map(([k, v]) => "--" + k + ":" + v).join(";");
+      s.textContent = `html.dark{${decls}}`;
       document.head.append(s);
     }, vars);
     await page.waitForTimeout(200);

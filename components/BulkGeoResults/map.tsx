@@ -309,7 +309,8 @@ function Dot({
   if (!p) return null;
   const r = (3.5 + Math.sqrt(site.ips.length) * 2) / k;
   const approx = site.precision === "country";
-  const label = `${site.label}, ${site.ips.length === 1 ? site.ips[0] : `${site.ips.length} addresses`}${isAnchor ? ", anchor" : ""}`;
+  const count = site.ips.length === 1 ? site.ips[0] : `${site.ips.length} addresses`;
+  const label = `${site.label}, ${count}${isAnchor ? ", anchor" : ""}`;
   return (
     <g
       role="button"
@@ -510,12 +511,12 @@ export function MapLegend({ measuring }: Readonly<{ measuring: boolean }>) {
           <span className="size-3 rounded-full border-[1.5px] border-foreground p-px">
             <span className="block size-full rounded-full bg-foreground" />
           </span>
-          anchor
+          <span>anchor</span>
         </span>
       ) : (
         <span className="inline-flex items-center gap-1.5">
           <span className="size-3 rounded-full border border-dashed border-foreground/60 bg-foreground/5" />
-          500 km around the densest place
+          <span>500 km around the densest place</span>
         </span>
       )}
       <span className="ml-auto hidden sm:inline">

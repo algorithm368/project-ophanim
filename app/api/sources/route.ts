@@ -18,7 +18,7 @@ const REGISTRIES = {
 type RegistryType = keyof typeof REGISTRIES;
 
 /** Lists registered sources and whether each is currently enabled (key present). */
-async function listSources(request: NextRequest) {
+function listSources(request: NextRequest) {
   const param = request.nextUrl.searchParams.get("type");
   const type: RegistryType =
     param === "domain" || param === "hash" ? param : "ip";

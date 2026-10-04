@@ -87,7 +87,7 @@ export function useResearchStream(
         const snapshot = (done: boolean, error: boolean) =>
             setStore({ key, metas: [...metas], results: { ...results }, done, error });
 
-        (async () => {
+        void (async () => {
             try {
                 const res = await fetch(
                     `/api/research?indicator=${encodeURIComponent(indicator)}&kind=${kind}`,

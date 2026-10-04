@@ -52,8 +52,10 @@ export function placements(spec: SpriteSpec): Placement[] {
   if (eye) {
     const w = eye.grid[0].length;
     const { y, spread } = def.anchors.eyes;
-    out.push({ part: eye, x: mid - spread - w, y, mirror: false });
-    out.push({ part: eye, x: mid + spread, y, mirror: true });
+    out.push(
+      { part: eye, x: mid - spread - w, y, mirror: false },
+      { part: eye, x: mid + spread, y, mirror: true },
+    );
   }
   return out;
 }

@@ -14,7 +14,7 @@ import {
 import { maliciousTags } from "./sources/shodan-internetdb";
 import { IDENTIFIERS, threatTypeOf } from "./threat-type";
 import type { ThreatTypeVerdict } from "./threat-type";
-import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
+import type { CheckResult, DomainCheckResult, DomainContext, HashCheckResult, SourceResult } from "./types";
 import { moodFor, seedOf, type BodyKey, type SpriteSpec } from "./sprite";
 
 /**
@@ -534,7 +534,7 @@ function free(sources: SourceResult[], id: string): SourceResult | undefined {
 }
 
 type DomainSignals = {
-  dns?: DomainCheckResult["context"];
+  dns?: DomainContext;
   ageDays?: number;
   vouched: boolean;
 };

@@ -18,7 +18,7 @@ mkdirSync(OUT, { recursive: true });
 
 const only = process.env.SPRITES?.split(",").map((s) => s.trim()).filter(Boolean);
 const keys = only?.length ? BODY_KEYS.filter((k) => only.includes(k)) : BODY_KEYS;
-const SIBLINGS = ["8.8.8.8", "evil.example", "44d88612fea8a8f36de82e1278abb02f", "203.0.113.9"].map(seedOf);
+const SIBLINGS = ["198.51.100.7", "evil.example", "44d88612fea8a8f36de82e1278abb02f", "203.0.113.9"].map(seedOf);
 
 function svg(spec, px) {
   const groups = spriteLayers(spec)
