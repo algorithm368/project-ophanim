@@ -1,5 +1,6 @@
 import type { RelatedIndicator, SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
+import { apiKey } from "../keys";
 import { vtDefinitive } from "../vt-verdict";
 import {
   communicatingSamples,
@@ -67,9 +68,9 @@ export const virusTotalSource: TiSource = {
     weight: 1,
     keyEnv: "VIRUSTOTAL_API_KEY",
   },
-  isEnabled: () => Boolean(process.env.VIRUSTOTAL_API_KEY),
+  isEnabled: () => Boolean(apiKey("VIRUSTOTAL_API_KEY")),
   async check(ip, signal): Promise<SourceFinding> {
-    const key = process.env.VIRUSTOTAL_API_KEY;
+    const key = apiKey("VIRUSTOTAL_API_KEY");
     if (!key) return { status: "skipped" };
     try {
       const headers = { "x-apikey": key };
