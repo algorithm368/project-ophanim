@@ -69,6 +69,18 @@ describe("runPass1", () => {
     expect(await e.runPass1(e.newRow(3, { indicator: "1.2.3.4", kind: "ip" }), NOW)).toMatchObject({ id: 3, note: "Old" });
   });
 
+  it("drops sources bulk no longer asks from a cached row's queue", async () => {
+    const old = { ...e.newRow(9, { indicator: "1.2.3.4", kind: "ip" as const }), state: "pass1" as const, bucket: "C" as const };
+    readBulkRow.mockResolvedValue({ ...old, pending: ["greynoise", "otx", "virustotal"] });
+    expect(await e.runPass1(e.newRow(3, { indicator: "1.2.3.4", kind: "ip" }), NOW)).toMatchObject({ state: "pass1", pending: ["otx"] });
+    readBulkRow.mockResolvedValue({ ...old, pending: ["virustotal"] });
+    expect(await e.runPass1(e.newRow(3, { indicator: "1.2.3.4", kind: "ip" }), NOW)).toMatchObject({ state: "full", pending: [] });
+    readBulkRow.mockResolvedValue({ ...old, pending: ["abuseipdb"] });
+    expect(await e.runPass1(e.newRow(3, { indicator: "1.2.3.4", kind: "ip" }), NOW)).toMatchObject({ state: "pass1", pending: ["abuseipdb"] });
+    readBulkRow.mockResolvedValue({ ...old, bucket: undefined, pending: ["virustotal"] });
+    expect(await e.runPass1(e.newRow(3, { indicator: "1.2.3.4", kind: "ip" }), NOW)).toMatchObject({ pending: ["virustotal"] });
+  });
+
   it("queues a quiet IP for the metered sources bulk asks", async () => {
     runAll.mockResolvedValue([res("dnsbl", 0.5, { score: 0 })]);
     const row = await e.runPass1(e.newRow(0, { indicator: "1.2.3.4", kind: "ip" }), NOW);

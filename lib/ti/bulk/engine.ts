@@ -14,6 +14,16 @@ export function newRow(id: number, item: BulkItem): BulkRow {
   return internal ? { ...row, state: "internal", note: "Internal name, not sent to any source" } : row;
 }
 
+/** A row cached under an older profile may still be queued for a source bulk
+ *  no longer asks. Drop those, so the estimate never names them. */
+function withCurrentProfile(row: BulkRow): BulkRow {
+  if (row.state !== "pass1" || !row.bucket) return row;
+  const asked = new Set(pass2Ids(row.kind, row.bucket));
+  const pending = row.pending.filter((id) => asked.has(id));
+  if (pending.length === row.pending.length) return row;
+  return { ...row, pending, state: pending.length === 0 ? "full" : "pass1" };
+}
+
 /** Pass 1, cheapest first: /check's cache, bulk's cache, then the unmetered
  *  profile. Callers wrap a chunk in one withRequestMemo and withLane("bulk"). */
 export async function runPass1(row: BulkRow, now: Date = new Date()): Promise<BulkRow> {
@@ -24,7 +34,7 @@ export async function runPass1(row: BulkRow, now: Date = new Date()): Promise<Bu
     return { ...row, ...shared, bucket, state: "cached", pending: [], missing: [] };
   }
   const cached = await readBulkRow(row.kind, row.indicator, now);
-  if (cached) return { ...cached, id: row.id, note: row.note ?? cached.note };
+  if (cached) return withCurrentProfile({ ...cached, id: row.id, note: row.note ?? cached.note });
 
   const results = await runAll(pass1Sources(row.kind, familyOf(row.kind, row.indicator)), row.indicator);
   const c = classify(results);
