@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }));
 vi.mock("@/auth", () => ({ auth: authMock }));
 
-const { requireSession } = await import("@/lib/require-session");
+const { requireSession, requireSessionUser } = await import("@/lib/require-session");
 
 describe("requireSession", () => {
   beforeEach(() => {
@@ -45,5 +45,20 @@ describe("requireSession under next dev", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("requireSessionUser", () => {
+  beforeEach(() => {
+    authMock.mockReset();
+  });
+
+  it("hands back the signed-in user's email", async () => {
+    authMock.mockResolvedValueOnce({ user: { email: "me@x.com" } });
+    expect(await requireSessionUser()).toEqual({ email: "me@x.com" });
+  });
+  it("refuses a session with no email", async () => {
+    authMock.mockResolvedValueOnce({ user: {} });
+    expect(((await requireSessionUser()) as Response).status).toBe(401);
   });
 });

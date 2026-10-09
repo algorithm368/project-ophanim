@@ -27,3 +27,13 @@ export async function requireSession(): Promise<Response | null> {
 
   return Response.json({ error: "Unauthorized" }, { status: 401 });
 }
+
+/** Like requireSession, but hands back who is asking, for routes that keep
+ *  per-user records (bulk runs). */
+export async function requireSessionUser(): Promise<{ email: string } | Response> {
+  const { auth } = await import("@/auth");
+  const session = await auth();
+  const email = session?.user?.email;
+  if (email) return { email };
+  return Response.json({ error: "Unauthorized" }, { status: 401 });
+}
