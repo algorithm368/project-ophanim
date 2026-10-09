@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { cidrContains } from "../cidr";
 import { matchDrop, parseDropFeed } from "./spamhaus-drop";
 
 const FEED = [
@@ -36,6 +37,84 @@ describe("matchDrop", () => {
 
   it("returns null when no block contains the IP", () => {
     expect(matchDrop("8.8.8.8", blocks)).toBeNull();
+  });
+});
+
+describe("matchDrop — precedence and the parsed index", () => {
+  const outer = { cidr: "10.0.0.0/8", sblid: "OUTER" };
+  const inner = { cidr: "10.1.0.0/16", sblid: "INNER" };
+  const deepest = { cidr: "10.1.2.0/24", sblid: "DEEPEST" };
+
+  it("returns the earliest block in feed order when ranges nest", () => {
+    // Outer listed first wins even for an address in the inner block.
+    expect(matchDrop("10.1.2.3", [outer, inner, deepest])).toBe(outer);
+    // Inner listed first wins inside it; the outer still covers the rest.
+    expect(matchDrop("10.1.2.3", [deepest, inner, outer])).toBe(deepest);
+    expect(matchDrop("10.1.9.9", [deepest, inner, outer])).toBe(inner);
+    expect(matchDrop("10.9.9.9", [deepest, inner, outer])).toBe(outer);
+    // A mid-list block beats both its parent and its child when it comes first.
+    expect(matchDrop("10.1.2.3", [inner, deepest, outer])).toBe(inner);
+    expect(matchDrop("10.1.2.3", [deepest, outer, inner])).toBe(deepest);
+  });
+
+  it("returns the first of two identical blocks", () => {
+    const again = { cidr: "10.0.0.0/8", sblid: "AGAIN" };
+    expect(matchDrop("10.0.0.1", [outer, again])).toBe(outer);
+    expect(matchDrop("10.0.0.1", [again, outer])).toBe(again);
+  });
+
+  it("misses past the end of a nested block and between siblings", () => {
+    const blocks = [inner, deepest, { cidr: "10.3.0.0/16", sblid: "SIB" }];
+    expect(matchDrop("10.2.0.1", blocks)).toBeNull();
+    expect(matchDrop("10.3.0.1", blocks)?.sblid).toBe("SIB");
+    expect(matchDrop("9.255.255.255", blocks)).toBeNull();
+    expect(matchDrop("10.4.0.0", blocks)).toBeNull();
+  });
+
+  it("covers the inclusive bounds and an unaligned base", () => {
+    const blocks = [{ cidr: "1.2.3.4/24" }];
+    expect(matchDrop("1.2.3.0", blocks)).toBe(blocks[0]);
+    expect(matchDrop("1.2.3.255", blocks)).toBe(blocks[0]);
+    expect(matchDrop("1.2.4.0", blocks)).toBeNull();
+  });
+
+  it("applies the same precedence to IPv6", () => {
+    const v6outer = { cidr: "2001:db8::/32", sblid: "V6OUTER" };
+    const v6inner = { cidr: "2001:db8:1::/48", sblid: "V6INNER" };
+    expect(matchDrop("2001:db8:1::5", [v6inner, v6outer])).toBe(v6inner);
+    expect(matchDrop("2001:db8:1::5", [v6outer, v6inner])).toBe(v6outer);
+    expect(matchDrop("2001:db8:2::5", [v6inner, v6outer])).toBe(v6outer);
+  });
+
+  it("skips malformed blocks and answers null for an invalid address", () => {
+    const good = { cidr: "1.19.0.0/16" };
+    const blocks = [{ cidr: "junk" }, { cidr: "1.0.0.0/40" }, good];
+    expect(matchDrop("1.19.5.5", blocks)).toBe(good);
+    expect(matchDrop("not-an-ip", blocks)).toBeNull();
+    expect(matchDrop("1.19.5.5", [])).toBeNull();
+  });
+
+  it("matches a mixed-family list by the address's family", () => {
+    const v4 = { cidr: "1.19.0.0/16" };
+    const v6 = { cidr: "2001:678:254::/48" };
+    expect(matchDrop("1.19.5.5", [v6, v4])).toBe(v4);
+    expect(matchDrop("2001:678:254::1", [v4, v6])).toBe(v6);
+  });
+
+  it("agrees with a linear cidrContains scan on random addresses", () => {
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31) / 2 ** 31;
+    const quad = (n: number) =>
+      [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+    const blocks = Array.from({ length: 300 }, (_, i) => ({
+      cidr: `${quad(Math.floor(rnd() * 2 ** 32))}/${4 + Math.floor(rnd() * 25)}`,
+      sblid: String(i),
+    }));
+    for (let i = 0; i < 2_000; i++) {
+      const ip = quad(Math.floor(rnd() * 2 ** 32));
+      const linear = blocks.find((b) => cidrContains(b.cidr, ip)) ?? null;
+      expect(matchDrop(ip, blocks)).toBe(linear);
+    }
   });
 });
 
