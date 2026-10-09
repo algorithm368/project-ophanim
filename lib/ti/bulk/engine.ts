@@ -15,7 +15,8 @@ export function newRow(id: number, item: BulkItem): BulkRow {
 }
 
 /** A row cached under an older profile may still be queued for a source bulk
- *  no longer asks. Drop those, so the estimate never names them. */
+ *  no longer asks. Drop those, so the estimate never names them and pass 2,
+ *  which hydrates the row from the cache again, never spends them. */
 function withCurrentProfile(row: BulkRow): BulkRow {
   if (row.state !== "pass1" || !row.bucket) return row;
   const asked = new Set(pass2Ids(row.kind, row.bucket));
@@ -103,7 +104,8 @@ async function askOne(row: BulkRow, id: MeteredId, now: Date): Promise<{ result:
 /** Pass 2 for one row, resumable: progress is in `pending` and written to the
  *  row cache at every stop, so the next call carries on where this one ended. */
 export async function runPass2(row: BulkRow, now: Date = new Date()): Promise<{ row: BulkRow; waitMs?: number }> {
-  const next: BulkRow = { ...row, results: [...row.results], pending: [...row.pending], missing: [...row.missing] };
+  const current = withCurrentProfile(row);
+  const next: BulkRow = { ...current, results: [...current.results], pending: [...current.pending], missing: [...current.missing] };
   while (next.pending.length > 0) {
     const asked = await askOne(next, next.pending[0], now);
     if (!asked) {

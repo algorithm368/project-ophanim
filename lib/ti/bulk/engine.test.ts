@@ -33,7 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   readSharedFull.mockResolvedValue(null);
   readBulkRow.mockResolvedValue(null);
-  delete process.env.VIRUSTOTAL_API_KEY_BULK;
+  delete process.env.OTX_API_KEY_BULK;
 });
 
 describe("newRow", () => {
@@ -131,7 +131,7 @@ describe("escalationQueue and estimate", () => {
 describe("runPass2", () => {
   const start = (): BulkRow => ({
     ...e.newRow(0, { indicator: "1.2.3.4", kind: "ip" }),
-    state: "pass1", bucket: "C", results: [res("dnsbl", 0.5, { score: 0 })], pending: ["abuseipdb", "virustotal"],
+    state: "pass1", bucket: "C", results: [res("dnsbl", 0.5, { score: 0 })], pending: ["abuseipdb", "otx"],
   });
   const echo = async (s: { meta: SourceMeta }) => res(s.meta.id, 1, { score: 0 });
 
@@ -139,7 +139,16 @@ describe("runPass2", () => {
     reserveBulk.mockResolvedValue("ok");
     runSource.mockImplementation(echo);
     const { row, waitMs } = await e.runPass2(start(), NOW);
-    expect(reserveBulk.mock.calls.map((c) => c[0])).toEqual(["ABUSEIPDB_API_KEY", "VIRUSTOTAL_API_KEY"]);
+    expect(reserveBulk.mock.calls.map((c) => c[0])).toEqual(["ABUSEIPDB_API_KEY", "OTX_API_KEY"]);
+    expect(waitMs).toBeUndefined();
+    expect(row).toMatchObject({ state: "full", pending: [], missing: [] });
+  });
+
+  it("never asks a source bulk dropped, even from a row hydrated out of the cache", async () => {
+    reserveBulk.mockResolvedValue("ok");
+    runSource.mockImplementation(echo);
+    const { row, waitMs } = await e.runPass2({ ...start(), pending: ["virustotal", "abuseipdb", "greynoise"] }, NOW);
+    expect(reserveBulk.mock.calls.map((c) => c[0])).toEqual(["ABUSEIPDB_API_KEY"]);
     expect(waitMs).toBeUndefined();
     expect(row).toMatchObject({ state: "full", pending: [], missing: [] });
   });
@@ -149,19 +158,19 @@ describe("runPass2", () => {
     runSource.mockImplementation(echo);
     const { row, waitMs } = await e.runPass2(start(), NOW);
     expect(waitMs).toBe(30_000);
-    expect(row).toMatchObject({ state: "pass1", pending: ["virustotal"] });
+    expect(row).toMatchObject({ state: "pass1", pending: ["otx"] });
     expect(writeBulkRow).toHaveBeenCalledWith(row);
   });
 
   it("names why each wanted source is missing", async () => {
     reserveBulk.mockResolvedValueOnce("spent").mockResolvedValueOnce("unavailable");
     const { row } = await e.runPass2(start(), NOW);
-    expect(row).toMatchObject({ state: "partial", missing: ["abuseipdb", "virustotal"] });
+    expect(row).toMatchObject({ state: "partial", missing: ["abuseipdb", "otx"] });
     expect(row.results.slice(-2).map((r) => r.summary)).toEqual(["Bulk quota reached", "No quota ledger, Redis not configured"]);
   });
 
   it("says when it is the bulk key that is spent, and when there is no key", async () => {
-    process.env.VIRUSTOTAL_API_KEY_BULK = "own";
+    process.env.OTX_API_KEY_BULK = "own";
     reserveBulk.mockResolvedValueOnce("nokey").mockResolvedValueOnce("spent");
     const { row } = await e.runPass2(start(), NOW);
     expect(row.results.slice(-2).map((r) => r.summary)).toEqual(["No API key", "Bulk key quota reached"]);
@@ -169,14 +178,14 @@ describe("runPass2", () => {
 
   it("marks a provider quota hit exhausted in the bulk lane, and missing", async () => {
     reserveBulk.mockResolvedValue("ok");
-    runSource.mockResolvedValueOnce(res("abuseipdb", 1, { status: "error", error: "HTTP 429" })).mockResolvedValueOnce(res("virustotal", 1, { score: 0 }));
+    runSource.mockResolvedValueOnce(res("abuseipdb", 1, { status: "error", error: "HTTP 429" })).mockResolvedValueOnce(res("otx", 1, { score: 0 }));
     const { row } = await e.runPass2(start(), NOW);
     expect(markExhausted).toHaveBeenCalledWith("ABUSEIPDB_API_KEY", "bulk", NOW);
     expect(row).toMatchObject({ state: "partial", missing: ["abuseipdb"] });
   });
 
   it("reports a source the kind has no adapter for as missing, without reserving", async () => {
-    const row: BulkRow = { ...e.newRow(0, { indicator: "a.com", kind: "domain" }), state: "pass1", bucket: "C", pending: ["greynoise"] };
+    const row: BulkRow = { ...e.newRow(0, { indicator: "a.com", kind: "domain" }), state: "pass1", bucket: undefined, pending: ["greynoise"] };
     const done = (await e.runPass2(row, NOW)).row;
     expect(reserveBulk).not.toHaveBeenCalled();
     expect(done).toMatchObject({ state: "partial", missing: ["greynoise"] });
