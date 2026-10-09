@@ -30,6 +30,53 @@ export function ipv6ToBigInt(ip: string): bigint | null {
   return value;
 }
 
+/** A CIDR as the inclusive range of addresses it covers, in its own family. */
+export type CidrRange =
+  | { family: 4; start: number; end: number }
+  | { family: 6; start: bigint; end: bigint };
+
+/**
+ * Parse a CIDR (e.g. "1.19.0.0/16" or "2001:678:254::/48") into the inclusive
+ * address range it covers, or null when it is malformed. An unaligned base is
+ * normalized to its block start, so "1.2.3.4/24" covers 1.2.3.0-1.2.3.255.
+ */
+export function parseCidr(cidr: string): CidrRange | null {
+  const slash = cidr.indexOf("/");
+  if (slash < 0) return null;
+  const prefix = Number(cidr.slice(slash + 1));
+  if (!Number.isInteger(prefix) || prefix < 0) return null;
+  const base = cidr.slice(0, slash);
+
+  if (base.includes(":")) {
+    if (prefix > 128) return null;
+    const baseValue = ipv6ToBigInt(base);
+    if (baseValue === null) return null;
+    const hostBits = BigInt(1) << BigInt(128 - prefix);
+    // Masking off the host bits normalizes an unaligned base to its block start.
+    const start = (baseValue / hostBits) * hostBits;
+    return { family: 6, start, end: start + hostBits - BigInt(1) };
+  }
+
+  if (prefix > 32) return null;
+  const baseLong = ipv4ToLong(base);
+  if (baseLong === null) return null;
+  const size = 2 ** (32 - prefix);
+  const start = Math.floor(baseLong / size) * size;
+  return { family: 4, start, end: start + size - 1 };
+}
+
+/** An IP address as a number in its family's range, or null when it is invalid. */
+export function ipValue(
+  ip: string,
+): { family: 4; value: number } | { family: 6; value: bigint } | null {
+  if (ip.includes(":")) {
+    const value = ipv6ToBigInt(ip);
+    return value === null ? null : { family: 6, value };
+  }
+  const value = ipv4ToLong(ip);
+  return value === null ? null : { family: 4, value };
+}
+
 /**
  * Whether `ip` falls inside `cidr`, for either IP family (e.g. "1.19.0.0/16"
  * or "2001:678:254::/48"). Returns false for malformed CIDRs and for
@@ -37,32 +84,8 @@ export function ipv6ToBigInt(ip: string): bigint | null {
  * family simply misses rather than throwing.
  */
 export function cidrContains(cidr: string, ip: string): boolean {
-  const slash = cidr.indexOf("/");
-  if (slash < 0) return false;
-  const prefix = Number(cidr.slice(slash + 1));
-  if (!Number.isInteger(prefix) || prefix < 0) return false;
-  const base = cidr.slice(0, slash);
-
-  // Either side looking like IPv6 forces the v6 path; a v4 operand then fails
-  // to parse and the comparison correctly misses.
-  if (base.includes(":") || ip.includes(":")) {
-    if (prefix > 128) return false;
-    const ipValue = ipv6ToBigInt(ip);
-    const baseValue = ipv6ToBigInt(base);
-    if (ipValue === null || baseValue === null) return false;
-    // Masking both sides also normalizes an unaligned base to its block start.
-    const mask =
-      ((BigInt(1) << BigInt(prefix)) - BigInt(1)) << BigInt(128 - prefix);
-    return (ipValue & mask) === (baseValue & mask);
-  }
-
-  if (prefix > 32) return false;
-  const long = ipv4ToLong(ip);
-  if (long === null) return false;
-  const baseLong = ipv4ToLong(base);
-  if (baseLong === null) return false;
-
-  const size = 2 ** (32 - prefix);
-  const start = Math.floor(baseLong / size) * size; // normalize unaligned base
-  return long >= start && long < start + size;
+  const range = parseCidr(cidr);
+  const addr = ipValue(ip);
+  if (!range || !addr || range.family !== addr.family) return false;
+  return addr.value >= range.start && addr.value <= range.end;
 }
