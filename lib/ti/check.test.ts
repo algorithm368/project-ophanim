@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { checkIp, supportsFamily } from "@/lib/ti/check";
 import type { SourceResult, TiSource } from "@/lib/ti/types";
+import * as quota from "@/lib/ti/bulk/quota";
 
 // A tiny stand-in registry so checkIp can be exercised without touching the
 // network: every source resolves immediately from memory.
@@ -111,5 +112,14 @@ describe("checkIp — family gating", () => {
   it("treats an unparseable indicator as IPv4 rather than skipping everything", async () => {
     const result = await checkIp("not-an-ip");
     expect(result.stats.skipped).toBe(0);
+  });
+});
+
+describe("checkIp quota ledger", () => {
+  it("reports metered spend to the quota ledger", async () => {
+    const spy = vi.spyOn(quota, "recordSpend").mockResolvedValue();
+    const result = await checkIp("8.8.8.8");
+    expect(spy).toHaveBeenCalledWith(result.sources);
+    spy.mockRestore();
   });
 });

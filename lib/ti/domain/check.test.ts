@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { checkDomain } from "@/lib/ti/domain/check";
 import type { SourceResult } from "@/lib/ti/types";
+import * as quota from "@/lib/ti/bulk/quota";
 
 vi.mock("@/lib/ti/domain/registry", () => ({
   domainSources: [
@@ -26,5 +27,12 @@ describe("checkDomain", () => {
     expect(result.domain).toBe("example.com");
     expect(result.sources.map((r) => r.status)).toEqual(["ok"]);
     expect(settled).toHaveLength(1);
+  });
+
+  it("reports metered spend to the quota ledger", async () => {
+    const spy = vi.spyOn(quota, "recordSpend").mockResolvedValue();
+    const result = await checkDomain("example.com");
+    expect(spy).toHaveBeenCalledWith(result.sources);
+    spy.mockRestore();
   });
 });

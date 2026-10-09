@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { connection } from "next/server";
 import Checker from "@/components/Checker";
 import { SourceRail, SourceRailSkeleton } from "@/components/Home/source-rail";
@@ -14,6 +15,14 @@ export default function Home() {
           </Suspense>
         }
       />
+      <div className="mx-auto w-full max-w-7xl px-4 pb-6 text-sm">
+        <Link
+          href="/bulk"
+          className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+        >
+          Bulk lookup
+        </Link>
+      </div>
     </main>
   );
 }

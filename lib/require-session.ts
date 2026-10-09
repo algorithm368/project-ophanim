@@ -27,3 +27,20 @@ export async function requireSession(): Promise<Response | null> {
 
   return Response.json({ error: "Unauthorized" }, { status: 401 });
 }
+
+/** Under next dev every caller is this one owner, since the proxy waves
+ *  everything through there and nobody can sign in to say who they are. */
+export const DEV_OWNER = "dev@localhost";
+
+/** Like requireSession, but hands back who is asking, for routes that keep
+ *  per-user records (bulk runs). Same next dev bypass, under the same
+ *  condition, so production stays fail-closed. */
+export async function requireSessionUser(): Promise<{ email: string } | Response> {
+  if (process.env.NODE_ENV === "development") return { email: DEV_OWNER };
+
+  const { auth } = await import("@/auth");
+  const session = await auth();
+  const email = session?.user?.email;
+  if (email) return { email };
+  return Response.json({ error: "Unauthorized" }, { status: 401 });
+}

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }));
 vi.mock("@/auth", () => ({ auth: authMock }));
 
-const { requireSession } = await import("@/lib/require-session");
+const { DEV_OWNER, requireSession, requireSessionUser } = await import("@/lib/require-session");
 
 describe("requireSession", () => {
   beforeEach(() => {
@@ -41,6 +41,34 @@ describe("requireSession under next dev", () => {
     vi.stubEnv("NODE_ENV", "development");
     try {
       expect(await requireSession()).toBeNull();
+      expect(authMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+describe("requireSessionUser", () => {
+  beforeEach(() => {
+    authMock.mockReset();
+  });
+
+  it("hands back the signed-in user's email", async () => {
+    authMock.mockResolvedValueOnce({ user: { email: "me@x.com" } });
+    expect(await requireSessionUser()).toEqual({ email: "me@x.com" });
+  });
+  it("refuses a session with no email", async () => {
+    authMock.mockResolvedValueOnce({ user: {} });
+    expect(((await requireSessionUser()) as Response).status).toBe(401);
+  });
+});
+
+describe("requireSessionUser under next dev", () => {
+  it("hands back the fixed dev owner without asking Auth.js", async () => {
+    authMock.mockReset();
+    vi.stubEnv("NODE_ENV", "development");
+    try {
+      expect(await requireSessionUser()).toEqual({ email: DEV_OWNER });
       expect(authMock).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
