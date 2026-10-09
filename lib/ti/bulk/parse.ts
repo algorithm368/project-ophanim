@@ -52,7 +52,7 @@ function check(token: string): Checked {
   const refanged = refangIOC(token);
   if (CIDR.test(refanged)) return { reason: "CIDR range, not expanded" };
   const value = toAscii(refanged);
-  const kind = value ? detectIOC(value) : null;
+  const kind = detectIOC(value);
   if (kind === "hash" || kind === "url") return { reason: `Not supported in bulk, ${kind}` };
   if (kind === "ip") return checkIp(value);
   if (kind === "domain") return checkDomain(value, refanged);
