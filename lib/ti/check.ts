@@ -3,6 +3,7 @@ import { parseIP } from "@/lib/ip";
 import { sources } from "./registry";
 import { runAll } from "./orchestrate";
 import { withRequestMemo } from "./request-memo";
+import { recordSpend } from "./bulk/quota";
 import { assembleIpResult } from "./assemble";
 
 /** Whether a source can answer for this IP family. Unset means IPv4 only. */
@@ -44,6 +45,10 @@ export async function checkIp(
   const results = sources
     .map((source) => byId.get(source.meta.id))
     .filter((result): result is SourceResult => result !== undefined);
+
+  // Bulk lookup budgets each metered key against what /check already spent
+  // today. Fire and forget: the ledger must never slow or fail a lookup.
+  void recordSpend(results);
 
   return assembleIpResult(ip, results, new Date().toISOString());
 }
