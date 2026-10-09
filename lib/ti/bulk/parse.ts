@@ -1,4 +1,3 @@
-import { domainToASCII } from "node:url";
 import { detectIOC, refangIOC } from "@/lib/ioc";
 import { parseIP } from "@/lib/ip";
 import { parseDomain } from "@/lib/domain";
@@ -27,8 +26,24 @@ const CIDR = /^[0-9a-f:.]+\/\d{1,3}$/i;
 const SINGLE_LABEL = /^[a-z][a-z0-9-]*$/i;
 const LEADING_ZERO = /(^|\.)0\d/;
 
+// Anything that would make the URL parser read a path, port, user or query
+// instead of the whole token as a host.
+const NOT_HOST = /[/?#@:\\%]/;
+
+/** Punycode for a Unicode name. The WHATWG URL parser does the same IDNA
+ *  mapping as `domainToASCII` from `node:url`, and unlike it also runs in the
+ *  browser, where the /bulk page previews a paste. A token the parser refuses
+ *  comes back lowercased and still non-ASCII, so it is reported as not an IP
+ *  or domain. */
 function toAscii(value: string): string {
-  return /[^\x00-\x7f]/.test(value) ? domainToASCII(value.toLowerCase()) : value;
+  if (!/[^\x00-\x7f]/.test(value)) return value;
+  const lower = value.toLowerCase();
+  if (NOT_HOST.test(lower)) return lower;
+  try {
+    return new URL(`http://${lower}`).hostname;
+  } catch {
+    return lower;
+  }
 }
 
 function checkIp(value: string): Checked {
