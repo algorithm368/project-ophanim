@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ipRelationsFromVt, virusTotalSource, vtScore } from "./virustotal";
 import { getJson } from "../http";
+import { withLane } from "../keys";
 import type { VtRelationships } from "../vt-relationships";
 
 vi.mock("../http", async (importOriginal) => {
@@ -158,5 +159,27 @@ describe("virusTotalSource.check — remaining paths", () => {
     expect((await virusTotalSource.check("1.2.3.4", signal)).status).toBe("timeout");
     vi.mocked(getJson).mockRejectedValue(new Error("boom"));
     expect((await virusTotalSource.check("1.2.3.4", signal)).error).toBe("boom");
+  });
+});
+
+describe("virusTotalSource — per-lane key", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getJson).mockReset();
+  });
+
+  it("uses the bulk key inside the bulk lane", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "shared");
+    vi.stubEnv("VIRUSTOTAL_API_KEY_BULK", "own");
+    vi.mocked(getJson).mockResolvedValue({ ok: false, status: 500, data: {}, text: "" });
+    await withLane("bulk", () => virusTotalSource.check("1.2.3.4", new AbortController().signal));
+    expect(vi.mocked(getJson).mock.calls[0][2]).toEqual({ "x-apikey": "own" });
+  });
+
+  it("enables on a bulk-only key in the bulk lane, not in /check's", async () => {
+    vi.stubEnv("VIRUSTOTAL_API_KEY", "");
+    vi.stubEnv("VIRUSTOTAL_API_KEY_BULK", "own");
+    expect(virusTotalSource.isEnabled()).toBe(false);
+    expect(await withLane("bulk", async () => virusTotalSource.isEnabled())).toBe(true);
   });
 });
