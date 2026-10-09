@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   VOUCHING_IDS, familyOf, inBulkProfile, isMetered, pass0Sources,
-  pass1Sources, pass2Ids, registryFor, sourceById,
+  pass1Sources, pass2Ids, PASS2_KEY_ENVS, registryFor, sourceById,
 } from "./profile";
 import { METERED_IDS } from "./types";
 import { sourceWeight } from "../weight";
@@ -65,12 +65,22 @@ describe("bulk source profile", () => {
     expect(familyOf("ip", "not-an-ip")).toBe(4);
   });
 
-  it("orders pass 2 by bucket", () => {
-    expect(pass2Ids("ip", "C")).toEqual(["abuseipdb", "greynoise", "otx", "virustotal"]);
-    expect(pass2Ids("ip", "B")).toEqual(["virustotal", "abuseipdb", "greynoise", "otx"]);
-    expect(pass2Ids("ip", "A")).toEqual(pass2Ids("ip", "B"));
-    expect(pass2Ids("domain", "C")).toEqual(["safebrowsing", "virustotal"]);
+  it("orders pass 2 by bucket, without VirusTotal or GreyNoise", () => {
+    for (const bucket of ["A", "B", "C"] as const) {
+      expect(pass2Ids("ip", bucket)).toEqual(["abuseipdb", "otx"]);
+      expect(pass2Ids("domain", bucket)).toEqual(["safebrowsing"]);
+    }
     expect(pass2Ids("ip", "D")).toEqual([]);
+  });
+
+  it("names exactly the key pools pass 2 spends", () => {
+    const envs = new Set<string>();
+    for (const kind of ["ip", "domain"] as const) {
+      for (const bucket of ["A", "B", "C"] as const) {
+        for (const id of pass2Ids(kind, bucket)) envs.add(sourceById(kind, id)?.meta.keyEnv ?? "");
+      }
+    }
+    expect([...envs].sort()).toEqual([...PASS2_KEY_ENVS].sort());
   });
 
   it("only names metered ids that exist in the registry", () => {

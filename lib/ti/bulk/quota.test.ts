@@ -178,6 +178,11 @@ describe("remaining", () => {
     expect(rows?.some((r) => r.keyEnv === "OTX_API_KEY")).toBe(false);
   });
 
+  it("reports only the pools it is asked about", async () => {
+    const rows = await q.remaining(NOW, ["ABUSEIPDB_API_KEY"]);
+    expect(rows?.map((r) => r.keyEnv)).toEqual(["ABUSEIPDB_API_KEY"]);
+  });
+
   it("reports an own key at full share, and null without Redis", async () => {
     process.env.VIRUSTOTAL_API_KEY_BULK = "vt-own";
     expect((await q.remaining(NOW))?.find((r) => r.keyEnv === "VIRUSTOTAL_API_KEY")).toMatchObject({ own: true, bulkLeft: 500 });

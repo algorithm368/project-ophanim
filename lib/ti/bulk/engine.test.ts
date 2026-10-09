@@ -69,10 +69,10 @@ describe("runPass1", () => {
     expect(await e.runPass1(e.newRow(3, { indicator: "1.2.3.4", kind: "ip" }), NOW)).toMatchObject({ id: 3, note: "Old" });
   });
 
-  it("queues a quiet IP for the quiet-order metered sources", async () => {
+  it("queues a quiet IP for the metered sources bulk asks", async () => {
     runAll.mockResolvedValue([res("dnsbl", 0.5, { score: 0 })]);
     const row = await e.runPass1(e.newRow(0, { indicator: "1.2.3.4", kind: "ip" }), NOW);
-    expect(row).toMatchObject({ state: "pass1", bucket: "C", pending: ["abuseipdb", "greynoise", "otx", "virustotal"] });
+    expect(row).toMatchObject({ state: "pass1", bucket: "C", pending: ["abuseipdb", "otx"] });
     expect(writeBulkRow).toHaveBeenCalledWith(row);
   });
 

@@ -3,7 +3,7 @@ import { sources } from "../registry";
 import { domainSources } from "../domain/registry";
 import { sourceWeight } from "../weight";
 import { parseIP } from "@/lib/ip";
-import { METERED_IDS, type Bucket, type BulkKind, type MeteredId } from "./types";
+import { METERED_IDS, type Bucket, type BulkKind, type MeteredId, type MeteredKeyEnv } from "./types";
 
 /** Sources that can set `allowlisted`. They feed computeFloor's vouch count
  *  even at weight 0, so dropping one would change a score. */
@@ -45,14 +45,19 @@ export function pass0Sources(family: 4 | 6): TiSource[] {
   return sources.filter((s) => PASS0_IDS.has(s.meta.id) && supports(s, family));
 }
 
-const IP_CONFIRM: MeteredId[] = ["virustotal", "abuseipdb", "greynoise", "otx"];
+// VirusTotal (500 a day, 4 a minute) and GreyNoise (50 a day) are too small to
+// spend on a list, so bulk leaves them to /check. A bulk row that reads "full"
+// has had every source bulk asks, which is these and the free ones.
 // A quiet IP's blind spot is fresh brute force and scanning, which AbuseIPDB
-// and GreyNoise see first. VirusTotal's 500/day is kept for the mixed rows.
-const IP_QUIET: MeteredId[] = ["abuseipdb", "greynoise", "otx", "virustotal"];
-const DOMAIN_ORDER: MeteredId[] = ["safebrowsing", "virustotal"];
+// sees first.
+const IP_ORDER: MeteredId[] = ["abuseipdb", "otx"];
+const DOMAIN_ORDER: MeteredId[] = ["safebrowsing"];
+
+/** The key pools pass 2 can spend, which is all the quota strip shows. */
+export const PASS2_KEY_ENVS: readonly MeteredKeyEnv[] = ["ABUSEIPDB_API_KEY", "OTX_API_KEY", "GOOGLE_SAFE_BROWSING_API_KEY"];
 
 const ORDER: Record<BulkKind, Record<Bucket, MeteredId[]>> = {
-  ip: { A: IP_CONFIRM, B: IP_CONFIRM, C: IP_QUIET, D: [] },
+  ip: { A: IP_ORDER, B: IP_ORDER, C: IP_ORDER, D: [] },
   domain: { A: DOMAIN_ORDER, B: DOMAIN_ORDER, C: DOMAIN_ORDER, D: [] },
 };
 

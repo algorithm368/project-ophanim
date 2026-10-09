@@ -144,11 +144,14 @@ export interface QuotaRemaining {
   exhausted: boolean;
 }
 
-export async function remaining(now: Date = new Date()): Promise<QuotaRemaining[] | null> {
+export async function remaining(
+  now: Date = new Date(),
+  keyEnvs: readonly MeteredKeyEnv[] = METERED_KEY_ENVS,
+): Promise<QuotaRemaining[] | null> {
   const redis = getRedis();
   if (!redis) return null;
   const day = utcDay(now);
-  const pools = METERED_KEY_ENVS.flatMap((keyEnv) => {
+  const pools = keyEnvs.flatMap((keyEnv) => {
     const pool = poolOf(keyEnv, "bulk");
     return pool ? [{ keyEnv, pool }] : [];
   });

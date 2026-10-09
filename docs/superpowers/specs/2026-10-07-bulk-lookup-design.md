@@ -139,9 +139,14 @@ function of the `SourceResult[]` and `aggregateRisk`'s output.
 
 Per-row metered order:
 
-- **ip, bucket C:** AbuseIPDB, GreyNoise, OTX, then VirusTotal.
-- **ip, buckets A and B:** VirusTotal, AbuseIPDB, GreyNoise, OTX.
-- **domain:** Safe Browsing, then VirusTotal.
+- **ip, buckets A, B and C:** AbuseIPDB, then OTX.
+- **domain:** Safe Browsing.
+
+VirusTotal (500 a day, 4 a minute) and GreyNoise (50 a day) are left out of
+bulk entirely (decided 2026-10-09): their quota is too small to spend on a
+list, so they stay with `/check`. A bulk row's `full` depth therefore means
+every source bulk asks, not every source `/check` asks; open the row in
+`/check` for VirusTotal and GreyNoise.
 
 ## Source profiles
 

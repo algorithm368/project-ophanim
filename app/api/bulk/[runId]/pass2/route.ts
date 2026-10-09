@@ -2,6 +2,7 @@ import { withLane } from "@/lib/ti/keys";
 import { estimate, runPass1, runPass2 } from "@/lib/ti/bulk/engine";
 import { needsConfirmation, ndjsonStream, PASS2_CHUNK, readRowIds } from "@/lib/ti/bulk/api";
 import { remaining } from "@/lib/ti/bulk/quota";
+import { PASS2_KEY_ENVS } from "@/lib/ti/bulk/profile";
 import { hydrate, loadRun, mergeRows, saveRun, summarize } from "@/lib/ti/bulk/run-store";
 import { requireSessionUser } from "@/lib/require-session";
 import type { BulkRow } from "@/lib/ti/bulk/types";
@@ -22,7 +23,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ runId: string 
   if (!ids) return Response.json({ error: `Send 1 to ${PASS2_CHUNK} rowIds` }, { status: 400 });
 
   if (body?.confirmed === true && !run.confirmed) run = { ...run, confirmed: true };
-  if (needsConfirmation(run)) return Response.json({ estimate: estimate(run.rows), quota: await remaining() }, { status: 409 });
+  if (needsConfirmation(run)) return Response.json({ estimate: estimate(run.rows), quota: await remaining(new Date(), PASS2_KEY_ENVS) }, { status: 409 });
 
   const summaries = run.rows.filter((r) => ids.includes(r.id) && r.state === "pass1");
   const current = run;
