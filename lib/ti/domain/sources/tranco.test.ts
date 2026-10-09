@@ -77,7 +77,7 @@ describe("trancoFinding", () => {
 
 vi.mock("@/lib/ti/http", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ti/http")>();
-  return { ...actual, getJson: vi.fn() };
+  return { ...actual, getJson: vi.fn(), getText: vi.fn() };
 });
 
 describe("trancoSource.check", () => {
@@ -107,6 +107,62 @@ describe("trancoSource.check", () => {
     expect((await trancoSource.check("x.com", signal())).status).toBe("error");
     vi.mocked(getJson).mockRejectedValue(new DOMException("t", "TimeoutError"));
     expect((await trancoSource.check("x.com", signal())).status).toBe("timeout");
+  });
+});
+
+// The bulk lane answers from the daily top list, which lives in a module-level
+// cache, so each case imports a fresh copy rather than inheriting a download.
+describe("trancoSource.check in the bulk lane", () => {
+  const signal = () => new AbortController().signal;
+
+  async function fresh() {
+    vi.resetModules();
+    const http = await import("@/lib/ti/http");
+    const { trancoSource: source } = await import("@/lib/ti/domain/sources/tranco");
+    const { withLane } = await import("@/lib/ti/keys");
+    return { source, withLane, getJson: vi.mocked(http.getJson), getText: vi.mocked(http.getText) };
+  }
+
+  it("never calls the per-domain API, and gives a subdomain its parent vouch", async () => {
+    const { source, withLane, getJson, getText } = await fresh();
+    getJson.mockResolvedValue({ ok: true, status: 200, data: { list_id: "26Y29" }, text: "" });
+    getText.mockResolvedValue({ ok: true, status: 200, data: null, text: "1,google.com\n" });
+    const f = await withLane("bulk", () => source.check("accounts.google.com", signal()));
+    expect(f.details).toEqual({ parentVouch: { parent: "google.com", rank: 1 } });
+    expect(f.allowlisted).toBeFalsy();
+    await withLane("bulk", () => source.check("mail.google.com", signal()));
+    const urls = [...getJson.mock.calls, ...getText.mock.calls].map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("/api/ranks/domain/"))).toBe(false);
+    expect(urls).toHaveLength(2);
+  });
+
+  it("reports a failed list download as an error, with no API fallback", async () => {
+    const { source, withLane, getJson, getText } = await fresh();
+    getJson.mockResolvedValue({ ok: false, status: 503, data: null, text: "" });
+    const f = await withLane("bulk", () => source.check("google.com", signal()));
+    expect(f.status).toBe("error");
+    expect(getJson).toHaveBeenCalledTimes(1);
+    expect(getText).not.toHaveBeenCalled();
+  });
+
+  it("reports a list download that runs out of time as a timeout", async () => {
+    const { source, withLane, getJson } = await fresh();
+    getJson.mockRejectedValue(new DOMException("t", "TimeoutError"));
+    expect((await withLane("bulk", () => source.check("google.com", signal()))).status).toBe("timeout");
+  });
+
+  it("leaves the check lane on the per-domain API", async () => {
+    const { source, withLane, getJson, getText } = await fresh();
+    getJson.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { domain: "google.com", ranks: [{ date: "2026-08-19", rank: 1 }] },
+      text: "",
+    });
+    const f = await withLane("check", () => source.check("google.com", signal()));
+    expect(f.allowlisted).toBe(true);
+    expect(String(getJson.mock.calls[0][0])).toContain("/api/ranks/domain/google.com");
+    expect(getText).not.toHaveBeenCalled();
   });
 });
 
