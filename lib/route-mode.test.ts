@@ -29,6 +29,10 @@ describe("modeRouteFor", () => {
     expect(modeRouteFor("/scan/")).toEqual({ mode: "active" });
   });
 
+  it("reads /bulk as the passive landing page", () => {
+    expect(modeRouteFor("/bulk")).toEqual({ mode: "passive" });
+  });
+
   it("names no mode for a path in neither", () => {
     expect(modeRouteFor("/check")).toBeNull();
     expect(modeRouteFor("/about")).toBeNull();
