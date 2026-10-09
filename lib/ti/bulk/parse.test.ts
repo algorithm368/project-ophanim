@@ -21,6 +21,19 @@ describe("parseBulkInput", () => {
     expect(r.duplicates).toBe(1);
   });
 
+  it("lowercases a Unicode name before converting it", () => {
+    expect(parseBulkInput("BÜCHER.de").items).toEqual([{ indicator: "xn--bcher-kva.de", kind: "domain", display: "BÜCHER.de" }]);
+  });
+
+  it("reports a Unicode token that is not a host instead of converting part of it", () => {
+    // A forbidden host character makes the URL parser throw; a port would make
+    // it read only part of the token as the host.
+    expect(parseBulkInput("ü<x.com\nbücher:80").invalid).toEqual([
+      { input: "ü<x.com", reason: "Not an IP or domain" },
+      { input: "bücher:80", reason: "Not an IP or domain" },
+    ]);
+  });
+
   it("reads leading zeros as decimal, with a note", () => {
     expect(parseBulkInput("15.03.05.16").items).toEqual([
       { indicator: "15.3.5.16", kind: "ip", note: "Read as 15.3.5.16, written with leading zeros" },

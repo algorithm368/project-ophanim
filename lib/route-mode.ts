@@ -47,6 +47,9 @@ export function modeRouteFor(pathname: string): ModeRoute | null {
 
   if (parts.length === 0) return { mode: "passive" };
   if (parts.length === 1) {
+    // The bulk page reads many indicators passively, so it sits in the
+    // passive mode with nothing carried across.
+    if (parts[0] === "bulk") return { mode: "passive" };
     return parts[0] === SEGMENT_OF_MODE.active ? { mode: "active" } : null;
   }
   if (parts.length !== 2) return null;
