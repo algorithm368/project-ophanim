@@ -67,7 +67,7 @@ function Results({
         <div className="mt-5 space-y-5">
             {result && <SourceHealthNotice result={result} />}
             {streaming ? (
-                <FrameSkeleton indicator={indicator} partial={partial} kind="ip" />
+                <FrameSkeleton indicator={indicator} partial={partial} />
             ) : (
                 <Frame>
                     <RailTile result={result} />
@@ -114,7 +114,7 @@ function DomainResults({
         <div className="mt-5 space-y-5">
             {result && <SourceHealthNotice result={result} />}
             {streaming ? (
-                <FrameSkeleton indicator={indicator} partial={partial} kind="domain" />
+                <FrameSkeleton indicator={indicator} partial={partial} />
             ) : (
                 <Frame>
                     <RailTile result={result} />
@@ -162,7 +162,7 @@ function HashResults({
         <div className="mt-5 space-y-5">
             {result && <SourceHealthNotice result={result} />}
             {streaming ? (
-                <FrameSkeleton indicator={indicator} partial={partial} kind="hash" />
+                <FrameSkeleton indicator={indicator} partial={partial} />
             ) : (
                 <Frame>
                     <RailTile result={result} />

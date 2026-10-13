@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { detectIOC } from "@/lib/ioc";
 import { modeRouteFor } from "@/lib/route-mode";
 import { FrameSkeleton } from "@/components/CheckResults/pending";
 
@@ -43,10 +42,6 @@ export function ResultSkeleton() {
   // guess.
   const lookup = route?.mode !== "active";
   const indicator = route?.indicator;
-  // `/check/<url>` redirects to the scan page, so a url never gets a lookup
-  // shape of its own; the generic one holds its place until the redirect lands.
-  const detected = indicator ? detectIOC(indicator) : null;
-  const kind = detected && detected !== "url" ? detected : undefined;
 
   return (
     <div className={lookup ? "mx-auto w-full max-w-7xl px-4 py-6" : undefined}>
@@ -56,10 +51,7 @@ export function ResultSkeleton() {
         {lookup ? (
           // The finished page's own shape, every tile at its final span, so the
           // result replaces placeholders rather than replacing a layout.
-          <FrameSkeleton
-            indicator={indicator}
-            kind={kind}
-          />
+          <FrameSkeleton indicator={indicator} />
         ) : (
           <div className="rounded-lg border border-foreground/12 p-4">
             <div className="sweep h-7 w-56 rounded" />

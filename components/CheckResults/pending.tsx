@@ -3,235 +3,88 @@
 import { useEffect, useState } from "react";
 import { etaBudgetMs, etaLabel } from "@/lib/ti/eta";
 import type { PartialLookup } from "@/lib/ti/partial";
-import type { LookupType } from "@/lib/ioc";
+import type { SourceMeta, SourceResult } from "@/lib/ti/types";
+import { sourceWeight } from "@/lib/ti/weight";
 import { cn } from "@/lib/utils";
 import { Frame, Tile } from "./frame";
-import { SourceDots } from "./verdict";
+import { SourceCells } from "./verdict";
 
 /**
- * The page before it has answered, in the shape it will answer in.
+ * The page before it has answered: a roll call, not a mock of the report.
  *
- * Every tile of the finished frame is here at its final span, so nothing moves
- * when the result lands: the sprite appears in the square already holding its
- * place, the narrative replaces the two grey lines already sitting where it
- * goes, and the detector rows replace the counts that were reporting on them.
+ * The finished page used to be painted here in grey, every tile at its final
+ * span, so nothing moved when the result landed. That held the layout still
+ * at the cost of fifteen seconds of placeholder bars, three tallies of the
+ * same counts, and real answers kept off screen until the end. This shows
+ * only what is true while waiting: which sources have answered, what each one
+ * said, and how long it took. The report replaces it whole when the last
+ * source is in, and that one jump is the price of not pretending.
  *
- * Three of the tiles are not placeholders at all. While sources are streaming
- * there are real facts to show, and they belong in the tiles that will keep
- * showing them:
- *
- *   hero      what is being checked, how far along, and which sources are in
- *   checked   how much longer, where the freshness will be
- *   evidence  the running tally of what the detectors are saying
- *
- * That last one is the reason the counts moved off the old pending card. They
- * were always a report on the detectors, and the detectors have a tile.
+ *   hero      what is being checked, and the cell bar
+ *   checked   how much longer
+ *   roll      every source by name, detectors first, in registry order
  */
 export function FrameSkeleton({
     indicator,
     partial,
-    kind,
 }: Readonly<{
     /** The name being checked, when the route already knows it. */
     indicator?: string;
     /** Live progress, once the stream has started. Absent on the inert shell a
      *  route paints before it has read anything at all. */
     partial?: PartialLookup | null;
-    kind?: LookupType;
 }>) {
+    const panel = partial?.metas ?? [];
     return (
         <Frame>
-            {/* The same box and the same centring as RailTile, so the sprite
-                lands where its placeholder was. */}
-            <Tile span={3} tone="rail" className="flex flex-col items-center justify-center p-4">
-                <span className="sweep block size-[170px] rounded" />
-            </Tile>
-
-            <Tile span={6} className="flex flex-col">
-                <HeroProgress indicator={indicator} partial={partial} />
-            </Tile>
-
-            <Tile span={3} tone="rail" title="Checked" className="flex flex-col">
-                <Waiting partial={partial} />
-            </Tile>
-
             <Tile span={9}>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                    {["w-16", "w-12", "w-20", "w-14"].map((w) => (
-                        <div key={w}>
-                            <span className={cn("sweep block h-2 rounded", w)} />
-                            <span className="sweep mt-2 block h-3.5 w-28 rounded" />
-                            <span className="sweep mt-1.5 block h-2 w-20 rounded" />
-                        </div>
-                    ))}
-                </div>
+                <Hero indicator={indicator} partial={partial} />
             </Tile>
 
-            <Tile span={3} tone="rail" title="Confidence">
-                <Lines widths={["w-full", "w-5/6", "w-2/3"]} />
+            <Tile span={3} tone="rail" title="Checked">
+                {partial ? (
+                    <Countdown partial={partial} />
+                ) : (
+                    <span className="sweep block h-5 w-24 rounded" />
+                )}
+                <p className="mt-4 border-t border-foreground/12 pt-3.5 text-[12px] leading-relaxed text-muted-foreground">
+                    The report appears when the last source answers.
+                </p>
             </Tile>
 
-            <Tile span={9}>
-                {partial ? <Tally partial={partial} /> : <Lines widths={ROWS} />}
-            </Tile>
-
-            <Tile span={3} tone="rail" title="Ballots">
-                <Lines widths={["w-full", "w-4/5", "w-full", "w-3/4", "w-5/6"]} />
-            </Tile>
-
-            <Tile span={12} title="Timeline">
-                <span className="sweep mb-5 block h-3.5 w-full rounded" />
-                {["w-1/2", "w-2/3", "w-2/5", "w-3/5"].map((w, i) => (
-                    <div key={`${w}-${i}`} className="py-1.5">
-                        <span className={cn("sweep block h-3 rounded", w)} />
-                    </div>
-                ))}
-            </Tile>
-
-            <Tile span={12} title="Subject record">
-                <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
-                    {RECORD.map((w, i) => (
-                        // The widths repeat down the list, so the index is the
-                        // only thing distinguishing one placeholder from
-                        // another; a width alone collides and React drops rows.
-                        <div key={`${w}-${i}`} className="py-1.5">
-                            <span className={cn("sweep block h-3 rounded", w)} />
-                        </div>
-                    ))}
-                </div>
-            </Tile>
-
-            {kind === "domain" && (
-                <Tile span={12} title="Subdomains">
-                    <div className="grid grid-cols-2 gap-x-8 lg:grid-cols-4">
-                        {RECORD.map((w, i) => (
-                            <div key={`${w}-${i}`} className="py-1">
-                                <span className={cn("sweep block h-3 rounded", w)} />
-                            </div>
-                        ))}
-                    </div>
-                </Tile>
-            )}
-
-            <Tile span={5} title="Live intel">
-                <div className="flex flex-wrap gap-1.5">
-                    {[0, 1, 2, 3, 4, 5].map((i) => (
-                        <span key={i} className="sweep block aspect-video w-24 shrink-0 rounded" />
-                    ))}
-                </div>
-            </Tile>
-
-            <Tile span={7} title="Look elsewhere">
-                <div className="grid gap-x-10 md:grid-cols-3">
-                    {[0, 1, 2].map((c) => (
-                        <div key={c}>
-                            <Lines widths={["w-1/2", "w-3/4", "w-2/3", "w-4/5"]} />
-                        </div>
-                    ))}
-                </div>
-            </Tile>
-
-            <Tile span={12} title="Source breakdown">
-                <Lines widths={["w-1/3", "w-2/3", "w-1/2", "w-3/5", "w-2/5"]} />
+            <Tile span={12}>
+                {panel.length > 0 ? (
+                    <RollCall panel={panel} sources={partial?.sources ?? []} />
+                ) : (
+                    <RollPlaceholder />
+                )}
             </Tile>
         </Frame>
     );
 }
 
-const ROWS = ["w-full", "w-11/12", "w-4/5", "w-3/4", "w-2/3", "w-1/2"];
-const RECORD = [
-    "w-full", "w-4/5", "w-2/3", "w-3/4", "w-1/2", "w-5/6",
-    "w-3/5", "w-2/3", "w-4/5", "w-1/2", "w-3/4", "w-5/6",
-];
-
-/** A stack of sweeping rules, for a tile whose real content is a list. */
-function Lines({ widths }: Readonly<{ widths: string[] }>) {
-    return (
-        <div className="space-y-2.5">
-            {widths.map((w, i) => (
-                <span key={`${w}-${i}`} className={cn("sweep block h-3 rounded", w)} />
-            ))}
-        </div>
-    );
-}
-
-/**
- * The hero while the panel is still answering.
- *
- * Counts never appear without their denominator. Five of twenty-seven sources
- * in, three of them adverse, reads as "3 adverse" to anyone glancing at it,
- * which is alarming; the same three out of a finished twenty-seven is mild.
- */
-function HeroProgress({
+function Hero({
     indicator,
     partial,
 }: Readonly<{ indicator?: string; partial?: PartialLookup | null }>) {
     const c = partial?.counts;
-    const pct = c && c.total > 0 ? Math.round((c.settled / c.total) * 100) : 0;
-
-    // Every kind gets a class headline larger than the name itself once the
-    // sources land, so the name is set small and quiet from the start and the
-    // headline's line box is held open under it. Without that the name would
-    // shrink and everything below it would jump on the first result.
     return (
         <>
-            <div className="mb-2 border-b border-foreground/12 pb-3">
-                {indicator ? (
-                    <p className="font-mono text-lg break-all text-muted-foreground">
-                        {indicator}
-                    </p>
-                ) : (
-                    // h-6, not h-7: `font-mono text-lg` is a 1.5rem line box, and
-                    // a placeholder taller than it moves the tile when the name
-                    // arrives.
-                    <span className="sweep block h-6 w-56 rounded" />
-                )}
-                {/* The class, at 2rem: a 2.5rem line box. */}
-                <span className="sweep mt-0.5 block h-10 w-44 rounded" />
-                <span className="sweep mt-1.5 block h-4 w-60 rounded" />
-            </div>
-
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <span className="font-mono text-[15px] font-bold tracking-[0.12em] text-muted-foreground uppercase">
-                    Analyzing
-                </span>
-                {c && (
-                    <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
-                        {c.settled} of {c.total || "…"} sources
-                    </span>
-                )}
-            </div>
-
-            {/* The same meter the score will fill. */}
-            <div
-                role="progressbar"
-                aria-label="Threat-intel sources checked"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={c && c.total > 0 ? pct : undefined}
-                className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
-            >
-                <div
-                    className="h-full rounded-full bg-foreground transition-[width] duration-200 ease-linear"
-                    style={{ width: `${Math.max(pct, 3)}%` }}
-                />
-            </div>
-
-            {partial && (
-                <div className="mt-3">
-                    <SourceDots
-                        sources={partial.sources}
-                        total={partial.counts.total}
-                        panel={partial.metas}
-                    />
-                </div>
+            {indicator ? (
+                <p className="font-mono text-lg break-all text-muted-foreground">{indicator}</p>
+            ) : (
+                <span className="sweep block h-6 w-56 rounded" />
             )}
 
-            {/* Where the narrative will land. */}
-            <div className="mt-4 space-y-2">
-                <span className="sweep block h-3 w-11/12 rounded" />
-                <span className="sweep block h-3 w-2/3 rounded" />
-            </div>
+            <span className="mt-3 mb-2 block font-mono text-[15px] font-bold tracking-[0.12em] text-muted-foreground uppercase">
+                Analyzing
+            </span>
+
+            <SourceCells
+                sources={partial?.sources ?? []}
+                total={c?.total ?? 0}
+                panel={partial?.metas}
+            />
 
             <p className="sr-only" role="status" aria-live="polite">
                 {c && c.total > 0
@@ -242,90 +95,135 @@ function HeroProgress({
     );
 }
 
-/** The Checked tile before there is anything to be freshly checked: how much
- *  longer, where the age will be. */
-function Waiting({ partial }: Readonly<{ partial?: PartialLookup | null }>) {
-    if (!partial) {
-        return (
-            <>
-                <span className="sweep block h-6 w-24 rounded" />
-                <div className="mt-4 border-t border-foreground/12 pt-3.5">
-                    <Lines widths={["w-full", "w-3/4"]} />
-                </div>
-            </>
-        );
+/**
+ * Every source by name, with what it said and how long it took.
+ *
+ * Split the way the score splits them: detectors can move the verdict, context
+ * sources (geolocation and the like) cannot, and an analyst reads a slow
+ * detector very differently from a slow geolocation lookup. Registry order
+ * within each group, so a row never moves when its answer lands.
+ */
+function RollCall({
+    panel,
+    sources,
+}: Readonly<{ panel: SourceMeta[]; sources: SourceResult[] }>) {
+    const byId = new Map(sources.map((s) => [s.source.id, s] as const));
+    const detectors = panel.filter((m) => sourceWeight(m) > 0);
+    const context = panel.filter((m) => sourceWeight(m) <= 0);
+
+    return (
+        <div className="space-y-4">
+            <RollGroup label="Detectors, move the score" metas={detectors} byId={byId} />
+            {context.length > 0 && (
+                <RollGroup label="Context, no weight" metas={context} byId={byId} />
+            )}
+        </div>
+    );
+}
+
+function RollGroup({
+    label,
+    metas,
+    byId,
+}: Readonly<{
+    label: string;
+    metas: SourceMeta[];
+    byId: Map<string, SourceResult>;
+}>) {
+    const answered = metas.filter((m) => byId.has(m.id)).length;
+    return (
+        <div>
+            <div className="mb-1 flex justify-between font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
+                <span>{label}</span>
+                <span className="tabular-nums">
+                    {answered} of {metas.length}
+                </span>
+            </div>
+            <ul className="gap-x-8 md:columns-2 lg:columns-3">
+                {metas.map((m) => (
+                    <RollRow key={m.id} meta={m} result={byId.get(m.id)} />
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+function RollRow({
+    meta,
+    result,
+}: Readonly<{ meta: SourceMeta; result?: SourceResult }>) {
+    const status = result ? rollStatus(result, sourceWeight(meta) > 0) : null;
+    return (
+        <li className="grid break-inside-avoid grid-cols-[1fr_auto_3.25rem] items-baseline gap-3 border-b border-dotted border-foreground/15 py-1 font-mono text-[12px]">
+            <span className="truncate">{meta.name}</span>
+            {status ? (
+                <span
+                    className={cn(
+                        "text-[10.5px] font-bold tracking-[0.08em] uppercase",
+                        status.tone === "adverse" && "text-red-600 dark:text-red-400",
+                        status.tone === "gap" && "font-normal text-muted-foreground",
+                    )}
+                >
+                    {status.text}
+                </span>
+            ) : (
+                <span className="animate-pulse text-[10.5px] tracking-[0.08em] text-muted-foreground uppercase">
+                    waiting
+                </span>
+            )}
+            <span className="text-right tabular-nums text-muted-foreground">
+                {result ? `${(result.durationMs / 1000).toFixed(1)}s` : ""}
+            </span>
+        </li>
+    );
+}
+
+const GAP_WORD: Record<Exclude<SourceResult["status"], "ok">, string> = {
+    error: "error",
+    timeout: "timeout",
+    skipped: "skipped",
+    rate_limited: "rate limited",
+};
+
+/** One word for what a source said. The same three readings as the cell bar
+ *  above it, with "no record" kept apart from clean: a detector that has never
+ *  seen the indicator has not vouched for it. Red is kept for a source that
+ *  actually flagged it, as on the finished page; a score below its flagging
+ *  threshold is adverse but says so quietly. */
+function rollStatus(
+    s: SourceResult,
+    detector: boolean,
+): { text: string; tone?: "adverse" | "gap" } {
+    if (s.status !== "ok") return { text: GAP_WORD[s.status], tone: "gap" };
+    if (s.malicious === true) {
+        return { text: s.score ? `listed ${s.score}` : "listed", tone: "adverse" };
     }
-    return <Countdown partial={partial} />;
+    if ((s.score ?? 0) > 0) return { text: `adverse ${s.score}` };
+    if (!detector) return { text: "ok" };
+    return { text: s.score === undefined ? "no record" : "clean" };
+}
+
+/** Before the stream has said who is on the panel, there are no names to call.
+ *  Rows of the same height hold the tile at roughly its working size. */
+function RollPlaceholder() {
+    const widths = ["w-3/5", "w-1/2", "w-2/3", "w-2/5", "w-1/2", "w-3/5"];
+    return (
+        <div className="space-y-4">
+            <span className="sweep block h-2 w-40 rounded" />
+            <div className="grid gap-x-8 md:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 12 }, (_, i) => (
+                    <div key={i} className="py-1.5">
+                        <span className={cn("sweep block h-3 rounded", widths[i % widths.length])} />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 function Countdown({ partial }: Readonly<{ partial: PartialLookup }>) {
     const eta = useEta(partial);
-    const c = partial.counts;
-    return (
-        <>
-            <div className="font-mono text-[15px] leading-tight font-bold uppercase">{eta}</div>
-            <div className="mt-4 grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1.5 border-t border-foreground/12 pt-3.5">
-                <span className="font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
-                    Still out
-                </span>
-                <span className="text-right font-mono text-[11.5px] font-bold tabular-nums">
-                    {c.total > 0 ? c.stillOut : "…"}
-                </span>
-                <span className="font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
-                    Gaps
-                </span>
-                <span className="text-right font-mono text-[11.5px] tabular-nums">{c.gaps}</span>
-            </div>
-        </>
-    );
-}
-
-/**
- * What the detectors are saying so far, in the tile that will hold their rows.
- *
- * Every count carries its denominator, and the denominator is the detectors
- * rather than the whole panel: most of the panel is context-only, geolocation
- * and the like, which can never answer for or against the indicator.
- */
-function Tally({ partial }: Readonly<{ partial: PartialLookup }>) {
-    const c = partial.counts;
-    return (
-        <>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
-                <Cell label="Detectors">
-                    {c.answered}{" "}
-                    <span className="text-muted-foreground">of {c.detectors || "…"}</span>
-                </Cell>
-                <Cell label="Adverse">
-                    {c.adverse}{" "}
-                    <span className="text-muted-foreground">of {c.answered} answered</span>
-                </Cell>
-                <Cell label="Clean">
-                    {c.clean}{" "}
-                    <span className="text-muted-foreground">of {c.answered} answered</span>
-                </Cell>
-                {/* A third answer, not a shade of clean: a source that has never
-                    seen the indicator has not vouched for it. */}
-                <Cell label="No record">{c.noRecord}</Cell>
-            </div>
-            <div className="mt-4 border-t border-foreground/12 pt-3">
-                <Lines widths={ROWS.slice(0, 4)} />
-            </div>
-        </>
-    );
-}
-
-function Cell({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
-    return (
-        <div className="min-w-0">
-            <div className="font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
-                {label}
-            </div>
-            <div className="mt-1.5 font-mono text-[13px] leading-snug wrap-break-word">
-                {children}
-            </div>
-        </div>
-    );
+    return <div className="font-mono text-[15px] leading-tight font-bold uppercase">{eta}</div>;
 }
 
 /**
