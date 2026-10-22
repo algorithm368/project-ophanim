@@ -1,6 +1,5 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
-import { apiKey } from "../keys";
 import {
   getCachedGreyNoiseIdentification,
   setCachedGreyNoiseIdentification,
@@ -94,9 +93,9 @@ export const greyNoiseSource: TiSource = {
     weight: 0.8,
     keyEnv: "GREYNOISE_API_KEY",
   },
-  isEnabled: () => Boolean(apiKey("GREYNOISE_API_KEY")),
+  isEnabled: () => Boolean(process.env.GREYNOISE_API_KEY),
   async check(ip, signal): Promise<SourceFinding> {
-    const key = apiKey("GREYNOISE_API_KEY");
+    const key = process.env.GREYNOISE_API_KEY;
     if (!key) return { status: "skipped" };
     try {
       const { ok, status, data } = await getJson<GreyNoiseResponse>(

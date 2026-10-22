@@ -1,6 +1,5 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
-import { apiKey } from "../keys";
 import { fetchOtxMalwareRelations } from "../otx-malware";
 
 interface OtxResponse {
@@ -55,9 +54,9 @@ export const otxSource: TiSource = {
     // give it extra headroom rather than timing out.
     timeoutMs: 15000,
   },
-  isEnabled: () => Boolean(apiKey("OTX_API_KEY")),
+  isEnabled: () => Boolean(process.env.OTX_API_KEY),
   async check(ip, signal): Promise<SourceFinding> {
-    const key = apiKey("OTX_API_KEY");
+    const key = process.env.OTX_API_KEY;
     if (!key) return { status: "skipped" };
     const headers = { "X-OTX-API-KEY": key };
     const indicator = otxIndicatorType(ip);

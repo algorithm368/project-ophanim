@@ -1,7 +1,5 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, getJson, isTimeout } from "../../http";
-import { currentLane } from "../../keys";
-import { bulkTrancoFinding, loadTopList } from "../tranco-list";
 
 interface TrancoResponse {
   domain?: string;
@@ -79,16 +77,6 @@ export const trancoSource: TiSource = {
   },
   isEnabled: () => true,
   async check(domain, signal): Promise<SourceFinding> {
-    // Bulk asks about thousands of domains; the per-domain API rate-limits on
-    // the second. The daily top list answers the only question that moves a
-    // score (rank <= VOUCH_RANK) from memory.
-    if (currentLane() === "bulk") {
-      try {
-        return bulkTrancoFinding(domain, await loadTopList(signal));
-      } catch (err) {
-        return { status: isTimeout(err) ? "timeout" : "error", error: errorMessage(err) };
-      }
-    }
     try {
       const { ok, status, data } = await getJson<TrancoResponse>(
         `${API}/${encodeURIComponent(domain)}`,

@@ -3,7 +3,6 @@ import { HASH_ALGO_LABEL, type HashAlgorithm } from "@/lib/hash";
 import { hashSources } from "./registry";
 import { runAll } from "../orchestrate";
 import { withRequestMemo } from "../request-memo";
-import { recordSpend } from "../bulk/quota";
 import { assembleHashResult } from "../assemble";
 import { resolveFamily } from "./family";
 import { fetchFamilyDescription } from "./sources/malpedia";
@@ -92,10 +91,6 @@ export async function checkHash(
   const results = hashSources
     .map((source) => byId.get(source.meta.id))
     .filter((result): result is SourceResult => result !== undefined);
-
-  // Bulk lookup budgets each metered key against what /check already spent
-  // today. Fire and forget: the ledger must never slow or fail a lookup.
-  void recordSpend(results);
 
   const result = assembleHashResult(
     hash,

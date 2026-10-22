@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { abuseIpdbSource, categoryBreakdown, reportLog, summarizeAbuse } from "./abuseipdb";
 import { getJson } from "../http";
-import { withLane } from "../keys";
 
 vi.mock("../http", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../http")>();
@@ -198,27 +197,5 @@ describe("abuseipdb sparse reports", () => {
     expect(reportLog({ reports: [{ reportedAt: "2026-01-01T00:00:00Z" }] })?.firstReported).toBe(
       "2026-01-01T00:00:00Z",
     );
-  });
-});
-
-describe("abuseIpdbSource — per-lane key", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.mocked(getJson).mockReset();
-  });
-
-  it("uses the bulk key inside the bulk lane", async () => {
-    vi.stubEnv("ABUSEIPDB_API_KEY", "shared");
-    vi.stubEnv("ABUSEIPDB_API_KEY_BULK", "own");
-    vi.mocked(getJson).mockResolvedValue({ ok: false, status: 500, data: {}, text: "" });
-    await withLane("bulk", () => abuseIpdbSource.check("1.2.3.4", new AbortController().signal));
-    expect(vi.mocked(getJson).mock.calls[0][2]).toEqual(expect.objectContaining({ Key: "own" }));
-  });
-
-  it("enables on a bulk-only key in the bulk lane, not in /check's", async () => {
-    vi.stubEnv("ABUSEIPDB_API_KEY", "");
-    vi.stubEnv("ABUSEIPDB_API_KEY_BULK", "own");
-    expect(abuseIpdbSource.isEnabled()).toBe(false);
-    expect(await withLane("bulk", async () => abuseIpdbSource.isEnabled())).toBe(true);
   });
 });

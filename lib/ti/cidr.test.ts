@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cidrContains, ipValue, ipv4ToLong, ipv6ToBigInt, parseCidr } from "./cidr";
+import { cidrContains, ipv4ToLong, ipv6ToBigInt } from "./cidr";
 
 describe("ipv4ToLong", () => {
   it("converts dotted-quad to a 32-bit integer", () => {
@@ -111,36 +111,5 @@ describe("cidrContains — IPv6", () => {
 
   it("returns false for an out-of-range IPv6 prefix", () => {
     expect(cidrContains("2001:db8::/129", "2001:db8::1")).toBe(false);
-  });
-});
-
-describe("parseCidr", () => {
-  it("returns the inclusive v4 range, normalizing an unaligned base", () => {
-    expect(parseCidr("1.2.3.4/24")).toEqual({ family: 4, start: 16_909_056, end: 16_909_311 });
-    expect(parseCidr("0.0.0.0/0")).toEqual({ family: 4, start: 0, end: 4_294_967_295 });
-  });
-
-  it("returns the inclusive v6 range as bigints", () => {
-    const r = parseCidr("2001:db8::5/127");
-    expect(r?.family).toBe(6);
-    expect(r?.start).toBe(ipv6ToBigInt("2001:db8::4"));
-    expect(r?.end).toBe(ipv6ToBigInt("2001:db8::5"));
-  });
-
-  it("returns null for malformed CIDRs", () => {
-    expect(parseCidr("1.2.3.0")).toBeNull();
-    expect(parseCidr("1.2.3.0/x")).toBeNull();
-    expect(parseCidr("1.2.3.0/33")).toBeNull();
-    expect(parseCidr("2001:db8::/129")).toBeNull();
-    expect(parseCidr("gggg::/48")).toBeNull();
-  });
-});
-
-describe("ipValue", () => {
-  it("parses either family and rejects junk", () => {
-    expect(ipValue("1.19.0.0")).toEqual({ family: 4, value: 18_022_400 });
-    expect(ipValue("::1")).toEqual({ family: 6, value: BigInt(1) });
-    expect(ipValue("not-an-ip")).toBeNull();
-    expect(ipValue("::zz")).toBeNull();
   });
 });
