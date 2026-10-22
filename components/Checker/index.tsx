@@ -445,7 +445,7 @@ export default function Checker({
       <span className="font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
         Try
       </span>
-      {EXAMPLE_CHIPS.map(({ value, label, icon: ChipIcon }) => (
+      {EXAMPLE_CHIPS.map(({ value, label }) => (
         <button
           key={value}
           type="button"
@@ -453,9 +453,8 @@ export default function Checker({
             setQuery(value);
             void runCheck(value);
           }}
-          className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
+          className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
         >
-          <ChipIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
           {label}
         </button>
       ))}
