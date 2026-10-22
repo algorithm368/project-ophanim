@@ -48,9 +48,10 @@ for (const theme of THEMES) {
   const page = await ctx.newPage();
   for (const ioc of IOCS) {
     await page.goto(`${BASE}/check/${encodeURIComponent(ioc)}`, { waitUntil: "domcontentloaded" });
-    // The strip is the grid holding the screen-reader slot labels. It only
-    // renders once the result is in, so it doubles as the done signal.
-    const strip = page.locator("div.grid:has(> div > span.sr-only)").first();
+    // The strip is the grid whose cells are size containers, which nothing
+    // else on the page is. It only renders once the result is in, so it
+    // doubles as the done signal.
+    const strip = page.locator("div.grid:has(> div.\\@container)").first();
     try {
       await strip.waitFor({ timeout: 120_000 });
     } catch (err) {

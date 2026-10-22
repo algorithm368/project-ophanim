@@ -60,9 +60,6 @@ export type IdentityClaim = {
  * cell for the network, which only works if the slots never move and never
  * disappear. A slot with nothing behind it therefore says so in its own words,
  * rather than yielding its place to the next one.
- *
- * The strip draws no labels, so the value and the line over it have to say
- * what the fact is between them. `label` survives for screen readers.
  */
 export type Vital = {
   key: string;
@@ -70,7 +67,7 @@ export type Vital = {
   label: string;
   /** The headline, two or three words. */
   value: string;
-  /** The one line that qualifies it. */
+  /** The one line under it that qualifies it. */
   sub?: string;
   /** A run at the start or end of `value` that carries no news ("AS", "Rank ",
    *  ".it"), drawn quiet so the eye lands on the part that differs. */
@@ -469,7 +466,7 @@ export function typeWord(r: CheckResult): string {
 }
 
 /** Where in the country, as "city, region", each said once and none of them
- *  the country again: over SINGAPORE, "Singapore" is not a caption. */
+ *  the country again: under SINGAPORE, "Singapore" is not a caption. */
 export function place(country: string | undefined, ...within: (string | undefined)[]): string {
   return list(within.filter((p): p is string => Boolean(p) && p !== country));
 }
@@ -562,7 +559,7 @@ function domainVitals(r: DomainCheckResult): Vital[] {
       "registrar",
       "Registrar",
       got(ctx?.registrar, born && `registered ${born}`),
-      born ? { value: "No registrar", sub: `registered ${born}` } : "No registrar",
+      born ? { value: "Not on file", sub: `registered ${born}` } : "Not on file",
     ),
     v(
       "reach",
@@ -600,14 +597,7 @@ function hashVitals(r: HashCheckResult): Vital[] {
     // First seen takes the freed slot: it is the fact that separates a sample
     // the world met this morning from one it has known for six years, and it
     // lived only in the ledger below.
-    // The caption names the date as well as qualifying it: with no label over
-    // the strip, a bare date says nothing about which date it is.
-    v(
-      "seen",
-      "First seen",
-      got(first, last && last !== first ? `first seen, last ${last}` : "first seen"),
-      { value: "Never recorded", sub: "first seen" },
-    ),
+    v("seen", "First seen", got(first, last && last !== first && `last ${last}`), "Never recorded"),
     v("format", "Format", got(ctx?.fileType, ctx?.magic), "Unknown format"),
     v(
       "size",

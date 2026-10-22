@@ -1,24 +1,12 @@
 "use client";
 
 import { Fragment, memo, useMemo } from "react";
-import { Barlow_Condensed } from "next/font/google";
 import { flagUrl } from "@/lib/flag";
 import { buildIdentity, longestRun, markParts, type IdentityClaim, type Vital } from "@/lib/ti/identity";
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Frame, Tile } from "./frame";
-
-/**
- * The one webfont in the app, and it sets nothing but the vitals.
- *
- * Every mark in the strip is meant to be the same height, and a system face is
- * too wide for that: at the size the strip wants, a domain or a country name
- * outgrows its cell and has to wrap mid-word. A condensed face keeps them
- * whole. `next/font` serves it from this app's own origin, so the page still
- * makes no request to anyone else, and it is loaded here rather than in the
- * layout so only the pages that draw the strip pay for it.
- */
-const markFace = Barlow_Condensed({ weight: "700", subsets: ["latin"], display: "swap" });
+import { markFace } from "./mark-face";
 
 /**
  * The subject record, as a dex entry, in two tiles of the page's frame.
@@ -87,9 +75,9 @@ export const RecordTile = memo(function RecordTile({
 /**
  * The headline facts, side by side, as marks.
  *
- * No labels: each value is set large enough to be the thing the eye lands on,
- * and the small line over it says what kind of fact it is (the city over the
- * country, the holder over the AS number, the host part over the domain).
+ * Each cell is its slot name, then the value set large enough to be the thing
+ * the eye lands on, then one small line qualifying it (the city under the
+ * country, the holder under the AS number, the host part under the domain).
  * The strip is always one row: three across for an address, four for a domain
  * or a file.
  *
@@ -97,8 +85,8 @@ export const RecordTile = memo(function RecordTile({
  * at which the strip's longest word still fits a cell, so values wrap between
  * words and never through one. The size is pure CSS, each cell a container and
  * the mark sized in its `cqi`, so it holds on any width with no script and no
- * shift. Marks start at the top of their cells, so a value that wraps grows
- * downward and the first lines always align.
+ * shift. Cells start at the top, so the labels and the first line of every
+ * mark align, and a value that wraps grows downward.
  *
  * The slots are per IOC type and never move, which is what lets a reader go to
  * the second cell for the network without reading anything else. A slot with
@@ -122,19 +110,13 @@ function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
                     className="@container relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4"
                 >
                     <FlagWallpaper code={vital.countryCode} />
-                    <span className="sr-only">{vital.label}: </span>
-                    {/* One line, always: a caption that wraps pushes its mark below the
-                        others' first lines. The whole of it is on hover. */}
-                    <div
-                        className="mb-1 min-h-3.5 truncate text-[11.5px] leading-3.5 text-muted-foreground"
-                        title={vital.sub}
-                    >
-                        {vital.sub}
+                    <div className="font-mono text-[9.5px] tracking-[0.11em] text-muted-foreground uppercase">
+                        {vital.label}
                     </div>
                     <div
                         className={cn(
                             markFace.className,
-                            "leading-[0.82] tracking-[0.005em] uppercase wrap-anywhere",
+                            "mt-2 leading-[0.82] tracking-[0.005em] uppercase wrap-anywhere",
                             vital.absent && "text-foreground/35",
                         )}
                         style={{ fontSize: size }}
@@ -146,6 +128,15 @@ function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
                             </span>
                         ))}
                     </div>
+                    {vital.sub && (
+                        // One line, the whole of it on hover.
+                        <div
+                            className="mt-1.5 truncate text-[11.5px] leading-3.5 text-muted-foreground"
+                            title={vital.sub}
+                        >
+                            {vital.sub}
+                        </div>
+                    )}
                 </div>
             ))}
         </div>
@@ -243,8 +234,9 @@ export function VitalsSkeleton({
             >
                 {["w-28", "w-20", "w-32", "w-24"].slice(0, cells).map((w) => (
                     <div key={w} className="bg-card p-4">
-                        <span className="sweep block h-2.5 w-20 rounded" />
+                        <span className="sweep block h-2 w-14 rounded" />
                         <span className={cn("sweep mt-2.5 block h-9 rounded", w)} />
+                        <span className="sweep mt-2 block h-2.5 w-24 rounded" />
                     </div>
                 ))}
             </div>

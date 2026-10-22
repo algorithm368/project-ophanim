@@ -641,7 +641,7 @@ describe("the vitals strip", () => {
     expect(vital(rec, "prefix")).toBeUndefined();
   });
 
-  it("puts the city, the region and a registry conflict over the country", () => {
+  it("puts the city, the region and a registry conflict under the country", () => {
     const rec = buildIdentity(
       ip({
         geoResolution: {
@@ -747,7 +747,7 @@ describe("the vitals strip", () => {
   it("keeps the registration date even when no registrar is on file", () => {
     const rec = buildIdentity(domain({ createdAt: "2024-06-01T00:00:00Z" }));
     expect(vital(rec, "registrar")).toMatchObject({
-      value: "No registrar",
+      value: "Not on file",
       sub: "registered 2024-06-01",
       absent: true,
     });
@@ -770,8 +770,7 @@ describe("the vitals strip", () => {
     // the fact that separates a sample the world met this morning from one it
     // has known for years, and which lived only in the ledger below.
     expect(slots(rec)).toEqual(["seen", "format", "size", "signature"]);
-    // With no label over it, the caption has to say what the date is.
-    expect(vital(rec, "seen")).toMatchObject({ value: "2017-05-12", sub: "first seen, last 2026-09-01" });
+    expect(vital(rec, "seen")).toMatchObject({ value: "2017-05-12", sub: "last 2026-09-01" });
     expect(vital(rec, "size")).toMatchObject({ value: "3.4 MB", sub: "3,514,368 bytes" });
     expect(vital(rec, "signature")?.value).toBe("Unsigned");
   });
@@ -780,15 +779,12 @@ describe("the vitals strip", () => {
     // "Unsigned" is what a missing signature means; drawing it quiet would say
     // the question was not asked.
     expect(vital(buildIdentity(hash({})), "signature")?.absent).toBeUndefined();
-    expect(vital(buildIdentity(hash({})), "seen")).toMatchObject({
-      value: "Never recorded",
-      sub: "first seen",
-    });
+    expect(vital(buildIdentity(hash({})), "seen")?.value).toBe("Never recorded");
   });
 
-  it("says only first seen when the sample was last seen the same day", () => {
+  it("drops last seen when it is the same day", () => {
     const rec = buildIdentity(hash({ firstSeen: "2026-09-01T00:00:00Z", lastSeen: "2026-09-01T09:00:00Z" }));
-    expect(vital(rec, "seen")?.sub).toBe("first seen");
+    expect(vital(rec, "seen")?.sub).toBeUndefined();
   });
 });
 
