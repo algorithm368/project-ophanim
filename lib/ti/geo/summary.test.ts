@@ -308,6 +308,20 @@ describe("sharedLocations / sameLocationNotes", () => {
     );
   });
 
+  it("falls back to the code when a country-only row has no country name", () => {
+    const codeOnly: GeoRow = { ip: "5.6.7.8", version: 4, status: "ok", geo: { countryCode: "de" } };
+    expect(differentLocationsNote([ash1, codeOnly])).toBe(
+      "Different locations: 8.8.8.8 in Ashburn, Virginia, United States (US); 5.6.7.8 in DE (DE), city unknown.",
+    );
+  });
+
+  it("skips the verdict but keeps the shared city when only a country-only row differs", () => {
+    expect(sameLocationNotes([ash1, ash2, noCity])).toEqual([
+      "All 3 addresses resolve to the same country, United States (US).",
+      "8.8.8.8 and 8.8.4.4 resolve to the same location, Ashburn, Virginia, United States (US).",
+    ]);
+  });
+
   it("gives no verdict unless two located addresses are known to differ", () => {
     expect(differentLocationsNote([ash1, noCity])).toBeNull();
     expect(differentLocationsNote([ash1, failed])).toBeNull();
