@@ -215,13 +215,54 @@ export function sharedLocations(rows: GeoRow[]): SharedLocation[] {
 }
 
 /**
+ * The verdict for a batch that is not one location: which address lands where,
+ * addresses sharing a city named together, busiest place first. Null unless
+ * two located addresses are known to differ, by country or by city, so a row
+ * with no city never reads as a second location. Rows located only to a
+ * country say so, and rows with no location at all close the sentence.
+ */
+export function differentLocationsNote(rows: GeoRow[]): string | null {
+  const places = new Map<string, { ips: string[]; place: string }>();
+  const countries = new Set<string>();
+  const cities = new Set<string>();
+  const unlocated: string[] = [];
+  for (const row of rows) {
+    const code = countryCodeOf(row);
+    if (!code) {
+      unlocated.push(row.ip);
+      continue;
+    }
+    countries.add(code);
+    const c = cityOf(row);
+    if (c) cities.add(c.key);
+    const country = row.resolution?.country?.value ?? row.geo?.country ?? code;
+    const key = c?.key ?? code;
+    const g = places.get(key);
+    if (g) g.ips.push(row.ip);
+    else places.set(key, { ips: [row.ip], place: c?.place ?? `${country} (${code}), city unknown` });
+  }
+  if (countries.size < 2 && cities.size < 2) return null;
+  const clauses = [...places.values()]
+    .sort((a, b) => b.ips.length - a.ips.length)
+    .map((g) => `${joinAnd(g.ips)} in ${g.place}`);
+  if (unlocated.length) clauses.push(`${joinAnd(unlocated)} not located`);
+  return `Different locations: ${clauses.join("; ")}.`;
+}
+
+/**
  * Every "same geolocation" sentence the batch supports, most general first:
  * one city for the whole batch if that holds, otherwise the one-country note
- * (when it holds) followed by each group of addresses sharing a city.
+ * (when it holds), the verdict naming where each address lands, then each
+ * group of addresses sharing a city.
  */
 export function sameLocationNotes(rows: GeoRow[]): string[] {
   const shared = sharedLocations(rows);
   if (shared[0]?.text.startsWith("All ")) return [shared[0].text];
   const country = sameCountryNote(rows);
-  return [...(country ? [country] : []), ...shared.map((s) => s.text)];
+  const different = differentLocationsNote(rows);
+  return [
+    ...(country ? [country] : []),
+    ...(different ? [different] : []),
+    ...shared.map((s) => s.text),
+  ];
 }

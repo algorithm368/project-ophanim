@@ -30,9 +30,10 @@ function CopyButton({
 }
 
 /**
- * Ready-to-paste sentences for addresses that share a geolocation: the whole
- * batch in one country or one city, or the groups that share a city. Each has
- * its own Copy, because a ticket usually wants the one finding, not the page.
+ * Ready-to-paste location verdicts: the whole batch in one country or one
+ * city, which address lands where when it is not one location, and the groups
+ * that share a city. Each has its own Copy, because a ticket usually wants the
+ * one finding, not the page.
  */
 export function SameLocation({ notes }: Readonly<{ notes: string[] }>) {
   if (!notes.length) return null;
@@ -40,7 +41,7 @@ export function SameLocation({ notes }: Readonly<{ notes: string[] }>) {
     <section className="rounded-md border-2 border-foreground/20">
       <header className="flex min-h-9 items-center justify-between gap-2 border-b border-foreground/10 px-3">
         <h3 className="flex items-center gap-2 font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-          Same location
+          Location
           {notes.length > 1 && (
             <span className="rounded-sm bg-foreground/10 px-1.5 font-normal tabular-nums">
               {notes.length}
@@ -51,7 +52,7 @@ export function SameLocation({ notes }: Readonly<{ notes: string[] }>) {
           <div className="-mr-1.5">
             <CopyButton
               text={notes.join("\n")}
-              label="Copy every same-location sentence"
+              label="Copy every location sentence"
               caption="Copy all"
             />
           </div>

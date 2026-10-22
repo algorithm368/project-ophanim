@@ -5,6 +5,7 @@ import {
   countryCodeOf,
   originReport,
   sameCountryNote,
+  differentLocationsNote,
   sameLocationNotes,
   sharedLocations,
 } from "./summary";
@@ -287,15 +288,30 @@ describe("sharedLocations / sameLocationNotes", () => {
     ]);
   });
 
-  it("leads with the one-country note, then each shared city", () => {
+  it("leads with the one-country note, then where each lands, then each shared city", () => {
     expect(sameLocationNotes([ash1, ash2, sj])).toEqual([
       "All 3 addresses resolve to the same country, United States (US).",
+      "Different locations: 8.8.8.8 and 8.8.4.4 in Ashburn, Virginia, United States (US); 208.67.222.222 in San Jose, California, United States (US).",
       "8.8.8.8 and 8.8.4.4 resolve to the same location, Ashburn, Virginia, United States (US).",
     ]);
   });
 
-  it("is empty when nothing is shared", () => {
-    expect(sameLocationNotes([ash1, mos1])).toEqual([]);
+  it("gives only the verdict when nothing is shared", () => {
+    expect(sameLocationNotes([ash1, mos1])).toEqual([
+      "Different locations: 8.8.8.8 in Ashburn, Virginia, United States (US); 77.88.8.8 in Moscow, Russia (RU).",
+    ]);
+  });
+
+  it("names country-only and unlocated addresses in the verdict", () => {
+    expect(differentLocationsNote([ash1, mos1, noCity, failed])).toBe(
+      "Different locations: 8.8.8.8 in Ashburn, Virginia, United States (US); 77.88.8.8 in Moscow, Russia (RU); 1.2.3.4 in United States (US), city unknown; 203.0.113.7 not located.",
+    );
+  });
+
+  it("gives no verdict unless two located addresses are known to differ", () => {
+    expect(differentLocationsNote([ash1, noCity])).toBeNull();
+    expect(differentLocationsNote([ash1, failed])).toBeNull();
+    expect(differentLocationsNote([])).toBeNull();
   });
 });
 
