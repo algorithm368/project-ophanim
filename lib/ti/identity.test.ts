@@ -7,6 +7,7 @@ import {
   cleanAppName,
   countryName,
   listedAs,
+  markParts,
   portList,
   signatureVital,
   splitAsn,
@@ -609,7 +610,7 @@ describe("signatureVital", () => {
 });
 
 describe("the vitals strip", () => {
-  it("keeps the same four slots in the same order whether or not there is data", () => {
+  it("keeps the same three slots in the same order whether or not there is data", () => {
     // The strip is read by position, so a missing fact has to hold its place.
     const empty = buildIdentity(ip());
     const full = buildIdentity(
@@ -618,89 +619,87 @@ describe("the vitals strip", () => {
         geoResolution: geoRes("United States", "US", "Mountain View"),
       }),
     );
-    expect(slots(empty)).toEqual(["country", "prefix", "network", "name"]);
+    expect(slots(empty)).toEqual(["country", "network", "name"]);
     expect(slots(empty)).toEqual(slots(full));
   });
 
   it("says what is missing in the slot's own words", () => {
     const rec = buildIdentity(ip());
     expect(vital(rec, "country")?.value).toBe("Not located");
-    expect(vital(rec, "prefix")?.value).toBe("No prefix announced");
     expect(vital(rec, "network")?.value).toBe("No AS on record");
     expect(vital(rec, "name")?.value).toBe("No reverse name");
     expect(vital(rec, "country")?.absent).toBe(true);
   });
 
-  describe("the prefix slot", () => {
-    // It took the class's place once the class moved up to the hero headline.
-    // The prefix is worth the slot because until now it existed only inside the
-    // summary paragraph, where it cannot be scanned for.
-    it("headlines the prefix and credits whoever announces it", () => {
-      const rec = buildIdentity(
-        ip({
-          geo: { asn: "AS13335 Cloudflare, Inc." },
-          sources: [src({ id: "ripestat", details: { prefix: "104.21.48.0/20", asns: [13335] } })],
-        }),
-      );
-      expect(vital(rec, "prefix")?.value).toBe("104.21.48.0/20");
-      expect(vital(rec, "prefix")?.sub).toBe("announced by AS13335");
-    });
-
-    it("prefers RIPEstat's announcing AS over the geo provider's holder", () => {
-      // The party announcing a prefix is not always the org a geo provider
-      // names for the address.
-      const rec = buildIdentity(
-        ip({
-          geo: { asn: "AS13335 Cloudflare, Inc." },
-          sources: [src({ id: "ripestat", details: { prefix: "45.148.10.0/24", asns: [207812] } })],
-        }),
-      );
-      expect(vital(rec, "prefix")?.sub).toBe("announced by AS207812");
-    });
-
-    it("falls back to the geo provider's AS when RIPEstat lists none", () => {
-      const rec = buildIdentity(
-        ip({
-          geo: { asn: "AS15169 GOOGLE" },
-          sources: [src({ id: "ripestat", details: { prefix: "8.8.8.0/24", asns: [] } })],
-        }),
-      );
-      expect(vital(rec, "prefix")?.sub).toBe("announced by AS15169");
-    });
-
-    it("holds its place when nothing announces the address", () => {
-      expect(vital(buildIdentity(ip()), "prefix")?.absent).toBe(true);
-    });
+  it("leaves the prefix to the record", () => {
+    // The strip shows no labels, and a bare CIDR is the one value that needs
+    // one. The record below still carries it as the announced prefix.
+    const rec = buildIdentity(
+      ip({ sources: [src({ id: "ripestat", details: { prefix: "104.21.48.0/20", asns: [13335] } })] }),
+    );
+    expect(vital(rec, "prefix")).toBeUndefined();
   });
 
-  it("puts the city and a registry conflict under the country", () => {
+  it("puts the city, the region and a registry conflict over the country", () => {
     const rec = buildIdentity(
       ip({
-        geoResolution: geoRes("The Netherlands", "NL", "Amsterdam"),
+        geoResolution: {
+          ...geoRes("The Netherlands", "NL", "Amsterdam"),
+          region: resolved("North Holland", ["a"]),
+        },
         sources: [src({ id: "rdap-ip", details: { allocationCountry: "AD" } })],
       }),
     );
     const country = vital(rec, "country");
     expect(country?.value).toBe("The Netherlands");
-    expect(country?.sub).toBe("Amsterdam, registry says Andorra");
+    expect(country?.sub).toBe("Amsterdam, North Holland, registry says Andorra");
     expect(country?.countryCode).toBe("NL");
   });
 
-  it("headlines the AS number and captions the holder", () => {
-    const rec = buildIdentity(ip({ geo: { asn: "AS48090 TECHOFF SRV LIMITED" } }));
-    expect(vital(rec, "network")?.value).toBe("AS48090");
-    expect(vital(rec, "network")?.sub).toBe("TECHOFF SRV LIMITED");
+  it("does not caption a city-state with its own name", () => {
+    const rec = buildIdentity(ip({ geo: { country: "Singapore", city: "Singapore", region: "Singapore" } }));
+    expect(vital(rec, "country")?.value).toBe("Singapore");
+    expect(vital(rec, "country")?.sub).toBeUndefined();
   });
 
-  it("says whether the reverse name survives a forward lookup", () => {
-    const good = buildIdentity(
-      ip({ geo: { reverse: "dns.google", fcrdns: { hostname: "dns.google", verified: true } } }),
-    );
-    expect(good.vitals[3]).toMatchObject({ value: "dns.google", sub: "points back" });
-    const bad = buildIdentity(
-      ip({ geo: { reverse: "claimed.test", fcrdns: { hostname: "claimed.test", verified: false } } }),
-    );
-    expect(bad.vitals[3].sub).toBe("does not point back");
+  it("says a city and region that share a name once", () => {
+    const rec = buildIdentity(ip({ geo: { country: "Russia", city: "Moscow", region: "Moscow" } }));
+    expect(vital(rec, "country")?.sub).toBe("Moscow");
+  });
+
+  it("headlines the AS number, quiets the AS, and captions the holder", () => {
+    const rec = buildIdentity(ip({ geo: { asn: "AS48090 TECHOFF SRV LIMITED" } }));
+    expect(vital(rec, "network")).toMatchObject({
+      value: "AS48090",
+      sub: "TECHOFF SRV LIMITED",
+      quiet: { lead: "AS" },
+    });
+  });
+
+  it("headlines the registered domain and captions the host part", () => {
+    const rec = buildIdentity(ip({ geo: { reverse: "host-80-183-142-206.pool80183.interbusiness.it" } }));
+    expect(vital(rec, "name")).toMatchObject({
+      value: "interbusiness.it",
+      sub: "host-80-183-142-206.pool80183.",
+      quiet: { tail: ".it" },
+    });
+  });
+
+  it("keeps a two-part suffix together as the quiet tail", () => {
+    const rec = buildIdentity(ip({ geo: { reverse: "cpc1-lond.bbc.co.uk." } }));
+    expect(vital(rec, "name")).toMatchObject({ value: "bbc.co.uk", sub: "cpc1-lond.", quiet: { tail: ".co.uk" } });
+  });
+
+  it("has no caption when the reverse name is itself the registered domain", () => {
+    const rec = buildIdentity(ip({ geo: { reverse: "dns.google" } }));
+    expect(vital(rec, "name")?.value).toBe("dns.google");
+    expect(vital(rec, "name")?.sub).toBeUndefined();
+  });
+
+  it("shows a reverse name it cannot parse as it is", () => {
+    const rec = buildIdentity(ip({ geo: { reverse: "localhost" } }));
+    expect(vital(rec, "name")).toMatchObject({ value: "localhost" });
+    expect(vital(rec, "name")?.quiet).toBeUndefined();
   });
 
   it("gives a domain its own four slots", () => {
@@ -718,12 +717,18 @@ describe("the vitals strip", () => {
       ),
     );
     expect(slots(rec)).toEqual(["country", "category", "registrar", "reach"]);
+    expect(vital(rec, "country")?.sub).toBe("San Francisco");
     expect(vital(rec, "category")).toMatchObject({
       value: "Education & reference",
       sub: "Reference materials",
     });
     expect(vital(rec, "registrar")?.sub).toBe("registered 2001-01-13");
-    expect(vital(rec, "reach")?.value).toBe("Rank 30");
+    expect(vital(rec, "reach")).toMatchObject({ value: "Rank 30", quiet: { lead: "Rank " } });
+  });
+
+  it("captions a domain's city-state with nothing", () => {
+    const rec = buildIdentity(domain({}, { geoResolution: geoRes("Singapore", "SG", "Singapore") }));
+    expect(vital(rec, "country")?.sub).toBeUndefined();
   });
 
   it("calls an unranked domain unranked rather than unknown", () => {
@@ -741,7 +746,7 @@ describe("the vitals strip", () => {
   it("keeps the registration date even when no registrar is on file", () => {
     const rec = buildIdentity(domain({ createdAt: "2024-06-01T00:00:00Z" }));
     expect(vital(rec, "registrar")).toMatchObject({
-      value: "Not on file",
+      value: "No registrar",
       sub: "registered 2024-06-01",
       absent: true,
     });
@@ -764,7 +769,8 @@ describe("the vitals strip", () => {
     // the fact that separates a sample the world met this morning from one it
     // has known for years, and which lived only in the ledger below.
     expect(slots(rec)).toEqual(["seen", "format", "size", "signature"]);
-    expect(vital(rec, "seen")).toMatchObject({ value: "2017-05-12", sub: "last 2026-09-01" });
+    // With no label over it, the caption has to say what the date is.
+    expect(vital(rec, "seen")).toMatchObject({ value: "2017-05-12", sub: "first seen, last 2026-09-01" });
     expect(vital(rec, "size")).toMatchObject({ value: "3.4 MB", sub: "3,514,368 bytes" });
     expect(vital(rec, "signature")?.value).toBe("Unsigned");
   });
@@ -773,7 +779,41 @@ describe("the vitals strip", () => {
     // "Unsigned" is what a missing signature means; drawing it quiet would say
     // the question was not asked.
     expect(vital(buildIdentity(hash({})), "signature")?.absent).toBeUndefined();
-    expect(vital(buildIdentity(hash({})), "seen")?.value).toBe("Never recorded");
+    expect(vital(buildIdentity(hash({})), "seen")).toMatchObject({
+      value: "Never recorded",
+      sub: "first seen",
+    });
+  });
+
+  it("says only first seen when the sample was last seen the same day", () => {
+    const rec = buildIdentity(hash({ firstSeen: "2026-09-01T00:00:00Z", lastSeen: "2026-09-01T09:00:00Z" }));
+    expect(vital(rec, "seen")?.sub).toBe("first seen");
+  });
+});
+
+describe("markParts", () => {
+  it("splits the quiet lead and tail off the headline", () => {
+    expect(markParts({ value: "AS3269", quiet: { lead: "AS" } })).toEqual([
+      { text: "AS", quiet: true },
+      { text: "3269" },
+    ]);
+    expect(markParts({ value: "interbusiness.it", quiet: { tail: ".it" } })).toEqual([
+      { text: "interbusiness" },
+      { text: ".it", quiet: true },
+    ]);
+  });
+
+  it("is one plain run when nothing is quiet", () => {
+    expect(markParts({ value: "Italy" })).toEqual([{ text: "Italy" }]);
+  });
+
+  it("ignores a quiet run the value does not carry", () => {
+    expect(markParts({ value: "3269", quiet: { lead: "AS", tail: ".it" } })).toEqual([{ text: "3269" }]);
+  });
+
+  it("never quiets the whole value", () => {
+    expect(markParts({ value: "AS", quiet: { lead: "AS" } })).toEqual([{ text: "AS" }]);
+    expect(markParts({ value: ".it", quiet: { tail: ".it" } })).toEqual([{ text: ".it" }]);
   });
 });
 

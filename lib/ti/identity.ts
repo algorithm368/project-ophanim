@@ -1,4 +1,5 @@
 import { cpeLabel } from "@/lib/cpe";
+import { parseDomain } from "@/lib/domain";
 import { classifyIpLabel, contentCategory, ipEvidence } from "./indicator-class";
 import { formatBytes } from "./narrative";
 import { PORT_SERVICE, shodanHostInfo } from "./shodan";
@@ -53,31 +54,62 @@ export type IdentityClaim = {
 };
 
 /**
- * One of the four headline facts, set large above the ledger.
+ * One of the headline facts, set large above the ledger.
  *
- * A vital is a *position*, not a row: the eye is meant to land on the third
- * cell for the network without reading the label, which only works if the four
- * slots never move and never disappear. A slot with nothing behind it therefore
- * says so in its own words, rather than yielding its place to the next one.
+ * A vital is a *position*, not a row: the eye is meant to land on the second
+ * cell for the network, which only works if the slots never move and never
+ * disappear. A slot with nothing behind it therefore says so in its own words,
+ * rather than yielding its place to the next one.
+ *
+ * The strip draws no labels, so the value and the line over it have to say
+ * what the fact is between them. `label` survives for screen readers.
  */
 export type Vital = {
   key: string;
-  /** The slot name ("Country", "Type"). Fixed per IOC type. */
+  /** The slot name ("Country", "Network"). Fixed per IOC type. */
   label: string;
   /** The headline, two or three words. */
   value: string;
   /** The one line that qualifies it. */
   sub?: string;
+  /** A run at the start or end of `value` that carries no news ("AS", "Rank ",
+   *  ".it"), drawn quiet so the eye lands on the part that differs. */
+  quiet?: { lead?: string; tail?: string };
   /** ISO 3166-1 alpha-2, when the slot should carry a flag. */
   countryCode?: string;
   /** Nothing was measured for this slot, so `value` is the absence. */
   absent?: boolean;
 };
 
+/** One run of a headline, as `markParts` splits it. */
+export type MarkPart = { text: string; quiet?: boolean };
+
+/**
+ * A headline in runs, its quiet lead and tail split off.
+ *
+ * A quiet run the value does not actually carry is ignored, and the value is
+ * never quiet as a whole: a headline that is all quiet has nothing left for
+ * the eye to land on.
+ */
+export function markParts(v: Pick<Vital, "value" | "quiet">): MarkPart[] {
+  const { value } = v;
+  const lead = v.quiet?.lead && value.startsWith(v.quiet.lead) ? v.quiet.lead : "";
+  const rest = value.slice(lead.length);
+  const tail = v.quiet?.tail && rest.endsWith(v.quiet.tail) ? v.quiet.tail : "";
+  const core = rest.slice(0, rest.length - tail.length);
+  if (!core) return [{ text: value }];
+  return [
+    ...(lead ? [{ text: lead, quiet: true }] : []),
+    { text: core },
+    ...(tail ? [{ text: tail, quiet: true }] : []),
+  ];
+}
+
 export type IdentityRecord = {
   /** What the thing is, e.g. "Tor exit node". The header states it. */
   kind: string;
-  /** Exactly four, in a fixed order per IOC type. */
+  /** Three for an address, four for a domain or a file, in a fixed order per
+   *  IOC type. */
   vitals: Vital[];
   /** The fixed list, in order. Every field is present on every lookup. */
   fields: IdentityClaim[];
@@ -384,7 +416,7 @@ const got = (
 function v(
   key: string,
   label: string,
-  hit: { value: string; sub?: string } | undefined,
+  hit: Pick<Vital, "value" | "sub" | "quiet"> | undefined,
   missing: string | { value: string; sub?: string },
   extra: Omit<Vital, "key" | "label" | "value" | "sub"> = {},
 ): Vital {
@@ -423,11 +455,29 @@ export function typeWord(r: CheckResult): string {
   return classifyIpLabel(ipEvidence(r.geo, r.sources)).short;
 }
 
-/** Whether the reverse name survives a forward lookup, in the caption's voice. */
-function fcrdnsWord(verified: boolean | undefined): string | undefined {
-  if (verified === true) return "points back";
-  if (verified === false) return "does not point back";
-  return undefined;
+/** Where in the country, as "city, region", each said once and none of them
+ *  the country again: over SINGAPORE, "Singapore" is not a caption. */
+export function place(country: string | undefined, ...within: (string | undefined)[]): string {
+  return list(within.filter((p): p is string => Boolean(p) && p !== country));
+}
+
+/**
+ * A reverse name as headline and caption: the registered domain, which says
+ * whose name it is, over the host part in front of it, which only numbers the
+ * address inside that domain. A name that does not parse is shown whole.
+ */
+export function reverseName(
+  reverse: string | undefined,
+): { value: string; sub?: string; quiet?: Vital["quiet"] } | undefined {
+  if (!reverse) return undefined;
+  const parsed = parseDomain(reverse);
+  if (!parsed) return { value: reverse };
+  const { domain, registrable } = parsed;
+  return {
+    value: registrable,
+    sub: domain.slice(0, domain.length - registrable.length) || undefined,
+    quiet: { tail: registrable.slice(registrable.indexOf(".")) },
+  };
 }
 
 function ipVitals(r: CheckResult): Vital[] {
@@ -438,15 +488,11 @@ function ipVitals(r: CheckResult): Vital[] {
   const measured = res?.countryCode ?? geo?.countryCode;
   const clash = Boolean(filed && measured && filed.toUpperCase() !== measured.toUpperCase());
   const { number, holder } = splitAsn(geo?.asn, geo?.asnOrg ?? geo?.isp);
-  const ripe = ok(r.sources, "ripestat")?.details;
-  const prefix = str(ripe?.prefix);
-  // RIPEstat's own ASN list first: it is the party actually announcing the
-  // prefix, which is not always the holder the geo provider names. It stores
-  // bare AS numbers, so the prefix has to be put back on.
-  const announcing = Array.isArray(ripe?.asns) ? ripe.asns[0] : undefined;
-  const announcer =
-    announcing === undefined || announcing === null ? number : `AS${announcing}`;
+  const name = reverseName(geo?.reverse);
 
+  // Three, not four. The announced prefix held the second slot while the strip
+  // had labels; without them a bare CIDR is the one value that cannot say what
+  // it is, and the record below still carries it as the announced prefix.
   return [
     v(
       "country",
@@ -454,25 +500,25 @@ function ipVitals(r: CheckResult): Vital[] {
       got(
         res?.country?.value ?? geo?.country,
         parts(
-          res?.city?.value ?? geo?.city,
-          clash ? `registry says ${countryName(filed)}` : undefined,
+          place(
+            res?.country?.value ?? geo?.country,
+            res?.city?.value ?? geo?.city,
+            res?.region?.value ?? geo?.region,
+          ),
+          clash && `registry says ${countryName(filed)}`,
         ),
       ),
       "Not located",
       { countryCode: measured },
     ),
-    // The class used to sit here, and it is the hero's headline now. Putting
-    // the announced prefix in the freed slot rather than leaving three cells
-    // keeps the four fixed positions the strip is built on, and the prefix is
-    // a fact the page otherwise only has inside the summary paragraph.
     v(
-      "prefix",
-      "Prefix",
-      got(prefix, prefix && announcer ? `announced by ${announcer}` : undefined),
-      "No prefix announced",
+      "network",
+      "Network",
+      got(number ?? holder, number ? holder : undefined),
+      "No AS on record",
+      number ? { quiet: { lead: "AS" } } : {},
     ),
-    v("network", "Network", got(number ?? holder, number ? holder : undefined), "No AS on record"),
-    v("name", "Name", got(geo?.reverse, fcrdnsWord(geo?.fcrdns?.verified)), "No reverse name"),
+    v("name", "Name", name, "No reverse name"),
   ];
 }
 
@@ -494,7 +540,7 @@ function domainVitals(r: DomainCheckResult): Vital[] {
     v(
       "country",
       "Country",
-      got(res?.country?.value, res?.city?.value),
+      got(res?.country?.value, place(res?.country?.value, res?.city?.value, res?.region?.value)),
       "Not located",
       { countryCode: res?.countryCode },
     ),
@@ -503,7 +549,7 @@ function domainVitals(r: DomainCheckResult): Vital[] {
       "registrar",
       "Registrar",
       got(ctx?.registrar, born && `registered ${born}`),
-      born ? { value: "Not on file", sub: `registered ${born}` } : "Not on file",
+      born ? { value: "No registrar", sub: `registered ${born}` } : "No registrar",
     ),
     v(
       "reach",
@@ -513,6 +559,7 @@ function domainVitals(r: DomainCheckResult): Vital[] {
         "Tranco top million",
       ),
       { value: "Unranked", sub: "outside the Tranco top million" },
+      { quiet: { lead: "Rank " } },
     ),
   ];
 }
@@ -540,7 +587,14 @@ function hashVitals(r: HashCheckResult): Vital[] {
     // First seen takes the freed slot: it is the fact that separates a sample
     // the world met this morning from one it has known for six years, and it
     // lived only in the ledger below.
-    v("seen", "First seen", got(first, last && last !== first && `last ${last}`), "Never recorded"),
+    // The caption names the date as well as qualifying it: with no label over
+    // the strip, a bare date says nothing about which date it is.
+    v(
+      "seen",
+      "First seen",
+      got(first, last && last !== first ? `first seen, last ${last}` : "first seen"),
+      { value: "Never recorded", sub: "first seen" },
+    ),
     v("format", "Format", got(ctx?.fileType, ctx?.magic), "Unknown format"),
     v(
       "size",

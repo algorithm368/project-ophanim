@@ -1,15 +1,29 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { Fragment, memo, useMemo } from "react";
+import { Barlow_Condensed } from "next/font/google";
 import { flagUrl } from "@/lib/flag";
-import { buildIdentity, type IdentityClaim, type Vital } from "@/lib/ti/identity";
+import { buildIdentity, markParts, type IdentityClaim, type Vital } from "@/lib/ti/identity";
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Frame, Tile } from "./frame";
+
+/**
+ * The one webfont in the app, and it sets nothing but the vitals.
+ *
+ * Every mark in the strip is meant to be the same height, and a system face is
+ * too wide for that: at the size the strip wants, a domain or a country name
+ * outgrows its cell and has to wrap mid-word. A condensed face keeps them
+ * whole. `next/font` serves it from this app's own origin, so the page still
+ * makes no request to anyone else, and it is loaded here rather than in the
+ * layout so only the pages that draw the strip pay for it.
+ */
+const markFace = Barlow_Condensed({ weight: "700", subsets: ["latin"], display: "swap" });
+
 /**
  * The subject record, as a dex entry, in two tiles of the page's frame.
  *
- * `VitalsTile` is the four headline facts and `RecordTile` is the full ledger
+ * `VitalsTile` is the headline facts and `RecordTile` is the full ledger
  * under them. They are separate tiles because they answer at different speeds:
  * one is read at a glance and the other is read when the glance was not enough.
  *
@@ -29,10 +43,10 @@ import { Frame, Tile } from "./frame";
  *  - Every field renders on every lookup, including the ones with nothing
  *    behind them. An absence is a fact about the subject, and it is drawn quiet
  *    so it reads as one rather than as a value.
- *  - Four vitals above the ledger, in the same grammar as the five stat cells
- *    at the top of the panel, so the card reads as two banks of one instrument:
- *    that one is how bad this is, this one is what it is. None of the four
- *    repeats a stat from the bank above.
+ *  - Three or four vitals above the ledger, set as marks rather than as
+ *    labelled readouts: that bank above is how bad this is, this one is what it
+ *    is, said in the fewest and largest words. None of them repeats a stat from
+ *    the bank above.
  *  - This is a section of the panel's card, not a card of its own. The record
  *    is the back half of the same entry, and a gap between them read as two
  *    unrelated things about the same subject.
@@ -71,50 +85,74 @@ export const RecordTile = memo(function RecordTile({
 });
 
 /**
- * The four headline facts, side by side.
+ * The headline facts, side by side, as marks.
  *
- * Four fixed slots as bento cells, each one headline over one caption. The
- * cells are ruled apart the way the frame rules its tiles, a one-pixel gap
- * over the rule colour, so a shared edge is never two borders. The slots
- * are per IOC type and never move, which is what lets a reader go to the third
- * cell for the network rather than reading four labels to find it. A slot with
+ * No labels: each value is set large enough to be the thing the eye lands on,
+ * and the small line over it says what kind of fact it is (the city over the
+ * country, the holder over the AS number, the host part over the domain).
+ * Every mark is one size, never squeezed, and starts at the top of its cell,
+ * so a value that wraps grows downward and the first lines always align. An
+ * address has three facts and sits three across; a domain or a file has four
+ * and sits two by two, because four across at this size wrapped nearly every
+ * word mid-word.
+ *
+ * The slots are per IOC type and never move, which is what lets a reader go to
+ * the second cell for the network without reading anything else. A slot with
  * nothing behind it still occupies its place and says what is missing, because
  * a strip that closes up around a gap moves every fact after it.
  */
 function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
     return (
-        <div className="grid h-full grid-cols-1 gap-px bg-foreground/12 md:grid-cols-4">
+        <div
+            className={cn(
+                "grid h-full grid-cols-1 gap-px bg-foreground/12",
+                vitals.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2",
+            )}
+        >
             {vitals.map((vital) => (
                 <div
                     key={vital.key}
                     className="relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4"
                 >
                     <FlagWallpaper code={vital.countryCode} />
-                    <div className="font-mono text-[9.5px] tracking-[0.11em] text-muted-foreground uppercase">
-                        {vital.label}
+                    <span className="sr-only">{vital.label}: </span>
+                    <div className="mb-1 min-h-3.5 text-[11.5px] leading-3.5 wrap-anywhere text-muted-foreground">
+                        {vital.sub}
                     </div>
                     <div
                         className={cn(
-                            "mt-2 flex items-start gap-2 text-base leading-tight font-medium",
-                            vital.absent && "font-normal text-muted-foreground",
+                            markFace.className,
+                            "text-[56px] leading-[46px] tracking-[0.005em] uppercase wrap-anywhere",
+                            vital.absent && "text-foreground/35",
                         )}
+                        title={vital.value}
                     >
-                        <span className="line-clamp-2 min-w-0 wrap-anywhere" title={vital.value}>
-                            {vital.value}
-                        </span>
+                        {markParts(vital).map((part, i) => (
+                            <span key={i} className={cn(part.quiet && "text-foreground/35")}>
+                                <Breakable text={part.text} />
+                            </span>
+                        ))}
                     </div>
-                    {vital.sub && (
-                        <div
-                            className="mt-0.5 truncate text-xs text-muted-foreground"
-                            title={vital.sub}
-                        >
-                            {vital.sub}
-                        </div>
-                    )}
                 </div>
             ))}
         </div>
     );
+}
+
+/** A break opportunity after every dot, so a long domain wraps between its
+ *  labels before `wrap-anywhere` has to split one of them. */
+function Breakable({ text }: Readonly<{ text: string }>) {
+    const pieces = text.split(".");
+    return pieces.map((piece, i) => (
+        <Fragment key={i}>
+            {piece}
+            {i < pieces.length - 1 && (
+                <>
+                    .<wbr />
+                </>
+            )}
+        </Fragment>
+    ));
 }
 
 /** The country's flag behind a vital, filling the cell and fading out toward
@@ -178,15 +216,22 @@ function Row({
  * The vitals and the ledger as two tiles' worth of skeleton, so the frame keeps
  * its shape while the result is still arriving.
  */
-export function VitalsSkeleton({ span = 9 }: Readonly<{ span?: 9 | 12 }> = {}) {
+export function VitalsSkeleton({
+    span = 9,
+    cells = 4,
+}: Readonly<{ span?: 9 | 12; cells?: 3 | 4 }> = {}) {
     return (
         <Tile span={span} className="p-0">
-            <div className="grid h-full grid-cols-1 gap-px bg-foreground/12 md:grid-cols-4">
-                {["w-16", "w-12", "w-20", "w-14"].map((w) => (
+            <div
+                className={cn(
+                    "grid h-full grid-cols-1 gap-px bg-foreground/12",
+                    cells === 3 ? "md:grid-cols-3" : "md:grid-cols-2",
+                )}
+            >
+                {["w-28", "w-20", "w-32", "w-24"].slice(0, cells).map((w) => (
                     <div key={w} className="bg-card p-4">
-                        <span className={cn("sweep block h-2 rounded", w)} />
-                        <span className="sweep mt-2.5 block h-4 w-28 rounded" />
-                        <span className="sweep mt-1.5 block h-2 w-20 rounded" />
+                        <span className="sweep block h-2.5 w-20 rounded" />
+                        <span className={cn("sweep mt-2.5 block h-9 rounded", w)} />
                     </div>
                 ))}
             </div>
