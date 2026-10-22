@@ -81,6 +81,19 @@ export type Vital = {
   absent?: boolean;
 };
 
+/**
+ * The longest unbreakable run across a strip's headlines, in characters.
+ *
+ * The strip sets every mark at one size, the largest at which this run still
+ * fits its cell, so a word is never split to make it fit. A run ends at a
+ * space or after a dot, which is where a mark is allowed to wrap; a hyphen
+ * does not end one, since "2020-07-" over "15" reads as broken, not wrapped.
+ */
+export function longestRun(vitals: Pick<Vital, "value">[]): number {
+  const runs = vitals.flatMap((v) => v.value.split(/\s+|(?<=\.)/));
+  return Math.max(1, ...runs.map((r) => r.length));
+}
+
 /** One run of a headline, as `markParts` splits it. */
 export type MarkPart = { text: string; quiet?: boolean };
 

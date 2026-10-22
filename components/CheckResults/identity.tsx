@@ -3,7 +3,7 @@
 import { Fragment, memo, useMemo } from "react";
 import { Barlow_Condensed } from "next/font/google";
 import { flagUrl } from "@/lib/flag";
-import { buildIdentity, markParts, type IdentityClaim, type Vital } from "@/lib/ti/identity";
+import { buildIdentity, longestRun, markParts, type IdentityClaim, type Vital } from "@/lib/ti/identity";
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Frame, Tile } from "./frame";
@@ -90,11 +90,15 @@ export const RecordTile = memo(function RecordTile({
  * No labels: each value is set large enough to be the thing the eye lands on,
  * and the small line over it says what kind of fact it is (the city over the
  * country, the holder over the AS number, the host part over the domain).
- * Every mark is one size, never squeezed, and starts at the top of its cell,
- * so a value that wraps grows downward and the first lines always align. An
- * address has three facts and sits three across; a domain or a file has four
- * and sits two by two, because four across at this size wrapped nearly every
- * word mid-word.
+ * The strip is always one row: three across for an address, four for a domain
+ * or a file.
+ *
+ * Every mark in a strip is one size, never squeezed: the largest, up to 56px,
+ * at which the strip's longest word still fits a cell, so values wrap between
+ * words and never through one. The size is pure CSS, each cell a container and
+ * the mark sized in its `cqi`, so it holds on any width with no script and no
+ * shift. Marks start at the top of their cells, so a value that wraps grows
+ * downward and the first lines always align.
  *
  * The slots are per IOC type and never move, which is what lets a reader go to
  * the second cell for the network without reading anything else. A slot with
@@ -102,29 +106,38 @@ export const RecordTile = memo(function RecordTile({
  * a strip that closes up around a gap moves every fact after it.
  */
 function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
+    // Barlow Condensed Bold averages a little under half an em per capital,
+    // so half an em per character is the safe width of the longest run.
+    const size = `min(56px, calc(100cqi / ${longestRun(vitals) * 0.5}))`;
     return (
         <div
             className={cn(
                 "grid h-full grid-cols-1 gap-px bg-foreground/12",
-                vitals.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2",
+                vitals.length === 3 ? "md:grid-cols-3" : "md:grid-cols-4",
             )}
         >
             {vitals.map((vital) => (
                 <div
                     key={vital.key}
-                    className="relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4"
+                    className="@container relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4"
                 >
                     <FlagWallpaper code={vital.countryCode} />
                     <span className="sr-only">{vital.label}: </span>
-                    <div className="mb-1 min-h-3.5 text-[11.5px] leading-3.5 wrap-anywhere text-muted-foreground">
+                    {/* One line, always: a caption that wraps pushes its mark below the
+                        others' first lines. The whole of it is on hover. */}
+                    <div
+                        className="mb-1 min-h-3.5 truncate text-[11.5px] leading-3.5 text-muted-foreground"
+                        title={vital.sub}
+                    >
                         {vital.sub}
                     </div>
                     <div
                         className={cn(
                             markFace.className,
-                            "text-[56px] leading-[46px] tracking-[0.005em] uppercase wrap-anywhere",
+                            "leading-[0.82] tracking-[0.005em] uppercase wrap-anywhere",
                             vital.absent && "text-foreground/35",
                         )}
+                        style={{ fontSize: size }}
                         title={vital.value}
                     >
                         {markParts(vital).map((part, i) => (
@@ -225,7 +238,7 @@ export function VitalsSkeleton({
             <div
                 className={cn(
                     "grid h-full grid-cols-1 gap-px bg-foreground/12",
-                    cells === 3 ? "md:grid-cols-3" : "md:grid-cols-2",
+                    cells === 3 ? "md:grid-cols-3" : "md:grid-cols-4",
                 )}
             >
                 {["w-28", "w-20", "w-32", "w-24"].slice(0, cells).map((w) => (

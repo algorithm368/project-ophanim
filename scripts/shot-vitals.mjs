@@ -11,7 +11,9 @@
  *   node --env-file=.env.local scripts/shot-vitals.mjs
  *
  * IOCS is a comma list (default: one IP, one domain, one hash). THEMES picks
- * light, dark or both.
+ * light, dark or both. EXTRA_CSS is injected before the shot, to try a tweak
+ * without rebuilding, and TAG suffixes the file names so the two sit side by
+ * side.
  */
 import { chromium } from "playwright";
 import { encode } from "next-auth/jwt";
@@ -23,6 +25,9 @@ const BASE = process.env.BASE || "http://localhost:3001";
 const OUT = process.env.OUT || join(tmpdir(), "claude", "vitals-shots");
 const IOCS = (process.env.IOCS || "80.183.142.206,github.com,84c82835a5d21bbcf75a61706d8ab549").split(",");
 const THEMES = (process.env.THEMES || "dark,light").split(",");
+// Optional CSS injected after load, to compare a tweak without a rebuild.
+const EXTRA_CSS = process.env.EXTRA_CSS;
+const TAG = process.env.TAG ? `-${process.env.TAG}` : "";
 
 const COOKIE_NAME = "authjs.session-token";
 const secret = process.env.AUTH_SECRET;
@@ -52,14 +57,15 @@ for (const theme of THEMES) {
       await page.screenshot({ path: join(OUT, "timeout.png") });
       throw err;
     }
+    if (EXTRA_CSS) await page.addStyleTag({ content: EXTRA_CSS });
     await page.evaluate(() => document.fonts.ready);
     await strip.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
     const slug = ioc.replace(/\W+/g, "_").slice(0, 24);
-    await strip.screenshot({ path: join(OUT, `${slug}-${theme}-strip.png`) });
+    await strip.screenshot({ path: join(OUT, `${slug}-${theme}${TAG}-strip.png`) });
     const box = await strip.boundingBox();
     await page.screenshot({
-      path: join(OUT, `${slug}-${theme}-page.png`),
+      path: join(OUT, `${slug}-${theme}${TAG}-page.png`),
       fullPage: true,
       clip: { x: 0, y: 0, width: 1280, height: Math.ceil((box?.y ?? 0) + (box?.height ?? 0) + 40) },
     });

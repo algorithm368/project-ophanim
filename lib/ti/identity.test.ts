@@ -7,6 +7,7 @@ import {
   cleanAppName,
   countryName,
   listedAs,
+  longestRun,
   markParts,
   portList,
   signatureVital,
@@ -847,5 +848,21 @@ describe("identity — remaining fields", () => {
 describe("caaIssuers — unquoted records", () => {
   it("takes the last word when the authority is not quoted", () => {
     expect(caaIssuers(["0 issue letsencrypt.org", '0 issue ";"'])).toEqual(["letsencrypt.org"]);
+  });
+});
+
+describe("longestRun", () => {
+  it("measures the longest word, breaking at spaces and after dots", () => {
+    expect(longestRun([{ value: "Singapore" }, { value: "MarkMonitor Inc." }, { value: "Rank 31" }])).toBe(11);
+    expect(longestRun([{ value: "host.interbusiness.it" }])).toBe("interbusiness.".length);
+  });
+
+  it("keeps a hyphenated run whole", () => {
+    expect(longestRun([{ value: "2020-07-15" }, { value: "EXE" }])).toBe(10);
+  });
+
+  it("is at least one, even for an empty strip", () => {
+    expect(longestRun([])).toBe(1);
+    expect(longestRun([{ value: "" }])).toBe(1);
   });
 });
