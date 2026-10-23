@@ -56,7 +56,9 @@ function Globe({ d, exact }: Readonly<{ d: GlobeDrawing; exact: boolean }>) {
     return (
         <svg
             viewBox={`0 0 ${W} ${H}`}
-            preserveAspectRatio="xMidYMid slice"
+            // Fit, not fill: the whole globe is the picture, so a rail taller
+            // than the drawing letterboxes it rather than cropping its sides.
+            preserveAspectRatio="xMidYMid meet"
             className="absolute inset-0 size-full"
             role="img"
             aria-label={`Globe centred on ${degrees(d.lat, d.lon)}`}

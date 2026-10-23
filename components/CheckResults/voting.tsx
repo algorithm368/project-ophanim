@@ -1,11 +1,15 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import { BALLOT_ROW_CAP, ballotRows } from "@/lib/ti/geo/ballot-rows";
 import { type VoteCell, type VoteMarkKind, voteMarkOf, voteMarksUsed } from "@/lib/ti/geo/votes";
 import { cn } from "@/lib/utils";
 
 /**
  * A provider ballot as a grid of plain marks: one row per provider, one column
  * per thing it was asked, and a legend of only the marks the grid contains.
+ * Addresses that vote alike share a row (see `ballot-rows.ts`), and past
+ * `BALLOT_ROW_CAP` rows the rest fold behind a "more" line.
  *
  * Every mark is the same grey, so the shape carries the meaning, and every
  * shape is a square or a ring of one size, so the grid reads as a pattern
@@ -54,7 +58,28 @@ export function VoteGrid({
     rowLabel: (row: string) => string;
 }>) {
     const template = `minmax(0,1fr) repeat(${cols.length}, 2.1rem)`;
-    const marks = voteMarksUsed(rows.flatMap((r) => cols.map((c) => cell(r, c.key))));
+    const grouped = useMemo(
+        () =>
+            ballotRows(
+                rows,
+                (r) =>
+                    cols
+                        .map((c) => {
+                            const v = cell(r, c.key);
+                            return `${voteMarkOf(v)}:${v?.status === "dissent" ? v.value : ""}`;
+                        })
+                        .join("|"),
+                rowLabel,
+            ),
+        [rows, cols, cell, rowLabel],
+    );
+    // A grid longer than the cap folds the rest behind one line, so a name
+    // with many distinct answers cannot stretch the rail past the page.
+    const [open, setOpen] = useState(false);
+    const shown = open ? grouped : grouped.slice(0, BALLOT_ROW_CAP);
+    const hidden = grouped.length - shown.length;
+    // From the rows on screen, so the legend never explains a folded mark.
+    const marks = voteMarksUsed(shown.flatMap((r) => cols.map((c) => cell(r.key, c.key))));
     return (
         <div>
             <div className="grid items-end gap-x-1 pb-1" style={{ gridTemplateColumns: template }}>
@@ -68,15 +93,25 @@ export function VoteGrid({
                     </span>
                 ))}
             </div>
-            {rows.map((r) => (
+            {shown.map((row) => (
                 <div
-                    key={r}
+                    key={row.key}
                     className="grid items-center gap-x-1 border-t border-foreground/10 py-[5px]"
                     style={{ gridTemplateColumns: template }}
                 >
-                    <span className="truncate font-mono text-[11px]">{rowLabel(r)}</span>
+                    <span
+                        className="flex min-w-0 items-baseline gap-1.5 font-mono text-[11px]"
+                        title={row.ids.length > 1 ? row.ids.join("\n") : undefined}
+                    >
+                        <span className="truncate">{row.label}</span>
+                        {row.ids.length > 1 && (
+                            <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                                ×{row.ids.length}
+                            </span>
+                        )}
+                    </span>
                     {cols.map((c) => {
-                        const v = cell(r, c.key);
+                        const v = cell(row.key, c.key);
                         return (
                             <span key={c.key} className="flex justify-center">
                                 <VoteMark kind={voteMarkOf(v)} title={v?.value} />
@@ -85,6 +120,15 @@ export function VoteGrid({
                     })}
                 </div>
             ))}
+            {(hidden > 0 || open) && grouped.length > BALLOT_ROW_CAP && (
+                <button
+                    type="button"
+                    onClick={() => setOpen((o) => !o)}
+                    className="w-full border-t border-foreground/10 py-[5px] text-left font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
+                >
+                    {open ? "show fewer" : `+${hidden} more`}
+                </button>
+            )}
             <div className="mt-1.5 grid grid-cols-3 gap-x-2 gap-y-1 border-t border-foreground/10 pt-2 font-mono text-[9.5px] whitespace-nowrap text-muted-foreground">
                 {marks.map((m) => (
                     <span key={m} className="inline-flex items-center gap-1.5">
