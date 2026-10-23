@@ -3,7 +3,8 @@
 import { Check, Copy, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { buildSubjectRecord, fileThreat } from "@/lib/ti/subject-record";
-import { lastSeenLabel, type PanelRung } from "@/lib/ti/panel";
+import { type PanelRung } from "@/lib/ti/panel";
+import { longestRun } from "@/lib/ti/identity";
 import { geoConfidence, resolveConfidence, scoreConfidence } from "@/lib/ti/confidence";
 import { buildResolverBallot, type ResolverBallot } from "@/lib/ti/dns/ballot";
 import { buildVoteTable, providerLabel, type VoteTable } from "@/lib/ti/geo/votes";
@@ -30,6 +31,7 @@ import {
 } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Tile } from "./frame";
+import { markFace } from "./mark-face";
 import { useCopied } from "./primitives";
 import { Sprite } from "./sprite";
 import { VERDICT_STYLE } from "./verdict";
@@ -110,18 +112,27 @@ export function HeroTile({ result }: Readonly<{ result: AnyCheckResult }>) {
 
     return (
         <Tile span={6} className="flex flex-col">
-            <div className="mb-2 border-b border-foreground/12 pb-3">
-                <p className="font-mono text-lg break-all text-muted-foreground">
+            <div className="@container mb-2 border-b border-foreground/12 pb-3">
+                <p className="font-mono text-[12px] break-all text-muted-foreground">
                     {record.subject}
                 </p>
-                <p className="mt-0.5 font-mono text-[2rem] leading-tight font-bold break-words">
+                <p
+                    className={cn(markFace.className, "mt-2 leading-[0.82] tracking-[0.005em] uppercase")}
+                    style={{ fontSize: markSize(klass.short) }}
+                >
                     {klass.short}
                 </p>
-                <p className="mt-1.5 font-mono text-xs text-muted-foreground">{klass.caption}</p>
+                <p className="mt-1.5 text-[11.5px] leading-3.5 text-muted-foreground">{klass.caption}</p>
             </div>
             <CopyBox text={narrative} />
         </Tile>
     );
+}
+
+/** The class as a mark, sized as the vitals size theirs: as large as the
+ *  container allows its longest word, at about half an em per capital. */
+function markSize(text: string): string {
+    return `min(56px, calc(100cqi / ${longestRun([{ value: text }]) * 0.5}))`;
 }
 
 function classFor(result: AnyCheckResult) {
@@ -177,11 +188,8 @@ function FlatLadder({
  * Where this reading came from, and how to take another.
  *
  * Everything in this column is about the *lookup* rather than about the
- * subject: when it ran, whether it came off the cache, how many times the
- * indicator has been checked before, and when a source last saw it. It is the
- * only place on the card those four belong together, which is why the last of
- * them, the one measurement the removed stat bank carried alone, ended up here
- * as a line rather than as a ladder of its own.
+ * subject: when it ran, whether it came off the cache, and how far its tiers
+ * can be trusted. The refresh sits on the age it would reset.
  */
 export function ProvenanceTile({
     result,
@@ -190,45 +198,29 @@ export function ProvenanceTile({
     return (
         <Tile
             span={3}
+            rows={2}
             tone="rail"
-            title="Checked"
-            note={result.cached ? "cached" : "live"}
             className="flex flex-col"
         >
-            <Freshness checkedAt={result.checkedAt} />
-            <div className="mt-4 grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1.5 border-t border-foreground/12 pt-3.5">
-                <span className="font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
-                    Priors
-                </span>
-                <span className="text-right font-mono text-[11.5px]">
-                    {priorsLabel(result.history?.length ?? 0)}
-                </span>
-                <span className="font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
-                    Last seen
-                </span>
-                <span className="text-right font-mono text-[11.5px]">
-                    {lastSeenLabel(result)}
-                </span>
+            <div className="flex items-center justify-between gap-3">
+                <Freshness checkedAt={result.checkedAt} />
+                <button
+                    type="button"
+                    onClick={onRefresh}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded border border-foreground/15 bg-background px-2.5 py-1.5 font-mono text-[11px] tracking-[0.06em] transition-colors hover:border-foreground/40"
+                >
+                    <RefreshCw className="size-3" />
+                    {result.cached ? "Fetch fresh" : "Re-check"}
+                </button>
             </div>
-            <button
-                type="button"
-                onClick={onRefresh}
-                className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded border border-foreground/15 bg-background px-3 py-2 font-mono text-[11.5px] tracking-[0.06em] transition-colors hover:border-foreground/40"
-            >
-                <RefreshCw className="size-3.5" />
-                {result.cached ? "Fetch fresh" : "Re-check"}
-            </button>
+            <Confidence result={result} />
         </Tile>
     );
 }
 
-function priorsLabel(n: number): string {
-    if (n === 0) return "none";
-    return `${n} ${n === 1 ? "check" : "checks"}`;
-}
-
-/** "6h ago", ticking. Whether it came off the cache is the tile's note, one
- *  line up, rather than a second line here. */
+/** "6h ago", ticking. Whether it came off the cache is left to the button
+ *  beside it, which reads Fetch fresh for a cached result and Re-check for a
+ *  live one. */
 function Freshness({ checkedAt }: Readonly<{ checkedAt: string }>) {
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
@@ -239,7 +231,7 @@ function Freshness({ checkedAt }: Readonly<{ checkedAt: string }>) {
         <div
             suppressHydrationWarning
             title={`Checked ${new Date(checkedAt).toLocaleString()}`}
-            className="font-mono text-[22px] leading-none font-bold"
+            className="font-mono text-[22px] leading-none font-bold uppercase"
         >
             {relativeTime(checkedAt, now)}
         </div>
@@ -322,24 +314,7 @@ export function CopyBox({
  * of its mechanism, which only means something to a reader who already knows
  * the formula.
  */
-/**
- * Whether the narrow lane has a ballot to put beside the evidence.
- *
- * A hash has neither a location nor a resolution to vote on, so the lane would
- * be an empty tinted column running the height of the detector list. The
- * evidence takes the full twelve instead: a tile that has nothing to say should
- * not leave a hole where it would have been.
- */
-export function hasBallots(result: AnyCheckResult): boolean {
-    const geo = "geoResolution" in result ? result.geoResolution : undefined;
-    const dns = isDomainResult(result) ? result.context?.originResolverConsensus : undefined;
-    return Boolean(geo?.country || dns?.perResolver?.length);
-}
-
-export function EvidenceTile({
-    result,
-    span = 9,
-}: Readonly<{ result: AnyCheckResult; span?: 9 | 12 }>) {
+export function EvidenceTile({ result }: Readonly<{ result: AnyCheckResult }>) {
     const rows = useMemo(() => detectorRows(result.sources), [result.sources]);
     const confidence = useMemo(
         () => scoreConfidence({ sources: result.sources, scoreBreakdown: result.scoreBreakdown }),
@@ -356,7 +331,7 @@ export function EvidenceTile({
     const half = Math.ceil(silent.length / 2);
 
     return (
-        <Tile span={span} id="evidence">
+        <Tile span={12} id="evidence">
             {spoke.map((row) => (
                 <DetectorRow key={row.id} row={row} />
             ))}
@@ -503,61 +478,41 @@ function Track({ row }: Readonly<{ row: DetectorRow }>) {
 }
 
 /**
- * How each provider voted, as the frame's narrow lane.
+ * The two axes behind every tier on the page, in one table, under the
+ * freshness line: how sure the reading is sits beside how old it is.
  *
- * Two ballots can appear here and their order is the order of the questions:
- * which address the name resolves to, then where that address is. A hash has
- * neither and the tile does not render.
+ * A tier that came out of a vote carries its ballot directly beneath it, so
+ * the reader who doubts LOCATION HIGH finds the providers that produced it
+ * without leaving the row. A hash has no ballot of either kind and shows the
+ * score alone.
  */
-export function BallotsTile({ result }: Readonly<{ result: AnyCheckResult }>) {
-    const votes = useMemo(() => {
-        const res = "geoResolution" in result ? result.geoResolution : undefined;
-        return res ? buildVoteTable(res) : null;
-    }, [result]);
-    // Only a domain has a resolution to vote on. `originResolverConsensus` is
-    // dnsGeoSource's own rather than dnsSource's: the two are separate fetches
-    // and can name a different winning address on an anycast name, and this is
-    // the one the location rows beside it were reconciled from.
-    const dns = isDomainResult(result) ? result.context?.originResolverConsensus : undefined;
-    const ballot = useMemo(() => (dns ? buildResolverBallot(dns) : null), [dns]);
-    if (!votes && !ballot) return null;
-
-    return (
-        <Tile span={3} tone="rail" title="Ballots">
-            {ballot && (
-                <>
-                    <SubLabel className="mt-0">Resolvers, on {ballot.winner}</SubLabel>
-                    <ResolverVotes ballot={ballot} order={dns!.perResolver} />
-                </>
-            )}
-            {votes && (
-                <>
-                    <SubLabel className={ballot ? undefined : "mt-0"}>Location</SubLabel>
-                    <GeoVotes table={votes} />
-                </>
-            )}
-        </Tile>
-    );
-}
-
-/** The two axes behind every tier on the page, in one table. */
-export function ConfidenceTile({ result }: Readonly<{ result: AnyCheckResult }>) {
+function Confidence({ result }: Readonly<{ result: AnyCheckResult }>) {
     const confidence = useMemo(
         () => scoreConfidence({ sources: result.sources, scoreBreakdown: result.scoreBreakdown }),
         [result.sources, result.scoreBreakdown],
     );
+    const geoResolution = "geoResolution" in result ? result.geoResolution : undefined;
     // A hash has no location at all, and an address whose providers all failed
     // has none either; both drop the row rather than drawing an empty one.
-    const geo = useMemo(
-        () => geoConfidence("geoResolution" in result ? result.geoResolution : undefined),
-        [result],
+    const geo = useMemo(() => geoConfidence(geoResolution), [geoResolution]);
+    const votes = useMemo(
+        () => (geoResolution ? buildVoteTable(geoResolution) : null),
+        [geoResolution],
     );
+    // Only a domain has a resolution to vote on. `originResolverConsensus` is
+    // dnsGeoSource's own rather than dnsSource's: the two are separate fetches
+    // and can name a different winning address on an anycast name, and this is
+    // the one the location rows were reconciled from.
     const dns = isDomainResult(result) ? result.context?.originResolverConsensus : undefined;
     const resolve = useMemo(() => resolveConfidence(dns), [dns]);
+    const ballot = useMemo(() => (dns ? buildResolverBallot(dns) : null), [dns]);
     if (!confidence) return null;
 
     return (
-        <Tile span={3} tone="rail" title="Confidence">
+        <div className="mt-4 border-t border-foreground/12 pt-3.5">
+            <div className="mb-2.5 font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
+                Confidence
+            </div>
             <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2.5">
                 <ConfidenceRow
                     title="Score"
@@ -576,6 +531,11 @@ export function ConfidenceTile({ result }: Readonly<{ result: AnyCheckResult }>)
                         level={resolve.level}
                     />
                 )}
+                {resolve && ballot && dns && (
+                    <Ballot caption={`on ${ballot.winner}`}>
+                        <ResolverVotes ballot={ballot} order={dns.perResolver} />
+                    </Ballot>
+                )}
                 {geo && (
                     <ConfidenceRow
                         title="Location"
@@ -584,8 +544,31 @@ export function ConfidenceTile({ result }: Readonly<{ result: AnyCheckResult }>)
                         level={geo.level}
                     />
                 )}
+                {geo && votes && (
+                    <Ballot>
+                        <GeoVotes table={votes} />
+                    </Ballot>
+                )}
             </div>
-        </Tile>
+        </div>
+    );
+}
+
+/** A ballot hung under its confidence row, indented so it reads as that
+ *  row's working rather than as a row of its own. */
+function Ballot({
+    caption,
+    children,
+}: Readonly<{ caption?: string; children: React.ReactNode }>) {
+    return (
+        <div className="col-span-3 mb-1 border-l border-foreground/15 pl-2.5">
+            {caption && (
+                <div className="mb-1 font-mono text-[9.5px] tracking-[0.06em] break-all text-muted-foreground">
+                    {caption}
+                </div>
+            )}
+            {children}
+        </div>
     );
 }
 

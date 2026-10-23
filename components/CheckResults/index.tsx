@@ -11,12 +11,9 @@ import {
 import type { LookupType } from "@/lib/ioc";
 import type { PartialLookup } from "@/lib/ti/partial";
 import { PivotContext } from "./primitives";
-import { Frame } from "./frame";
+import { Frame, Stack } from "./frame";
 import {
-    BallotsTile,
-    ConfidenceTile,
     EvidenceTile,
-    hasBallots,
     HeroTile,
     ProvenanceTile,
     RailTile,
@@ -73,10 +70,10 @@ function Results({
                     <RailTile result={result} />
                     <HeroTile result={result} />
                     <ProvenanceTile result={result} onRefresh={onRefresh} />
-                    <VitalsTile result={result} />
-                    <ConfidenceTile result={result} />
-                    <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
-                    <BallotsTile result={result} />
+                    <Stack span={9}>
+                        <VitalsTile result={result} span={12} />
+                        <EvidenceTile result={result} />
+                    </Stack>
                     <TimelineTile result={result} />
                     <RecordTile result={result} omitDates />
                     <LiveIntelTile research={research} kind="ip" />
@@ -120,10 +117,10 @@ function DomainResults({
                     <RailTile result={result} />
                     <HeroTile result={result} />
                     <ProvenanceTile result={result} onRefresh={onRefresh} />
-                    <VitalsTile result={result} />
-                    <ConfidenceTile result={result} />
-                    <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
-                    <BallotsTile result={result} />
+                    <Stack span={9}>
+                        <VitalsTile result={result} span={12} />
+                        <EvidenceTile result={result} />
+                    </Stack>
                     <TimelineTile result={result} />
                     <RecordTile result={result} omitDates />
                     <SubdomainsTile result={result} />
@@ -168,10 +165,10 @@ function HashResults({
                     <RailTile result={result} />
                     <HeroTile result={result} />
                     <ProvenanceTile result={result} onRefresh={onRefresh} />
-                    <VitalsTile result={result} />
-                    <ConfidenceTile result={result} />
-                    <EvidenceTile result={result} span={hasBallots(result) ? 9 : 12} />
-                    <BallotsTile result={result} />
+                    <Stack span={9}>
+                        <VitalsTile result={result} span={12} />
+                        <EvidenceTile result={result} />
+                    </Stack>
                     <TimelineTile result={result} />
                     <RecordTile result={result} omitDates />
                     <LiveIntelTile research={research} kind="hash" />
