@@ -152,3 +152,31 @@ export function buildVoteTable(res: GeoResolution): VoteTable | null {
 
   return { providers, fields: columns };
 }
+
+/** Every field a location vote can have, in column order. The grid shows all
+ *  of them whether or not anyone answered, so an empty column reads as the
+ *  coverage gap it is. */
+export const VOTE_FIELDS: { key: VoteColumn["key"]; short: string }[] = [
+  { key: "country", short: "Ctry" },
+  { key: "city", short: "City" },
+  { key: "coordinates", short: "Point" },
+  { key: "asn", short: "ASN" },
+];
+
+/** What a cell is drawn as, and named as in the legend. */
+export const VOTE_MARKS = ["agrees", "differs", "near", "registry", "silent"] as const;
+export type VoteMarkKind = (typeof VOTE_MARKS)[number];
+
+export function voteMarkOf(cell: VoteCell | undefined): VoteMarkKind {
+  if (!cell || cell.status === "absent") return "silent";
+  if (cell.status === "dissent") return "differs";
+  if (cell.status === "scatter") return "near";
+  return cell.authority ? "registry" : "agrees";
+}
+
+/** The marks a grid actually draws, in legend order: a legend that explains
+ *  marks the grid does not contain is boilerplate. */
+export function voteMarksUsed(cells: (VoteCell | undefined)[]): VoteMarkKind[] {
+  const used = new Set(cells.map(voteMarkOf));
+  return VOTE_MARKS.filter((m) => used.has(m));
+}

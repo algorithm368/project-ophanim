@@ -12,12 +12,8 @@ import type { LookupType } from "@/lib/ioc";
 import type { PartialLookup } from "@/lib/ti/partial";
 import { PivotContext } from "./primitives";
 import { Frame, Stack } from "./frame";
-import {
-    EvidenceTile,
-    HeroTile,
-    ProvenanceTile,
-    RailTile,
-} from "./panel";
+import { EvidenceTile, HeroTile, RailTile } from "./panel";
+import { ProvenanceTile } from "./readout";
 import { RecordTile, VitalsTile } from "./identity";
 import { TimelineTile } from "./timeline";
 import { SubdomainsTile } from "./subdomains";

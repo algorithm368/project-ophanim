@@ -21,9 +21,9 @@ import { isHashResult } from "./types";
  * the one that stayed. It is rendered as a line in the Checked column rather
  * than as a ladder, since one ladder alone is a chart of a single number.
  *
- * `PanelRung` outlived the bank: the confidence axes in the foot still draw on
- * the same four named rungs, and the three states below are still what that
- * drawing has to keep apart.
+ * `PanelRung` outlived the bank as the confidence axes' four named rungs, until
+ * the provenance rail drew those as pictures instead. The three states below
+ * are still what any drawing of a measurement has to keep apart.
  *
  *   rung 0    measured, and nothing on this axis  -> four outlined rungs
  *   rung null no measurement at all               -> four hatched rungs
