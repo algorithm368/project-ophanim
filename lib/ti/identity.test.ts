@@ -703,7 +703,7 @@ describe("the vitals strip", () => {
     expect(vital(rec, "name")?.quiet).toBeUndefined();
   });
 
-  it("gives a domain its own four slots", () => {
+  it("gives a domain its own three slots", () => {
     const rec = buildIdentity(
       domain(
         {
@@ -717,13 +717,13 @@ describe("the vitals strip", () => {
         },
       ),
     );
-    expect(slots(rec)).toEqual(["country", "category", "registrar", "reach"]);
+    // No registrar: the record carries its name and the timeline its date.
+    expect(slots(rec)).toEqual(["country", "category", "reach"]);
     expect(vital(rec, "country")?.sub).toBe("San Francisco");
     expect(vital(rec, "category")).toMatchObject({
       value: "Education & reference",
       sub: "Reference materials",
     });
-    expect(vital(rec, "registrar")?.sub).toBe("registered 2001-01-13");
     expect(vital(rec, "reach")).toMatchObject({ value: "Rank 30", quiet: { lead: "Rank " } });
   });
 
@@ -742,15 +742,6 @@ describe("the vitals strip", () => {
       absent: true,
     });
     expect(vital(rec, "category")?.value).toBe("Uncategorised");
-  });
-
-  it("keeps the registration date even when no registrar is on file", () => {
-    const rec = buildIdentity(domain({ createdAt: "2024-06-01T00:00:00Z" }));
-    expect(vital(rec, "registrar")).toMatchObject({
-      value: "Not on file",
-      sub: "registered 2024-06-01",
-      absent: true,
-    });
   });
 
   it("gives a hash its own four slots", () => {

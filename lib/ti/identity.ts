@@ -544,7 +544,6 @@ function domainVitals(r: DomainCheckResult): Vital[] {
   const rest = cats.filter((c) => c !== cat && contentCategory([c]));
   const rank = ok(r.sources, "tranco")?.details?.rank;
   const app = cleanAppName(str(ok(r.sources, "cloudflare-intel")?.details?.application));
-  const born = day(ctx?.createdAt);
 
   return [
     v(
@@ -555,12 +554,6 @@ function domainVitals(r: DomainCheckResult): Vital[] {
       { countryCode: res?.countryCode },
     ),
     v("category", "Category", got(cat ?? app, list(rest)), "Uncategorised"),
-    v(
-      "registrar",
-      "Registrar",
-      got(ctx?.registrar, born && `registered ${born}`),
-      born ? { value: "Not on file", sub: `registered ${born}` } : "Not on file",
-    ),
     v(
       "reach",
       "Reach",
