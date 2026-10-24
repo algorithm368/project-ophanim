@@ -50,7 +50,9 @@
 #   npm view typescript-eslint peerDependencies
 #   npm view eslint-plugin-react peerDependencies
 #
-# Minor and patch updates inside 9.x and 5.x still arrive.
+# Minor and patch updates inside 9.x and 6.x still arrive. typescript sits at
+# ~6.0 because typescript-eslint's range ends below 6.1, so a 6.1 bump fails
+# lint the same way until that range moves.
 version: 2
 updates:
   - package-ecosystem: bun
