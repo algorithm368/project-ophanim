@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkHash } from "@/lib/ti/hash/check";
 import { fetchFamilyDescription } from "@/lib/ti/hash/sources/malpedia";
-import * as quota from "@/lib/ti/bulk/quota";
 import type { HashContext, SourceFinding, SourceResult, TiSource } from "@/lib/ti/types";
 
 // checkHash end to end over an in-memory registry: no network, and Malpedia
@@ -95,14 +94,5 @@ describe("checkHash", () => {
     expect(result.context?.malwareFamily).toBeTruthy();
     expect(result.context?.familyDescription).toBeUndefined();
     expect(result.context?.familyRefs).toBeUndefined();
-  });
-
-  it("reports metered spend to the quota ledger", async () => {
-    const spy = vi.spyOn(quota, "recordSpend").mockResolvedValue();
-    registry.sources = [source("any", { status: "ok", score: 0 })];
-    await checkHash(SHA256, "sha256");
-    expect(spy).toHaveBeenCalledOnce();
-    expect(spy).toHaveBeenCalledWith(expect.arrayContaining([]));
-    spy.mockRestore();
   });
 });

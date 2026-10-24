@@ -39,14 +39,10 @@ const HASH_EXAMPLES = [
 export const EXAMPLES = [IP_EXAMPLES[0], DOMAIN_EXAMPLES[0], HASH_EXAMPLES[0]];
 
 // Quick-start chips shown under the search box: one clickable example per type.
-export const EXAMPLE_CHIPS: {
-  value: string;
-  label: string;
-  icon: IconType;
-}[] = [
-  { value: IP_EXAMPLES[0], label: IP_EXAMPLES[0], icon: Network },
-  { value: DOMAIN_EXAMPLES[0], label: DOMAIN_EXAMPLES[0], icon: Globe },
-  { value: HASH_EXAMPLES[0], label: "eicar test hash", icon: FileDigit },
+export const EXAMPLE_CHIPS: { value: string; label: string }[] = [
+  { value: IP_EXAMPLES[0], label: IP_EXAMPLES[0] },
+  { value: DOMAIN_EXAMPLES[0], label: DOMAIN_EXAMPLES[0] },
+  { value: HASH_EXAMPLES[0], label: "eicar test hash" },
 ];
 
 /**
@@ -79,7 +75,6 @@ export function DetectionHint({
   if (bulkCount) {
     return (
       <span className="inline-flex flex-wrap items-center gap-1.5 text-primary">
-        <Network className="size-4" />
         {bulkCount === 1
           ? "Detected an IPv6 address"
           : `Detected ${bulkCount} IP addresses`}

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { labelThreats, safeBrowsingSource } from "./safebrowsing";
 import { postJson } from "../../http";
-import { withLane } from "../../keys";
 
 vi.mock("../../http", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../http")>();
@@ -74,27 +73,5 @@ describe("safeBrowsingSource.check", () => {
     expect((await safeBrowsingSource.check("a.example", signal)).status).toBe("timeout");
     vi.mocked(postJson).mockRejectedValue(new Error("boom"));
     expect((await safeBrowsingSource.check("a.example", signal)).error).toBe("boom");
-  });
-});
-
-describe("safeBrowsingSource — per-lane key", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.mocked(postJson).mockReset();
-  });
-
-  it("uses the bulk key inside the bulk lane", async () => {
-    vi.stubEnv("GOOGLE_SAFE_BROWSING_API_KEY", "shared");
-    vi.stubEnv("GOOGLE_SAFE_BROWSING_API_KEY_BULK", "own");
-    vi.mocked(postJson).mockResolvedValue({ ok: false, status: 500, data: {}, text: "" });
-    await withLane("bulk", () => safeBrowsingSource.check("a.example", new AbortController().signal));
-    expect(vi.mocked(postJson).mock.calls[0][0]).toContain("key=own");
-  });
-
-  it("enables on a bulk-only key in the bulk lane, not in /check's", async () => {
-    vi.stubEnv("GOOGLE_SAFE_BROWSING_API_KEY", "");
-    vi.stubEnv("GOOGLE_SAFE_BROWSING_API_KEY_BULK", "own");
-    expect(safeBrowsingSource.isEnabled()).toBe(false);
-    expect(await withLane("bulk", async () => safeBrowsingSource.isEnabled())).toBe(true);
   });
 });

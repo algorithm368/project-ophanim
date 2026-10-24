@@ -1,23 +1,26 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { Fragment, memo, useMemo } from "react";
 import { flagUrl } from "@/lib/flag";
-import { buildIdentity, type IdentityClaim, type Vital } from "@/lib/ti/identity";
+import { buildIdentity, longestRun, markParts, type IdentityClaim, type Vital } from "@/lib/ti/identity";
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Frame, Tile } from "./frame";
+import { markFace } from "./mark-face";
+
 /**
  * The subject record, as a dex entry, in two tiles of the page's frame.
  *
- * `VitalsTile` is the four headline facts and `RecordTile` is the full ledger
+ * `VitalsTile` is the headline facts and `RecordTile` is the full ledger
  * under them. They are separate tiles because they answer at different speeds:
  * one is read at a glance and the other is read when the glance was not enough.
  *
  * Rules this file exists to hold:
  *
- *  - One fixed list, in two columns, and nothing else. No groups, no headings
- *    inside the tile, no fold. The eye learns where each field sits and stops
- *    reading labels, which only works if the order never moves.
+ *  - One fixed list, in two columns, and no fold. The eye learns where each
+ *    field sits and stops reading labels, which only works if the order never
+ *    moves. A domain's list is also headed by aspect (see `GroupedLedger`); an
+ *    address's and a file's are not, yet.
  *  - The order runs *down* the first column and then down the second. That is
  *    explicit grid placement rather than CSS columns, because the two halves
  *    have to share row heights: with independent columns a wrapped value on the
@@ -29,10 +32,10 @@ import { Frame, Tile } from "./frame";
  *  - Every field renders on every lookup, including the ones with nothing
  *    behind them. An absence is a fact about the subject, and it is drawn quiet
  *    so it reads as one rather than as a value.
- *  - Four vitals above the ledger, in the same grammar as the five stat cells
- *    at the top of the panel, so the card reads as two banks of one instrument:
- *    that one is how bad this is, this one is what it is. None of the four
- *    repeats a stat from the bank above.
+ *  - Three or four vitals above the ledger, set as marks rather than as
+ *    labelled readouts: that bank above is how bad this is, this one is what it
+ *    is, said in the fewest and largest words. None of them repeats a stat from
+ *    the bank above.
  *  - This is a section of the panel's card, not a card of its own. The record
  *    is the back half of the same entry, and a gap between them read as two
  *    unrelated things about the same subject.
@@ -61,33 +64,139 @@ export const RecordTile = memo(function RecordTile({
             title="Subject record"
             note={`${identity.fields.length} fields`}
         >
-            <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
-                {identity.fields.map((field, i) => (
-                    <Row key={field.key} claim={field} at={placement(i, identity.fields.length)} />
-                ))}
-            </div>
+            {identity.fields.some((field) => field.group) ? (
+                <GroupedLedger fields={identity.fields} />
+            ) : (
+                <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
+                    {identity.fields.map((field, i) => (
+                        <Row key={field.key} claim={field} at={placement(i, identity.fields.length)} />
+                    ))}
+                </div>
+            )}
         </Tile>
     );
 });
 
 /**
- * The four headline facts, side by side.
+ * The ledger under headings, one per aspect.
  *
- * Four fixed slots as bento cells, each one headline over one caption. The
- * cells are ruled apart the way the frame rules its tiles, a one-pixel gap
- * over the rule colour, so a shared edge is never two borders. The slots
- * are per IOC type and never move, which is what lets a reader go to the third
- * cell for the network rather than reading four labels to find it. A slot with
+ * The groups flow down the first column and on into the second, and the
+ * browser breaks between them where the two columns come out level, never
+ * inside one. So a group's column depends on how much the groups before it
+ * hold: a domain with a long SPF record pushes the later groups right. The
+ * order never changes, and the headings are what the eye goes by, which is
+ * why a group may change sides but a row may not leave its group.
+ *
+ * Prose (a registrar, a reading like "Softfail") is set in the page's sans and
+ * anything a machine reads in mono, so the line a reader would copy is the
+ * one that looks like it.
+ */
+function GroupedLedger({ fields }: Readonly<{ fields: IdentityClaim[] }>) {
+    const groups: { name: string; claims: IdentityClaim[] }[] = [];
+    for (const claim of fields) {
+        const name = claim.group ?? "";
+        const last = groups.at(-1);
+        if (last?.name === name) last.claims.push(claim);
+        else groups.push({ name, claims: [claim] });
+    }
+    return (
+        <div className="-mt-3.5 gap-x-10 md:columns-2">
+            {groups.map((g) => (
+                <section key={g.name} className="break-inside-avoid">
+                    <h3 className="border-b border-foreground/25 pt-3.5 pb-1.5 text-[11px] font-semibold tracking-[0.1em] uppercase">
+                        {g.name}
+                    </h3>
+                    <dl>
+                        {g.claims.map((claim) => (
+                            <div
+                                key={claim.key}
+                                className="grid grid-cols-[9rem_1fr] items-baseline gap-x-4 border-b border-foreground/8 py-[7px]"
+                            >
+                                <dt className="text-[10.5px] leading-5 font-medium tracking-[0.07em] text-muted-foreground uppercase">
+                                    {claim.label}
+                                </dt>
+                                <dd className="min-w-0 leading-5 wrap-anywhere">
+                                    <ClaimValue claim={claim} />
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                </section>
+            ))}
+        </div>
+    );
+}
+
+/** One value: its reading and detail, or the value itself, then the lines or
+ *  the raw record under it in small mono. */
+function ClaimValue({ claim }: Readonly<{ claim: IdentityClaim }>) {
+    const under = "mt-0.5 font-mono text-[11px] leading-[17px] text-muted-foreground";
+    if (claim.absent) {
+        return <span className="text-[13px] leading-5 text-foreground/40">{claim.value}</span>;
+    }
+    if (claim.lead) {
+        return (
+            <>
+                <span className="text-[14px] leading-5 font-semibold">{claim.lead}</span>
+                {claim.value && <span className="text-[13px] leading-5 text-muted-foreground"> {claim.value}</span>}
+                {claim.lines && <span className={cn(under, "block")}>{claim.lines.map((line) => <span key={line} className="block">{line}</span>)}</span>}
+                {claim.raw && <span className={cn(under, "block")}>{claim.raw}</span>}
+            </>
+        );
+    }
+    return (
+        <span
+            className={cn(
+                // A block, so a wrapped value keeps its own line height rather
+                // than the taller strut of the row around it.
+                "block leading-5",
+                claim.data ? "font-mono text-[12.5px]" : "text-[14px]",
+                claim.notable && "font-semibold",
+            )}
+        >
+            {claim.lines
+                ? claim.lines.map((line) => <span key={line} className="block">{line}</span>)
+                : claim.value}
+        </span>
+    );
+}
+
+/**
+ * The headline facts, side by side, as marks.
+ *
+ * Each cell is its slot name, then the value set large enough to be the thing
+ * the eye lands on, then one small line qualifying it (the city under the
+ * country, the holder under the AS number, the host part under the domain).
+ * The strip is always one row: three across for an address, four for a domain
+ * or a file.
+ *
+ * Every mark in a strip is one size, never squeezed: the largest, up to 56px,
+ * at which the strip's longest word still fits a cell, so values wrap between
+ * words and never through one. The size is pure CSS, each cell a container and
+ * the mark sized in its `cqi`, so it holds on any width with no script and no
+ * shift. Cells start at the top, so the labels and the first line of every
+ * mark align, and a value that wraps grows downward.
+ *
+ * The slots are per IOC type and never move, which is what lets a reader go to
+ * the second cell for the network without reading anything else. A slot with
  * nothing behind it still occupies its place and says what is missing, because
  * a strip that closes up around a gap moves every fact after it.
  */
 function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
+    // Barlow Condensed Bold averages a little under half an em per capital,
+    // so half an em per character is the safe width of the longest run.
+    const size = `min(56px, calc(100cqi / ${longestRun(vitals) * 0.5}))`;
     return (
-        <div className="grid h-full grid-cols-1 gap-px bg-foreground/12 md:grid-cols-4">
+        <div
+            className={cn(
+                "grid h-full grid-cols-1 gap-px bg-foreground/12",
+                vitals.length === 3 ? "md:grid-cols-3" : "md:grid-cols-4",
+            )}
+        >
             {vitals.map((vital) => (
                 <div
                     key={vital.key}
-                    className="relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4"
+                    className="@container relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4"
                 >
                     <FlagWallpaper code={vital.countryCode} />
                     <div className="font-mono text-[9.5px] tracking-[0.11em] text-muted-foreground uppercase">
@@ -95,17 +204,23 @@ function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
                     </div>
                     <div
                         className={cn(
-                            "mt-2 flex items-start gap-2 text-base leading-tight font-medium",
-                            vital.absent && "font-normal text-muted-foreground",
+                            markFace.className,
+                            "mt-2 leading-[0.82] tracking-[0.005em] uppercase wrap-anywhere",
+                            vital.absent && "text-foreground/35",
                         )}
+                        style={{ fontSize: size }}
+                        title={vital.value}
                     >
-                        <span className="line-clamp-2 min-w-0 wrap-anywhere" title={vital.value}>
-                            {vital.value}
-                        </span>
+                        {markParts(vital).map((part, i) => (
+                            <span key={i} className={cn(part.quiet && "text-foreground/35")}>
+                                <Breakable text={part.text} />
+                            </span>
+                        ))}
                     </div>
                     {vital.sub && (
+                        // One line, the whole of it on hover.
                         <div
-                            className="mt-0.5 truncate text-xs text-muted-foreground"
+                            className="mt-1.5 truncate text-[11.5px] leading-3.5 text-muted-foreground"
                             title={vital.sub}
                         >
                             {vital.sub}
@@ -115,6 +230,22 @@ function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
             ))}
         </div>
     );
+}
+
+/** A break opportunity after every dot, so a long domain wraps between its
+ *  labels before `wrap-anywhere` has to split one of them. */
+function Breakable({ text }: Readonly<{ text: string }>) {
+    const pieces = text.split(".");
+    return pieces.map((piece, i) => (
+        <Fragment key={i}>
+            {piece}
+            {i < pieces.length - 1 && (
+                <>
+                    .<wbr />
+                </>
+            )}
+        </Fragment>
+    ));
 }
 
 /** The country's flag behind a vital, filling the cell and fading out toward
@@ -178,15 +309,23 @@ function Row({
  * The vitals and the ledger as two tiles' worth of skeleton, so the frame keeps
  * its shape while the result is still arriving.
  */
-export function VitalsSkeleton({ span = 9 }: Readonly<{ span?: 9 | 12 }> = {}) {
+export function VitalsSkeleton({
+    span = 9,
+    cells = 4,
+}: Readonly<{ span?: 9 | 12; cells?: 3 | 4 }> = {}) {
     return (
         <Tile span={span} className="p-0">
-            <div className="grid h-full grid-cols-1 gap-px bg-foreground/12 md:grid-cols-4">
-                {["w-16", "w-12", "w-20", "w-14"].map((w) => (
+            <div
+                className={cn(
+                    "grid h-full grid-cols-1 gap-px bg-foreground/12",
+                    cells === 3 ? "md:grid-cols-3" : "md:grid-cols-4",
+                )}
+            >
+                {["w-28", "w-20", "w-32", "w-24"].slice(0, cells).map((w) => (
                     <div key={w} className="bg-card p-4">
-                        <span className={cn("sweep block h-2 rounded", w)} />
-                        <span className="sweep mt-2.5 block h-4 w-28 rounded" />
-                        <span className="sweep mt-1.5 block h-2 w-20 rounded" />
+                        <span className="sweep block h-2 w-14 rounded" />
+                        <span className={cn("sweep mt-2.5 block h-9 rounded", w)} />
+                        <span className="sweep mt-2 block h-2.5 w-24 rounded" />
                     </div>
                 ))}
             </div>

@@ -1,7 +1,7 @@
 import type { SourceFinding, TiSource } from "../types";
 import { errorMessage, getText, isTimeout } from "../http";
 import { sharedLoader } from "../shared-feed";
-import { ipValue, parseCidr } from "../cidr";
+import { cidrContains } from "../cidr";
 
 export interface DropBlock {
   cidr: string;
@@ -28,109 +28,12 @@ export function parseDropFeed(text: string): DropBlock[] {
   return blocks;
 }
 
-/** One parsed block, in the order `DropIndex.sorted` keeps them. */
-interface IndexedBlock<T extends number | bigint> {
-  start: T;
-  end: T;
-  /** Nearest enclosing block in `sorted`, or -1 at the top level. */
-  parent: number;
-  /** The block `matchDrop` reports for an address whose deepest match is this
-   *  one: the earliest in feed order among it and its enclosing blocks. */
-  first: DropBlock;
-}
-
-interface DropIndex {
-  4: IndexedBlock<number>[];
-  6: IndexedBlock<bigint>[];
-}
-
-/**
- * Sort one family's ranges by start (widest first on a tie) and link each to
- * the nearest range enclosing it. CIDR blocks either nest or are disjoint, so
- * the blocks containing any address form one chain of enclosing ranges.
- */
-function buildFamily<T extends number | bigint>(
-  entries: { start: T; end: T; order: number; block: DropBlock }[],
-): IndexedBlock<T>[] {
-  entries.sort((a, b) => {
-    if (a.start !== b.start) return a.start < b.start ? -1 : 1;
-    if (a.end !== b.end) return a.end > b.end ? -1 : 1;
-    return a.order - b.order;
-  });
-  const sorted: IndexedBlock<T>[] = [];
-  const orders: number[] = [];
-  const open: number[] = []; // indexes of the ranges enclosing the current one
-  for (const e of entries) {
-    while (open.length && sorted[open[open.length - 1]].end < e.start) open.pop();
-    const parent = open.length ? open[open.length - 1] : -1;
-    const inherit = parent >= 0 && orders[parent] < e.order;
-    sorted.push({
-      start: e.start,
-      end: e.end,
-      parent,
-      first: inherit ? sorted[parent].first : e.block,
-    });
-    orders.push(inherit ? orders[parent] : e.order);
-    open.push(sorted.length - 1);
-  }
-  return sorted;
-}
-
-function buildIndex(blocks: DropBlock[]): DropIndex {
-  const v4: { start: number; end: number; order: number; block: DropBlock }[] = [];
-  const v6: { start: bigint; end: bigint; order: number; block: DropBlock }[] = [];
-  blocks.forEach((block, order) => {
-    const range = parseCidr(block.cidr);
-    if (range?.family === 4) v4.push({ ...range, order, block });
-    else if (range?.family === 6) v6.push({ ...range, order, block });
-  });
-  return { 4: buildFamily(v4), 6: buildFamily(v6) };
-}
-
-/** The first block in feed order containing `value`, by binary search. */
-function lookup<T extends number | bigint>(
-  sorted: IndexedBlock<T>[],
-  value: T,
-): DropBlock | null {
-  // Last range starting at or before the address.
-  let lo = 0;
-  let hi = sorted.length - 1;
-  let at = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (sorted[mid].start <= value) {
-      at = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  // Every range containing the address encloses that one, so the deepest
-  // match is the first range up its chain that reaches the address.
-  while (at >= 0 && sorted[at].end < value) at = sorted[at].parent;
-  return at >= 0 ? sorted[at].first : null;
-}
-
-// Built once per feed array: the feed caches hand the same array to every
-// lookup until the next download, and a parsed list is never mutated.
-const indexes = new WeakMap<DropBlock[], DropIndex>();
-
-/**
- * First DROP netblock (in feed order) that contains the IP, or null. The list
- * is parsed into sorted numeric ranges on first use, so a lookup is a binary
- * search rather than a CIDR parse per block, which bulk pass 0 depends on.
- */
+/** First DROP netblock that contains the IP, or null. */
 export function matchDrop(ip: string, blocks: DropBlock[]): DropBlock | null {
-  const addr = ipValue(ip);
-  if (!addr) return null;
-  let index = indexes.get(blocks);
-  if (!index) {
-    index = buildIndex(blocks);
-    indexes.set(blocks, index);
+  for (const b of blocks) {
+    if (cidrContains(b.cidr, ip)) return b;
   }
-  return addr.family === 4
-    ? lookup(index[4], addr.value)
-    : lookup(index[6], addr.value);
+  return null;
 }
 
 const FEEDS: Record<4 | 6, string> = {

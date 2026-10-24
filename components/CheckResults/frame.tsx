@@ -50,6 +50,7 @@ const SPAN: Record<Span, string> = {
  */
 export function Tile({
     span,
+    rows,
     title,
     note,
     tone,
@@ -58,6 +59,9 @@ export function Tile({
     children,
 }: Readonly<{
     span: Span;
+    /** How many of the frame's rows the tile runs down. A rail tile beside a
+     *  `Stack` spans two: the row it starts in and the stack's. */
+    rows?: 2;
     /** The small caps name of the tile. Omitted for the rail and the hero,
      *  which are identified by what they show rather than by a label. */
     title?: React.ReactNode;
@@ -75,6 +79,7 @@ export function Tile({
             className={cn(
                 "flex min-w-0 flex-col bg-card scroll-mt-20",
                 SPAN[span],
+                rows === 2 && "md:row-span-2",
                 tone === "rail" && "bg-muted/40",
             )}
         >
@@ -92,5 +97,21 @@ export function Tile({
             )}
             <div className={cn("min-w-0 flex-1 p-4", className)}>{children}</div>
         </section>
+    );
+}
+
+/**
+ * Several tiles sharing one span, stacked, as a single cell of the frame.
+ *
+ * This is what lets a rail tile run down beside a column of read tiles without
+ * the page counting which of them rendered: the stack is one row whatever is
+ * inside it, so the rail spans exactly two, and the last tile grows to meet the
+ * rail's foot rather than leaving the tint hanging below it.
+ */
+export function Stack({ span, children }: Readonly<{ span: Span; children: React.ReactNode }>) {
+    return (
+        <div className={cn("flex min-w-0 flex-col gap-px [&>*:last-child]:flex-1", SPAN[span])}>
+            {children}
+        </div>
     );
 }

@@ -1,12 +1,10 @@
 "use client";
 
-import { Check, Copy, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Check, Copy } from "lucide-react";
+import { useMemo } from "react";
 import { buildSubjectRecord, fileThreat } from "@/lib/ti/subject-record";
-import { lastSeenLabel, type PanelRung } from "@/lib/ti/panel";
-import { geoConfidence, resolveConfidence, scoreConfidence } from "@/lib/ti/confidence";
-import { buildResolverBallot, type ResolverBallot } from "@/lib/ti/dns/ballot";
-import { buildVoteTable, providerLabel, type VoteTable } from "@/lib/ti/geo/votes";
+import { longestRun } from "@/lib/ti/identity";
+import { scoreConfidence } from "@/lib/ti/confidence";
 import { parseDomain } from "@/lib/domain";
 import {
     classifyDomainLabel,
@@ -16,7 +14,7 @@ import {
     hashEvidence,
     ipEvidence,
 } from "@/lib/ti/indicator-class";
-import { relativeTime } from "@/lib/relative-time";
+import { railPlace } from "@/lib/ti/geo/rail-place";
 import {
     buildDomainNarrative,
     buildHashNarrative,
@@ -30,10 +28,11 @@ import {
 } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Tile } from "./frame";
+import { markFace } from "./mark-face";
 import { useCopied } from "./primitives";
+import { RailMap } from "./rail-map";
 import { Sprite } from "./sprite";
 import { VERDICT_STYLE } from "./verdict";
-import { VoteMark } from "./voting";
 import { sourceWeight } from "@/lib/ti/weight";
 
 /**
@@ -46,25 +45,36 @@ import { sourceWeight } from "@/lib/ti/weight";
  *
  * Rules this file exists to hold:
  *
- *  - The verdict is the sprite's colour, with no word under it. It is not a
- *    stat, it is what the stats add up to, and listing a total beside its own
- *    addends is a category error.
+ *  - The verdict is the rail picture's colour, with no word under it. It is
+ *    not a stat, it is what the stats add up to, and listing a total beside its
+ *    own addends is a category error.
  *  - The page opens with one picture, one name, and one sentence. It used to
  *    open with five named ladders as well, and four of the five turned out to
  *    restate something the rest of the page says better: see `lib/ti/panel.ts`
  *    for which said what, and where each one lives now.
- *  - Every bar is a named rung, never a fill. A filled width reads as a
- *    quantity and reintroduces the false precision that removing the 0 to 100
- *    number was meant to kill.
- *  - A measured zero (outlined rungs) and an absent measurement (hatched) must
- *    never look alike. That is the panel's load-bearing constraint.
- *  - Colour appears on the sprite and the verdict. Nowhere else.
+ *  - A measured zero and an absent measurement must never look alike. That is
+ *    the panel's load-bearing constraint.
+ *  - Colour appears on the rail picture and the verdict. Nowhere else.
  */
 
-/** The picture, in the colour of the verdict. */
+/**
+ * The picture, in the colour of the verdict: where the subject is, as a globe,
+ * for anything a provider placed, and the sprite for what has no place, which
+ * is every file and the odd address nobody located.
+ */
 export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
     const record = useMemo(() => buildSubjectRecord(result), [result]);
+    const place = useMemo(() => railPlace(result), [result]);
     const tone = VERDICT_STYLE[result.verdict];
+    if (place) {
+        return (
+            // Full bleed: the globe is the tile, with no padding left round it.
+            <Tile span={3} tone="rail" className={cn("relative min-h-[300px] overflow-hidden p-0", tone.text)}>
+                <RailMap place={place} />
+                <span className="sr-only">{tone.headline}</span>
+            </Tile>
+        );
+    }
     return (
         // Centred in both axes: the rail is as tall as the hero beside it, so a
         // sprite pinned to the top left the lower half of the column empty.
@@ -72,7 +82,7 @@ export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
             <div className={cn("grid place-items-center", tone.text)}>
                 <Sprite spec={record.sprite} px={170} title={record.class.label} />
             </div>
-            {/* The sprite's colour carries the verdict on screen; this says it
+            {/* The picture's colour carries the verdict on screen; this says it
                 for a reader who cannot see the colour. */}
             <span className="sr-only">{tone.headline}</span>
         </Tile>
@@ -110,18 +120,27 @@ export function HeroTile({ result }: Readonly<{ result: AnyCheckResult }>) {
 
     return (
         <Tile span={6} className="flex flex-col">
-            <div className="mb-2 border-b border-foreground/12 pb-3">
-                <p className="font-mono text-lg break-all text-muted-foreground">
+            <div className="@container mb-2 border-b border-foreground/12 pb-3">
+                <p className="font-mono text-[12px] break-all text-muted-foreground">
                     {record.subject}
                 </p>
-                <p className="mt-0.5 font-mono text-[2rem] leading-tight font-bold break-words">
+                <p
+                    className={cn(markFace.className, "mt-2 leading-[0.82] tracking-[0.005em] uppercase")}
+                    style={{ fontSize: markSize(klass.short) }}
+                >
                     {klass.short}
                 </p>
-                <p className="mt-1.5 font-mono text-xs text-muted-foreground">{klass.caption}</p>
+                <p className="mt-1.5 text-[11.5px] leading-3.5 text-muted-foreground">{klass.caption}</p>
             </div>
             <CopyBox text={narrative} />
         </Tile>
     );
+}
+
+/** The class as a mark, sized as the vitals size theirs: as large as the
+ *  container allows its longest word, at about half an em per capital. */
+function markSize(text: string): string {
+    return `min(56px, calc(100cqi / ${longestRun([{ value: text }]) * 0.5}))`;
 }
 
 function classFor(result: AnyCheckResult) {
@@ -147,103 +166,6 @@ function narrativeFor(result: AnyCheckResult): string {
     if (isHashResult(result)) return buildHashNarrative(result).join(" ");
     if (isDomainResult(result)) return buildDomainNarrative(result).join(" ");
     return buildNarrative(result).join(" ");
-}
-
-/** Four rungs laid flat, for the verdict and the confidence axes. Capped in
- *  width by its container: stretched wide, four rungs stop reading as four
- *  rungs and become a meter, which is the false precision we removed. */
-function FlatLadder({
-    rung,
-    className,
-    title,
-}: Readonly<{ rung: PanelRung; className?: string; title?: string }>) {
-    return (
-        <div className={cn("mt-1.5 grid grid-cols-4 gap-1", className)} title={title} aria-label={title}>
-            {[0, 1, 2, 3].map((i) => (
-                <span
-                    key={i}
-                    className={cn(
-                        "h-1.5 rounded-[1px] border border-foreground/25",
-                        rung === null && "bg-[repeating-linear-gradient(45deg,currentColor_0_2px,transparent_2px_4px)] opacity-40",
-                        rung !== null && i < rung && "border-current bg-current",
-                    )}
-                />
-            ))}
-        </div>
-    );
-}
-
-/**
- * Where this reading came from, and how to take another.
- *
- * Everything in this column is about the *lookup* rather than about the
- * subject: when it ran, whether it came off the cache, how many times the
- * indicator has been checked before, and when a source last saw it. It is the
- * only place on the card those four belong together, which is why the last of
- * them, the one measurement the removed stat bank carried alone, ended up here
- * as a line rather than as a ladder of its own.
- */
-export function ProvenanceTile({
-    result,
-    onRefresh,
-}: Readonly<{ result: AnyCheckResult; onRefresh: () => void }>) {
-    return (
-        <Tile
-            span={3}
-            tone="rail"
-            title="Checked"
-            note={result.cached ? "cached" : "live"}
-            className="flex flex-col"
-        >
-            <Freshness checkedAt={result.checkedAt} />
-            <div className="mt-4 grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1.5 border-t border-foreground/12 pt-3.5">
-                <span className="font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
-                    Priors
-                </span>
-                <span className="text-right font-mono text-[11.5px]">
-                    {priorsLabel(result.history?.length ?? 0)}
-                </span>
-                <span className="font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase">
-                    Last seen
-                </span>
-                <span className="text-right font-mono text-[11.5px]">
-                    {lastSeenLabel(result)}
-                </span>
-            </div>
-            <button
-                type="button"
-                onClick={onRefresh}
-                className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded border border-foreground/15 bg-background px-3 py-2 font-mono text-[11.5px] tracking-[0.06em] transition-colors hover:border-foreground/40"
-            >
-                <RefreshCw className="size-3.5" />
-                {result.cached ? "Fetch fresh" : "Re-check"}
-            </button>
-        </Tile>
-    );
-}
-
-function priorsLabel(n: number): string {
-    if (n === 0) return "none";
-    return `${n} ${n === 1 ? "check" : "checks"}`;
-}
-
-/** "6h ago", ticking. Whether it came off the cache is the tile's note, one
- *  line up, rather than a second line here. */
-function Freshness({ checkedAt }: Readonly<{ checkedAt: string }>) {
-    const [now, setNow] = useState(() => Date.now());
-    useEffect(() => {
-        const id = setInterval(() => setNow(Date.now()), 30_000);
-        return () => clearInterval(id);
-    }, []);
-    return (
-        <div
-            suppressHydrationWarning
-            title={`Checked ${new Date(checkedAt).toLocaleString()}`}
-            className="font-mono text-[22px] leading-none font-bold"
-        >
-            {relativeTime(checkedAt, now)}
-        </div>
-    );
 }
 
 /**
@@ -322,24 +244,7 @@ export function CopyBox({
  * of its mechanism, which only means something to a reader who already knows
  * the formula.
  */
-/**
- * Whether the narrow lane has a ballot to put beside the evidence.
- *
- * A hash has neither a location nor a resolution to vote on, so the lane would
- * be an empty tinted column running the height of the detector list. The
- * evidence takes the full twelve instead: a tile that has nothing to say should
- * not leave a hole where it would have been.
- */
-export function hasBallots(result: AnyCheckResult): boolean {
-    const geo = "geoResolution" in result ? result.geoResolution : undefined;
-    const dns = isDomainResult(result) ? result.context?.originResolverConsensus : undefined;
-    return Boolean(geo?.country || dns?.perResolver?.length);
-}
-
-export function EvidenceTile({
-    result,
-    span = 9,
-}: Readonly<{ result: AnyCheckResult; span?: 9 | 12 }>) {
+export function EvidenceTile({ result }: Readonly<{ result: AnyCheckResult }>) {
     const rows = useMemo(() => detectorRows(result.sources), [result.sources]);
     const confidence = useMemo(
         () => scoreConfidence({ sources: result.sources, scoreBreakdown: result.scoreBreakdown }),
@@ -356,7 +261,7 @@ export function EvidenceTile({
     const half = Math.ceil(silent.length / 2);
 
     return (
-        <Tile span={span} id="evidence">
+        <Tile span={12} id="evidence">
             {spoke.map((row) => (
                 <DetectorRow key={row.id} row={row} />
             ))}
@@ -502,93 +407,6 @@ function Track({ row }: Readonly<{ row: DetectorRow }>) {
     );
 }
 
-/**
- * How each provider voted, as the frame's narrow lane.
- *
- * Two ballots can appear here and their order is the order of the questions:
- * which address the name resolves to, then where that address is. A hash has
- * neither and the tile does not render.
- */
-export function BallotsTile({ result }: Readonly<{ result: AnyCheckResult }>) {
-    const votes = useMemo(() => {
-        const res = "geoResolution" in result ? result.geoResolution : undefined;
-        return res ? buildVoteTable(res) : null;
-    }, [result]);
-    // Only a domain has a resolution to vote on. `originResolverConsensus` is
-    // dnsGeoSource's own rather than dnsSource's: the two are separate fetches
-    // and can name a different winning address on an anycast name, and this is
-    // the one the location rows beside it were reconciled from.
-    const dns = isDomainResult(result) ? result.context?.originResolverConsensus : undefined;
-    const ballot = useMemo(() => (dns ? buildResolverBallot(dns) : null), [dns]);
-    if (!votes && !ballot) return null;
-
-    return (
-        <Tile span={3} tone="rail" title="Ballots">
-            {ballot && (
-                <>
-                    <SubLabel className="mt-0">Resolvers, on {ballot.winner}</SubLabel>
-                    <ResolverVotes ballot={ballot} order={dns!.perResolver} />
-                </>
-            )}
-            {votes && (
-                <>
-                    <SubLabel className={ballot ? undefined : "mt-0"}>Location</SubLabel>
-                    <GeoVotes table={votes} />
-                </>
-            )}
-        </Tile>
-    );
-}
-
-/** The two axes behind every tier on the page, in one table. */
-export function ConfidenceTile({ result }: Readonly<{ result: AnyCheckResult }>) {
-    const confidence = useMemo(
-        () => scoreConfidence({ sources: result.sources, scoreBreakdown: result.scoreBreakdown }),
-        [result.sources, result.scoreBreakdown],
-    );
-    // A hash has no location at all, and an address whose providers all failed
-    // has none either; both drop the row rather than drawing an empty one.
-    const geo = useMemo(
-        () => geoConfidence("geoResolution" in result ? result.geoResolution : undefined),
-        [result],
-    );
-    const dns = isDomainResult(result) ? result.context?.originResolverConsensus : undefined;
-    const resolve = useMemo(() => resolveConfidence(dns), [dns]);
-    if (!confidence) return null;
-
-    return (
-        <Tile span={3} tone="rail" title="Confidence">
-            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2.5">
-                <ConfidenceRow
-                    title="Score"
-                    coverage={confidence.coverage}
-                    agreement={confidence.agreement}
-                    level={confidence.level}
-                />
-                {/* Resolution above location, because it is upstream of it:
-                    the address the resolvers settled on is the address the
-                    location providers were then asked about. */}
-                {resolve && (
-                    <ConfidenceRow
-                        title="Resolution"
-                        coverage={resolve.coverage}
-                        agreement={resolve.agreement}
-                        level={resolve.level}
-                    />
-                )}
-                {geo && (
-                    <ConfidenceRow
-                        title="Location"
-                        coverage={geo.coverage}
-                        agreement={geo.agreement}
-                        level={geo.level}
-                    />
-                )}
-            </div>
-        </Tile>
-    );
-}
-
 /** The small label that names a run of rows inside a tile. */
 function SubLabel({
     children,
@@ -604,151 +422,4 @@ function SubLabel({
             {children}
         </div>
     );
-}
-
-/**
- * How each location provider voted, in the frame's narrow lane.
- *
- * One column, not two. The ballot used to be halved to fit a full-width
- * section; in a three-column tile the providers read straight down in their
- * fixed order, which is the order they were meant to be found in, and the
- * column headers are stated once.
- */
-function GeoVotes({ table }: Readonly<{ table: VoteTable }>) {
-    const cols = `minmax(0,1fr) repeat(${table.fields.length}, 1.6rem)`;
-    return (
-        <div>
-            <div
-                className="grid items-center gap-x-2 border-b border-foreground/12 py-1"
-                style={{ gridTemplateColumns: cols }}
-            >
-                <span />
-                {table.fields.map((f) => (
-                    <span
-                        key={f.key}
-                        title={f.label}
-                        className="truncate text-center font-mono text-[9px] tracking-[0.08em] text-muted-foreground uppercase"
-                    >
-                        {f.label.slice(0, 4)}
-                    </span>
-                ))}
-            </div>
-            {table.providers.map((id) => (
-                <div
-                    key={id}
-                    className="grid items-center gap-x-2 border-b border-foreground/12 py-1 last:border-b-0"
-                    style={{ gridTemplateColumns: cols }}
-                >
-                    <span className="truncate font-mono text-[11px]">{providerLabel(id)}</span>
-                    {table.fields.map((f) => (
-                        <span key={f.key} className="flex justify-center">
-                            <VoteMark cell={f.cells[id]} compact />
-                        </span>
-                    ))}
-                </div>
-            ))}
-        </div>
-    );
-}
-
-/**
- * How each resolver answered.
- *
- * The same shape as the location ballot above it, with one column instead of
- * four: every resolver was asked the one question, and what it said is either
- * the winning answer set or a different one. A dissenting resolver prints what
- * it returned, since on an anycast or GeoDNS name that value *is* the finding
- * rather than an error.
- *
- * The fixed resolver order comes from the consensus rather than the ballot's
- * keyed cells, because object key order is not a contract and the reader is
- * meant to find a resolver in the same place every time.
- */
-function ResolverVotes({
-    ballot,
-    order,
-}: Readonly<{ ballot: ResolverBallot; order: { resolver: string }[] }>) {
-    return (
-        <div>
-            {order.map(({ resolver }) => (
-                <div
-                    key={resolver}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 border-b border-foreground/12 py-1 last:border-b-0"
-                >
-                    <span className="truncate font-mono text-[11px]">{resolver}</span>
-                    <span className="flex min-w-0 justify-end font-mono text-[10.5px]">
-                        <VoteMark cell={ballot.cells[resolver]} compact />
-                    </span>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-/**
- * One row of the confidence table: a name, two ladders, the tier they add up to.
- *
- * Score, resolution and location share the table, which is the point. They are
- * different measurements of different things, but they answer the same two
- * questions, how much was measured and how much it agrees, so stacking them
- * makes the comparison the layout rather than something the reader assembles.
- *
- * Both ladders survive the move into a three-column tile, at the cost of the
- * words that used to name each rung. Coverage and agreement are deliberately
- * independent: wide coverage with low agreement means everyone looked and they
- * disagree, narrow coverage with high agreement means the two that answered
- * happened to concur, and collapsing them into one meter loses the distinction
- * this table exists to draw. The words move to the title attribute, where a
- * reader who wants the rung named can still get it.
- */
-function ConfidenceRow({
-    title,
-    coverage,
-    agreement,
-    level,
-}: Readonly<{ title: string; coverage: number; agreement: number; level: string }>) {
-    return (
-        <>
-            <span className="font-mono text-[9.5px] font-bold tracking-[0.12em] uppercase">
-                {title}
-            </span>
-            <span className="flex items-center gap-3">
-                <FlatLadder
-                    rung={rungOf(coverage)}
-                    className="mt-0 w-11 shrink-0"
-                    title={`Coverage: ${coverageWord(coverage)}`}
-                />
-                <FlatLadder
-                    rung={rungOf(agreement)}
-                    className="mt-0 w-11 shrink-0"
-                    title={`Agreement: ${agreementWord(agreement)}`}
-                />
-            </span>
-            <span className="text-right font-mono text-[13px] font-bold uppercase">{level}</span>
-        </>
-    );
-}
-
-/** A 0 to 1 share as one of the four rungs. */
-function rungOf(share: number): PanelRung {
-    if (share >= 0.85) return 4;
-    if (share >= 0.65) return 3;
-    if (share >= 0.4) return 2;
-    if (share > 0) return 1;
-    return 0;
-}
-
-function coverageWord(share: number): string {
-    if (share >= 0.85) return "Nearly all";
-    if (share >= 0.65) return "Most";
-    if (share >= 0.4) return "Some";
-    if (share > 0) return "Few";
-    return "None";
-}
-
-function agreementWord(share: number): string {
-    if (share >= 0.85) return "Near total";
-    if (share >= 0.65) return "Broad";
-    if (share >= 0.4) return "Split";
-    return "Divided";
 }

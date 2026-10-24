@@ -1,6 +1,5 @@
 import type { SourceFinding, TiSource } from "../../types";
 import { errorMessage, isTimeout, postJson } from "../../http";
-import { apiKey } from "../../keys";
 
 interface ThreatMatch {
   threatType?: string;
@@ -40,7 +39,7 @@ export async function safeBrowsingLookup(
   indicator: string,
   signal: AbortSignal,
 ): Promise<SourceFinding> {
-  const key = apiKey("GOOGLE_SAFE_BROWSING_API_KEY");
+  const key = process.env.GOOGLE_SAFE_BROWSING_API_KEY;
   if (!key) return { status: "skipped" };
   try {
     const { ok, status, data } = await postJson<SbResponse>(
@@ -99,6 +98,6 @@ export const safeBrowsingSource: TiSource = {
     weight: 1,
     keyEnv: "GOOGLE_SAFE_BROWSING_API_KEY",
   },
-  isEnabled: () => Boolean(apiKey("GOOGLE_SAFE_BROWSING_API_KEY")),
+  isEnabled: () => Boolean(process.env.GOOGLE_SAFE_BROWSING_API_KEY),
   check: (domain, signal) => safeBrowsingLookup(domain, signal),
 };

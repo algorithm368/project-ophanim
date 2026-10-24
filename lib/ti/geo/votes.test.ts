@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Confidence, GeoResolution, ResolvedField } from "@/lib/ti/types";
-import { buildVoteTable, providerLabel } from "@/lib/ti/geo/votes";
+import {
+  buildVoteTable,
+  providerLabel,
+  VOTE_FIELDS,
+  voteMarkOf,
+  voteMarksUsed,
+} from "@/lib/ti/geo/votes";
 
 const FLAGS: GeoResolution["flags"] = {
   isHosting: false,
@@ -132,5 +138,30 @@ describe("buildVoteTable — remaining shapes", () => {
       res({ country: rf("US", { sources: ["zz-b", "ip-api", "zz-a"] }) }),
     )!;
     expect(table.providers).toEqual(["ip-api", "zz-b", "zz-a"]);
+  });
+});
+
+describe("voteMarkOf", () => {
+  it("names each cell by what it is drawn as", () => {
+    expect(voteMarkOf(undefined)).toBe("silent");
+    expect(voteMarkOf({ status: "absent" })).toBe("silent");
+    expect(voteMarkOf({ status: "dissent", value: "Canada" })).toBe("differs");
+    expect(voteMarkOf({ status: "scatter" })).toBe("near");
+    expect(voteMarkOf({ status: "win" })).toBe("agrees");
+    expect(voteMarkOf({ status: "win", authority: true })).toBe("registry");
+  });
+});
+
+describe("voteMarksUsed", () => {
+  it("lists only the marks present, in legend order", () => {
+    expect(
+      voteMarksUsed([{ status: "win", authority: true }, undefined, { status: "win" }, { status: "win" }]),
+    ).toEqual(["agrees", "registry", "silent"]);
+  });
+});
+
+describe("VOTE_FIELDS", () => {
+  it("covers every column a vote table can have", () => {
+    expect(VOTE_FIELDS.map((f) => f.key)).toEqual(["country", "city", "coordinates", "asn"]);
   });
 });

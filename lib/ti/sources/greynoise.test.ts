@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { greyNoiseScore, greyNoiseSource, greyNoiseVouches } from "./greynoise";
 import { getJson } from "../http";
-import { withLane } from "../keys";
 import {
   getCachedGreyNoiseIdentification,
   setCachedGreyNoiseIdentification,
@@ -196,27 +195,5 @@ describe("greyNoiseSource.check — remaining paths", () => {
     expect((await greyNoiseSource.check("1.2.3.4", signal)).status).toBe("timeout");
     vi.mocked(getJson).mockRejectedValue(new Error("boom"));
     expect((await greyNoiseSource.check("1.2.3.4", signal)).error).toBe("boom");
-  });
-});
-
-describe("greyNoiseSource — per-lane key", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.mocked(getJson).mockReset();
-  });
-
-  it("uses the bulk key inside the bulk lane", async () => {
-    vi.stubEnv("GREYNOISE_API_KEY", "shared");
-    vi.stubEnv("GREYNOISE_API_KEY_BULK", "own");
-    vi.mocked(getJson).mockResolvedValue({ ok: false, status: 500, data: {}, text: "" });
-    await withLane("bulk", () => greyNoiseSource.check("1.2.3.4", new AbortController().signal));
-    expect(vi.mocked(getJson).mock.calls[0][2]).toEqual(expect.objectContaining({ key: "own" }));
-  });
-
-  it("enables on a bulk-only key in the bulk lane, not in /check's", async () => {
-    vi.stubEnv("GREYNOISE_API_KEY", "");
-    vi.stubEnv("GREYNOISE_API_KEY_BULK", "own");
-    expect(greyNoiseSource.isEnabled()).toBe(false);
-    expect(await withLane("bulk", async () => greyNoiseSource.isEnabled())).toBe(true);
   });
 });

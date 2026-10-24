@@ -1,6 +1,5 @@
 import type { GeoContext, RelatedIndicator, SourceFinding, TiSource } from "../types";
 import { errorMessage, getJson, isTimeout } from "../http";
-import { apiKey } from "../keys";
 
 interface AbuseResponse {
   data?: {
@@ -139,9 +138,9 @@ export const abuseIpdbSource: TiSource = {
     families: [4, 6],
     keyEnv: "ABUSEIPDB_API_KEY",
   },
-  isEnabled: () => Boolean(apiKey("ABUSEIPDB_API_KEY")),
+  isEnabled: () => Boolean(process.env.ABUSEIPDB_API_KEY),
   async check(ip, signal): Promise<SourceFinding> {
-    const key = apiKey("ABUSEIPDB_API_KEY");
+    const key = process.env.ABUSEIPDB_API_KEY;
     if (!key) return { status: "skipped" };
     try {
       // &verbose adds the PTR hostnames + per-report category ids (same call,
