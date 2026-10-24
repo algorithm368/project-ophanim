@@ -201,6 +201,14 @@ is `typecheck`, `lint`, `test`, `build`, in that order because the first three
 localize a failure better than a build log does. The `sonar` job is separate and
 not gated on `check`: analysis of broken code is still worth having.
 
+`.github/workflows/deps-watch.yml` runs `scripts/deps-watch.mjs` every Monday and
+keeps one issue, labelled `deps-watch`, current with what Dependabot's pull
+requests do not show: everything behind in one list, the upgrades held back on
+purpose with the highest release their blockers already accept, and the Bun line
+CI and Vercel run against the newest release. It opens or reopens the issue when
+something can move and closes it when nothing can. `bun scripts/deps-watch.mjs`
+prints the same report locally, after a `bun install`.
+
 Sonar analyses this repo as `algorithm368_project-ophanim`. Two things about it
 are easy to get wrong:
 
