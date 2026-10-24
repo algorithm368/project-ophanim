@@ -15,10 +15,12 @@ import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } fr
  * and wants to know what the thing actually is. Four rules follow, and each was
  * decided against a built version that did the opposite:
  *
- *  - **One fixed order, no groups.** The same fields in the same places on
- *    every lookup, so the eye learns where each fact lives and stops reading
- *    labels. Grouping by aspect and grouping by who said it were both tried and
- *    both cost more than they returned.
+ *  - **One fixed order.** The same fields in the same places on every lookup,
+ *    so the eye learns where each fact lives and stops reading labels. A
+ *    domain's fields are also grouped by aspect (registration, resolution,
+ *    mail, certificates): its twenty rows read as a wall, and the headings are
+ *    what let a reader go straight to the mail posture. An address and a file
+ *    are still one flat list.
  *  - **Every field, every time.** A field with nothing behind it prints
  *    `none published` rather than vanishing. A host with no reverse name and no
  *    operator entry is telling you something, and a card that silently skipped
@@ -51,6 +53,20 @@ export type IdentityClaim = {
   /** Nothing was published for this field. Drawn quiet, so an absence reads as
    *  an absence rather than as a value. */
   absent?: boolean;
+  /** The aspect the field belongs to, which the record heads it with. Only a
+   *  domain's fields carry one. */
+  group?: string;
+  /** The reading of the value in a word or two ("Softfail", "Locked"), set
+   *  before it and heavier. `value` is then the detail behind the reading. */
+  lead?: string;
+  /** The record as published, set small under the reading, so the evidence
+   *  for it can still be read and copied. */
+  raw?: string;
+  /** A list set one item per line. `value` still holds it comma-joined. */
+  lines?: string[];
+  /** A value a machine reads (an address, a host, a record), set in mono so
+   *  `l` and `1` stay apart. Prose values are set in the page's sans. */
+  data?: boolean;
 };
 
 /**
@@ -312,48 +328,191 @@ const GRAVE_STATUS: Record<string, string> = {
   redemptionperiod: "expired, in redemption",
 };
 
-export function standing(statuses: string[]): { value?: string; grave: boolean } {
-  const grave = statuses.map((s) => GRAVE_STATUS[s.toLowerCase()]).find(Boolean);
+/** RDAP spells a status "client transfer prohibited" and EPP spells it
+ *  "clientTransferProhibited"; both reduce to the same key. */
+const statusKey = (s: string): string => s.toLowerCase().replace(/[^a-z]/g, "");
+
+const LOCK_ACTIONS = ["delete", "transfer", "update"] as const;
+
+/**
+ * A domain's statuses as a reading of its locks.
+ *
+ * The six `*Prohibited` codes are the point of the field, and as a list they
+ * were three lines of near-identical words. Read instead: what is locked, and
+ * by whom ("Transfer locked, by client"). Any other status is named after it.
+ * A status that means the name is going away outranks all of it.
+ */
+/** A reading of the locks, or a grave status (or none) as a plain value. */
+export type Standing =
+  | { lead: string; value: string; grave: false }
+  | { lead?: undefined; value?: string; grave: boolean };
+
+export function standing(statuses: string[]): Standing {
+  const keys = statuses.map(statusKey);
+  const grave = keys.map((k) => GRAVE_STATUS[k]).find(Boolean);
   if (grave) return { value: grave, grave: true };
-  return { value: statuses.length ? list(statuses) : undefined, grave: false };
+  if (statuses.length === 0) return { grave: false };
+
+  const matches = keys.map((k) => /^(client|server)(delete|transfer|update)prohibited$/.exec(k));
+  const locks = matches
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map(([, by, action]) => ({ by, action }));
+  const other = statuses.filter((_, i) => matches[i] === null);
+  const also = other.length ? list(other.map((s) => s.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase())) : "";
+
+  const actions = LOCK_ACTIONS.filter((a) => locks.some((l) => l.action === a));
+  const whoLocks = (a: string) => list(locks.filter((l) => l.action === a).map((l) => l.by)).replace(", ", " and ");
+  let lead = "Unlocked";
+  let detail = "";
+  if (locks.length === 6) {
+    lead = "Locked";
+    detail = "client and server";
+  } else if (actions.length) {
+    const named = actions.join(", ");
+    lead = `${named[0].toUpperCase()}${named.slice(1)} locked`;
+    const who = new Set(actions.map(whoLocks));
+    detail = who.size === 1 ? `by ${[...who][0]}` : actions.map((a) => `${a} by ${whoLocks(a)}`).join(", ");
+  }
+  // Never empty: a status is either one of the six locks, which leaves a
+  // detail, or another status, which is named.
+  return { lead, value: parts(detail, also && `also ${also}`), grave: false };
 }
 
+const SPF_ALL: Record<string, string> = { "-": "Fail", "~": "Softfail", "?": "Neutral", "+": "Pass all" };
+
+/** Counted as "1 include" or "3 addresses". */
+function tally(n: number, word: string): string | false {
+  if (n === 0) return false;
+  if (n === 1) return `1 ${word}`;
+  return `${n} ${word}${word.endsWith("s") ? "es" : "s"}`;
+}
+
+/**
+ * An SPF record as its policy and its size.
+ *
+ * The `all` qualifier is the policy, what a receiver does with mail from
+ * anywhere not listed, so it leads. The rest is counted rather than printed,
+ * since the record itself is set in full under the reading.
+ */
+export function spfReading(spf: string): { lead: string; value?: string } {
+  const terms = spf.trim().split(/\s+/).slice(1);
+  const all = terms.map((t) => /^([-~?+]?)all$/i.exec(t)).find(Boolean);
+  const redirect = terms.find((t) => /^redirect=/i.test(t));
+  let lead = "No policy";
+  if (all) lead = SPF_ALL[all[1] || "+"];
+  else if (redirect) lead = "Redirect";
+  const rest = terms.filter((t) => !/^[-~?+]?all$/i.test(t) && !/^redirect=/i.test(t));
+  const addresses = rest.filter((t) => /^[-~?+]?ip[46]:/i.test(t)).length;
+  const includes = rest.filter((t) => /^[-~?+]?include:/i.test(t)).length;
+  const value = parts(
+    redirect && `to ${redirect.slice("redirect=".length)}`,
+    tally(addresses, "address"),
+    tally(includes, "include"),
+    tally(rest.length - addresses - includes, "other"),
+  );
+  return { lead, value: value || undefined };
+}
+
+/** A DMARC record as its policy and where it reports to. */
+export function dmarcReading(dmarc: string): { lead: string; value: string } {
+  const tag = (name: string) => new RegExp(`(?:^|;)\\s*${name}\\s*=\\s*([^;]+)`, "i").exec(dmarc)?.[1].trim();
+  const policy = tag("p")?.toLowerCase();
+  const rua = tag("rua")
+    ?.split(",")
+    .map((u) => u.trim().replace(/^mailto:/i, ""))
+    .filter(Boolean);
+  return {
+    lead: policy ? `${policy[0].toUpperCase()}${policy.slice(1)}` : "No policy",
+    value: rua?.length ? `reports to ${list(rua)}` : "no report address",
+  };
+}
+
+/** Mail providers recognisable from their MX hosts alone. */
+const MAIL_PROVIDERS: [RegExp, string][] = [
+  [/(^|\.)(aspmx\.l\.google\.com|googlemail\.com)$/, "Google Workspace"],
+  [/\.mail\.protection\.outlook\.com$/, "Microsoft 365"],
+  [/\.pphosted\.com$/, "Proofpoint"],
+  [/\.mimecast\.com$/, "Mimecast"],
+  [/(^|\.)zoho\.(com|eu|in)$/, "Zoho Mail"],
+  [/\.mx\.cloudflare\.net$/, "Cloudflare Email Routing"],
+];
+
+/** Who handles the mail, when every MX host belongs to one known provider. */
+export function mailProvider(hosts: string[]): string | undefined {
+  if (hosts.length === 0) return undefined;
+  const lower = hosts.map((h) => h.toLowerCase().replace(/\.$/, ""));
+  return MAIL_PROVIDERS.find(([re]) => lower.every((h) => re.test(h)))?.[1];
+}
+
+/** Tags every claim with its group. */
+const group = (name: string, claims: IdentityClaim[]): IdentityClaim[] =>
+  claims.map((c) => ({ ...c, group: name }));
+
+/** A list as a claim, one item per line, in the order given. */
+const lined = (key: string, label: string, items: string[], extra: Omit<IdentityClaim, "key" | "label" | "value"> = {}) => {
+  const unique = [...new Set(items.filter(Boolean))];
+  return f(key, label, list(unique), unique.length ? { lines: unique, data: true, ...extra } : extra);
+};
+
+/** A claim read as a word with its detail behind it, plus what it was read from. */
+function read(key: string, label: string, raw: string | undefined, reading: (raw: string) => { lead: string; value?: string }): IdentityClaim {
+  if (!raw) return f(key, label, undefined);
+  const { lead, value } = reading(raw);
+  return { key, label, lead, value: value ?? "", raw };
+}
+
+/**
+ * A domain's fields, by aspect.
+ *
+ * Four facts are left to the page around it rather than repeated here: the
+ * content category is the hero's class, the country and the Tranco rank are
+ * vitals, and the subdomains have a tile of their own.
+ */
 function domainFields(r: DomainCheckResult): IdentityClaim[] {
   const ctx = r.context;
-  const res = r.geoResolution;
   const range = ok(r.sources, "cloud-range")?.details;
   const certs = r.certificates ?? [];
-  const rank = ok(r.sources, "tranco")?.details?.rank;
   const cf = ok(r.sources, "cloudflare-intel")?.details;
   const state = standing(ctx?.statuses ?? []);
+  const mx = [...new Set(ctx?.mx ?? [])].sort();
+  const provider = mailProvider(mx);
 
   return [
-    f("category", "Category", list(ctx?.categories ?? [])),
-    f("application", "Known as", cleanAppName(str(cf?.application))),
-    f("registrar", "Registrar", ctx?.registrar),
-    f("created", "Registered", day(ctx?.createdAt)),
-    f("expires", "Paid to", day(ctx?.expiresAt)),
-    f("standing", "Standing", state.value, { notable: state.grave || undefined }),
-    f("resolve", "Resolves to", ctx?.nxdomain ? "no such name" : list(ctx?.resolvedIps ?? []), {
-      notable: ctx?.nxdomain || undefined,
-    }),
-    f("ipv6", "IPv6", list(ctx?.ipv6 ?? [])),
-    f("country", "Country", parts(res?.country?.value, res?.city?.value), {
-      countryCode: res?.countryCode,
-    }),
-    f("range", "Published range", parts(str(range?.provider), str(range?.cidr))),
-    f("reverse", "Reverse names", list(ctx?.reverse ?? [])),
-    f("ns", "Nameservers", list(ctx?.nameservers ?? [])),
-    f("mx", "Mail hosts", list(ctx?.mx ?? [])),
-    f("spf", "SPF", ctx?.spf),
-    f("dmarc", "DMARC", ctx?.dmarc),
-    f("dnssec", "DNSSEC", ctx?.dnssec === "unknown" ? undefined : ctx?.dnssec),
-    f("caa", "Certificates from", list(caaIssuers(ctx?.caa ?? []))),
-    f("certs", "Certificates", certs.length ? `${certs.length} in CT logs, ${certs[0].issuer}` : undefined),
-    f("subs", "Subdomains", r.subdomains?.length ? String(r.subdomains.length) : undefined),
-    f("tranco", "Tranco rank", typeof rank === "number" ? rank.toLocaleString("en-US") : undefined),
-    f("soa", "SOA", ctx?.soa),
-    f("cname", "CNAME", list(ctx?.cname ?? [])),
+    ...group("Registration", [
+      f("application", "Known as", cleanAppName(str(cf?.application))),
+      f("registrar", "Registrar", ctx?.registrar),
+      f("created", "Registered", day(ctx?.createdAt), { data: true }),
+      f("expires", "Paid to", day(ctx?.expiresAt), { data: true }),
+      state.lead
+        ? { key: "standing", label: "Standing", lead: state.lead, value: state.value }
+        : f("standing", "Standing", state.value, { notable: state.grave || undefined }),
+      f("dnssec", "DNSSEC", ctx?.dnssec === "unknown" ? undefined : ctx?.dnssec),
+    ]),
+    ...group("Resolution", [
+      ctx?.nxdomain
+        ? f("resolve", "Resolves to", "no such name", { notable: true })
+        : lined("resolve", "Resolves to", ctx?.resolvedIps ?? []),
+      lined("ipv6", "IPv6", ctx?.ipv6 ?? []),
+      lined("reverse", "Reverse names", ctx?.reverse ?? []),
+      lined("ns", "Nameservers", [...(ctx?.nameservers ?? [])].sort()),
+    ]),
+    ...group("Other records", [
+      lined("cname", "CNAME", ctx?.cname ?? []),
+      f("range", "Published range", parts(str(range?.provider), str(range?.cidr))),
+      f("soa", "SOA", ctx?.soa, { data: true }),
+    ]),
+    ...group("Mail", [
+      provider
+        ? { key: "mx", label: "Mail hosts", lead: provider, value: `${mx.length} ${mx.length === 1 ? "host" : "hosts"}`, lines: mx }
+        : lined("mx", "Mail hosts", mx),
+      read("spf", "SPF", ctx?.spf, spfReading),
+      read("dmarc", "DMARC", ctx?.dmarc, dmarcReading),
+    ]),
+    ...group("Certificates", [
+      f("certs", "Issued by", certs[0]?.issuer),
+      f("ct", "In CT logs", certs.length > 0 && String(certs.length), { data: true }),
+      lined("caa", "Allowed by CAA", caaIssuers(ctx?.caa ?? [])),
+    ]),
   ];
 }
 

@@ -6,13 +6,16 @@ import {
   caaIssuers,
   cleanAppName,
   countryName,
+  dmarcReading,
   listedAs,
   longestRun,
+  mailProvider,
   markParts,
   portList,
   signatureVital,
   splitAsn,
   typeWord,
+  spfReading,
   standing,
   type IdentityRecord,
 } from "@/lib/ti/identity";
@@ -369,15 +372,104 @@ describe("standing", () => {
     });
   });
 
-  it("lists the routine locks without calling them grave", () => {
-    expect(standing(["clientTransferProhibited"])).toEqual({
-      value: "clientTransferProhibited",
+  it("reads the RDAP spelling of a grave status too", () => {
+    expect(standing(["client hold"]).grave).toBe(true);
+  });
+
+  it("reads one lock as what is locked and by whom", () => {
+    expect(standing(["client transfer prohibited"])).toEqual({
+      lead: "Transfer locked",
+      value: "by client",
       grave: false,
     });
   });
 
+  it("reads all six locks as locked", () => {
+    const six = ["client", "server"].flatMap((by) =>
+      ["Delete", "Transfer", "Update"].map((a) => `${by}${a}Prohibited`),
+    );
+    expect(standing(six)).toEqual({ lead: "Locked", value: "client and server", grave: false });
+  });
+
+  it("says who holds each lock when they differ", () => {
+    expect(
+      standing(["clientTransferProhibited", "serverTransferProhibited", "clientUpdateProhibited"]),
+    ).toEqual({
+      lead: "Transfer, update locked",
+      value: "transfer by client and server, update by client",
+      grave: false,
+    });
+  });
+
+  it("names the statuses that are not locks", () => {
+    expect(standing(["active"])).toEqual({ lead: "Unlocked", value: "also active", grave: false });
+    expect(standing(["clientTransferProhibited", "autoRenewPeriod"]).value).toBe(
+      "by client, also auto renew period",
+    );
+    // Prohibited, but not one of the six locks: named, not dropped.
+    expect(standing(["clientRenewProhibited"]).value).toBe("also client renew prohibited");
+  });
+
   it("answers nothing for no statuses at all", () => {
-    expect(standing([])).toEqual({ value: undefined, grave: false });
+    expect(standing([])).toEqual({ grave: false });
+  });
+});
+
+describe("spfReading", () => {
+  it("leads with the all qualifier and counts the rest", () => {
+    expect(
+      spfReading("v=spf1 ip4:1.2.3.4 ip4:5.6.7.8 ip6:2001:db8::1 include:_spf.google.com mx ~all"),
+    ).toEqual({ lead: "Softfail", value: "3 addresses, 1 include, 1 other" });
+  });
+
+  it("reads each qualifier, and a bare all as pass", () => {
+    expect(spfReading("v=spf1 -all")).toEqual({ lead: "Fail", value: undefined });
+    expect(spfReading("v=spf1 ?all").lead).toBe("Neutral");
+    expect(spfReading("v=spf1 all").lead).toBe("Pass all");
+    expect(spfReading("v=spf1 +all").lead).toBe("Pass all");
+  });
+
+  it("follows a redirect when there is no all", () => {
+    expect(spfReading("v=spf1 redirect=_spf.example.test")).toEqual({
+      lead: "Redirect",
+      value: "to _spf.example.test",
+    });
+  });
+
+  it("says when there is no policy at all", () => {
+    expect(spfReading("v=spf1 include:a.test include:b.test")).toEqual({
+      lead: "No policy",
+      value: "2 includes",
+    });
+  });
+});
+
+describe("dmarcReading", () => {
+  it("reads the policy and the report addresses", () => {
+    expect(
+      dmarcReading("v=DMARC1; p=quarantine; sp=reject; rua=mailto:a@x.test,mailto:b@x.test"),
+    ).toEqual({ lead: "Quarantine", value: "reports to a@x.test, b@x.test" });
+  });
+
+  it("does not mistake sp= for the policy", () => {
+    expect(dmarcReading("v=DMARC1; sp=reject; p=none").lead).toBe("None");
+  });
+
+  it("says when there is no policy or no report address", () => {
+    expect(dmarcReading("v=DMARC1")).toEqual({ lead: "No policy", value: "no report address" });
+  });
+});
+
+describe("mailProvider", () => {
+  it("names a provider every host belongs to", () => {
+    expect(mailProvider(["aspmx.l.google.com", "alt1.aspmx.l.google.com."])).toBe("Google Workspace");
+    expect(mailProvider(["example-test.mail.protection.outlook.com"])).toBe("Microsoft 365");
+  });
+
+  it("names nobody for a mix, an unknown host, or no hosts", () => {
+    expect(mailProvider(["aspmx.l.google.com", "mx.example.test"])).toBeUndefined();
+    expect(mailProvider(["smtp.google.com"])).toBeUndefined();
+    expect(mailProvider([])).toBeUndefined();
   });
 });
 
@@ -450,28 +542,88 @@ describe("domains", () => {
     expect(find(buildIdentity(domain({ dnssec: "unknown" })), "dnssec")?.absent).toBe(true);
   });
 
-  it("reads the rank and the Cloudflare application", () => {
+  it("reads the Cloudflare application", () => {
     const rec = buildIdentity(
       domain(undefined, {
-        sources: [
-          src({ id: "tranco", details: { rank: 1234 } }),
-          src({ id: "cloudflare-intel", details: { application: "GitHub (Do Not Inspect)" } }),
-        ],
+        sources: [src({ id: "cloudflare-intel", details: { application: "GitHub (Do Not Inspect)" } })],
       }),
     );
-    expect(find(rec, "tranco")?.value).toBe("1,234");
     expect(find(rec, "application")?.value).toBe("GitHub");
   });
 
-  it("counts certificates and names the issuer", () => {
+  it("leaves to the page what the page already shows", () => {
+    // Category is the hero's class, country and rank are vitals, and the
+    // subdomains have their own tile.
     const rec = buildIdentity(
-      domain(undefined, {
-        certificates: [{ issuer: "GlobalSign", sans: [] }],
-        subdomains: ["a.example.test", "b.example.test"],
+      domain(
+        { categories: ["Search engines"] },
+        { sources: [src({ id: "tranco", details: { rank: 1234 } })], subdomains: ["a.example.test"] },
+      ),
+    );
+    for (const key of ["category", "country", "tranco", "subs"]) expect(find(rec, key)).toBeUndefined();
+  });
+
+  it("counts certificates and names the issuer", () => {
+    const rec = buildIdentity(domain(undefined, { certificates: [{ issuer: "GlobalSign", sans: [] }] }));
+    expect(find(rec, "certs")?.value).toBe("GlobalSign");
+    expect(find(rec, "ct")?.value).toBe("1");
+  });
+
+  it("heads every field with its group, each group in one run", () => {
+    const groups = buildIdentity(domain({})).fields.map((c) => c.group);
+    expect(groups.every(Boolean)).toBe(true);
+    expect([...new Set(groups)]).toEqual(["Registration", "Resolution", "Other records", "Mail", "Certificates"]);
+    const runs = groups.filter((g, i) => g !== groups[i - 1]);
+    expect(runs).toHaveLength(5);
+  });
+
+  it("sets lists one per line, nameservers sorted", () => {
+    const ns = find(buildIdentity(domain({ nameservers: ["ns2.test", "ns1.test"] })), "ns");
+    expect(ns?.lines).toEqual(["ns1.test", "ns2.test"]);
+    expect(ns?.data).toBe(true);
+  });
+
+  it("reads the mail posture, with the records under the reading", () => {
+    const rec = buildIdentity(
+      domain({
+        mx: ["alt1.aspmx.l.google.com", "aspmx.l.google.com"],
+        spf: "v=spf1 include:_spf.google.com ~all",
+        dmarc: "v=DMARC1; p=reject",
       }),
     );
-    expect(find(rec, "certs")?.value).toBe("1 in CT logs, GlobalSign");
-    expect(find(rec, "subs")?.value).toBe("2");
+    expect(find(rec, "mx")).toMatchObject({
+      lead: "Google Workspace",
+      value: "2 hosts",
+      lines: ["alt1.aspmx.l.google.com", "aspmx.l.google.com"],
+    });
+    expect(find(rec, "spf")).toMatchObject({ lead: "Softfail", value: "1 include", raw: "v=spf1 include:_spf.google.com ~all" });
+    expect(find(rec, "dmarc")).toMatchObject({ lead: "Reject", raw: "v=DMARC1; p=reject" });
+  });
+
+  it("counts one host as a host", () => {
+    expect(find(buildIdentity(domain({ mx: ["aspmx.l.google.com"] })), "mx")?.value).toBe("1 host");
+  });
+
+  it("lists unknown mail hosts plainly, and an empty SPF reading as no detail", () => {
+    const rec = buildIdentity(domain({ mx: ["smtp.example.test"], spf: "v=spf1 -all" }));
+    expect(find(rec, "mx")).toMatchObject({ lines: ["smtp.example.test"], data: true });
+    expect(find(rec, "mx")?.lead).toBeUndefined();
+    expect(find(rec, "spf")?.value).toBe("");
+  });
+
+  it("reads the locks, and keeps a grave status as a finding", () => {
+    expect(find(buildIdentity(domain({ statuses: ["clientTransferProhibited"] })), "standing")).toMatchObject({
+      lead: "Transfer locked",
+      value: "by client",
+    });
+    expect(find(buildIdentity(domain({ statuses: ["pendingDelete"] })), "standing")).toMatchObject({
+      value: "queued for deletion",
+      notable: true,
+    });
+  });
+
+  it("states the allowed issuers from CAA", () => {
+    expect(find(buildIdentity(domain({ caa: ['0 issue "pki.goog"'] })), "caa")?.lines).toEqual(["pki.goog"]);
   });
 });
 

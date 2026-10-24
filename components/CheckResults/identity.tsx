@@ -17,9 +17,10 @@ import { markFace } from "./mark-face";
  *
  * Rules this file exists to hold:
  *
- *  - One fixed list, in two columns, and nothing else. No groups, no headings
- *    inside the tile, no fold. The eye learns where each field sits and stops
- *    reading labels, which only works if the order never moves.
+ *  - One fixed list, in two columns, and no fold. The eye learns where each
+ *    field sits and stops reading labels, which only works if the order never
+ *    moves. A domain's list is also headed by aspect (see `GroupedLedger`); an
+ *    address's and a file's are not, yet.
  *  - The order runs *down* the first column and then down the second. That is
  *    explicit grid placement rather than CSS columns, because the two halves
  *    have to share row heights: with independent columns a wrapped value on the
@@ -63,14 +64,102 @@ export const RecordTile = memo(function RecordTile({
             title="Subject record"
             note={`${identity.fields.length} fields`}
         >
-            <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
-                {identity.fields.map((field, i) => (
-                    <Row key={field.key} claim={field} at={placement(i, identity.fields.length)} />
-                ))}
-            </div>
+            {identity.fields.some((field) => field.group) ? (
+                <GroupedLedger fields={identity.fields} />
+            ) : (
+                <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
+                    {identity.fields.map((field, i) => (
+                        <Row key={field.key} claim={field} at={placement(i, identity.fields.length)} />
+                    ))}
+                </div>
+            )}
         </Tile>
     );
 });
+
+/**
+ * The ledger under headings, one per aspect.
+ *
+ * The groups flow down the first column and on into the second, and the
+ * browser breaks between them where the two columns come out level, never
+ * inside one. So a group's column depends on how much the groups before it
+ * hold: a domain with a long SPF record pushes the later groups right. The
+ * order never changes, and the headings are what the eye goes by, which is
+ * why a group may change sides but a row may not leave its group.
+ *
+ * Prose (a registrar, a reading like "Softfail") is set in the page's sans and
+ * anything a machine reads in mono, so the line a reader would copy is the
+ * one that looks like it.
+ */
+function GroupedLedger({ fields }: Readonly<{ fields: IdentityClaim[] }>) {
+    const groups: { name: string; claims: IdentityClaim[] }[] = [];
+    for (const claim of fields) {
+        const name = claim.group ?? "";
+        const last = groups.at(-1);
+        if (last?.name === name) last.claims.push(claim);
+        else groups.push({ name, claims: [claim] });
+    }
+    return (
+        <div className="-mt-3.5 gap-x-10 md:columns-2">
+            {groups.map((g) => (
+                <section key={g.name} className="break-inside-avoid">
+                    <h3 className="border-b border-foreground/25 pt-3.5 pb-1.5 text-[11px] font-semibold tracking-[0.1em] uppercase">
+                        {g.name}
+                    </h3>
+                    <dl>
+                        {g.claims.map((claim) => (
+                            <div
+                                key={claim.key}
+                                className="grid grid-cols-[9rem_1fr] items-baseline gap-x-4 border-b border-foreground/8 py-[7px]"
+                            >
+                                <dt className="text-[10.5px] leading-5 font-medium tracking-[0.07em] text-muted-foreground uppercase">
+                                    {claim.label}
+                                </dt>
+                                <dd className="min-w-0 leading-5 wrap-anywhere">
+                                    <ClaimValue claim={claim} />
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                </section>
+            ))}
+        </div>
+    );
+}
+
+/** One value: its reading and detail, or the value itself, then the lines or
+ *  the raw record under it in small mono. */
+function ClaimValue({ claim }: Readonly<{ claim: IdentityClaim }>) {
+    const under = "mt-0.5 font-mono text-[11px] leading-[17px] text-muted-foreground";
+    if (claim.absent) {
+        return <span className="text-[13px] leading-5 text-foreground/40">{claim.value}</span>;
+    }
+    if (claim.lead) {
+        return (
+            <>
+                <span className="text-[14px] leading-5 font-semibold">{claim.lead}</span>
+                {claim.value && <span className="text-[13px] leading-5 text-muted-foreground"> {claim.value}</span>}
+                {claim.lines && <span className={cn(under, "block")}>{claim.lines.map((line) => <span key={line} className="block">{line}</span>)}</span>}
+                {claim.raw && <span className={cn(under, "block")}>{claim.raw}</span>}
+            </>
+        );
+    }
+    return (
+        <span
+            className={cn(
+                // A block, so a wrapped value keeps its own line height rather
+                // than the taller strut of the row around it.
+                "block leading-5",
+                claim.data ? "font-mono text-[12.5px]" : "text-[14px]",
+                claim.notable && "font-semibold",
+            )}
+        >
+            {claim.lines
+                ? claim.lines.map((line) => <span key={line} className="block">{line}</span>)
+                : claim.value}
+        </span>
+    );
+}
 
 /**
  * The headline facts, side by side, as marks.
