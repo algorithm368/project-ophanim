@@ -3,6 +3,7 @@ import { parseDomain } from "@/lib/domain";
 import { classifyIpLabel, contentCategory, ipEvidence } from "./indicator-class";
 import { formatBytes } from "./narrative";
 import { PORT_SERVICE, shodanHostInfo } from "./shodan";
+import { byCodeUnit } from "./sort";
 import { buildSubjectRecord, type AnyResult } from "./subject-record";
 import { isDomainResult, isHashResult } from "./types";
 import type { CheckResult, DomainCheckResult, HashCheckResult, SourceResult } from "./types";
@@ -474,7 +475,7 @@ function domainFields(r: DomainCheckResult): IdentityClaim[] {
   const certs = r.certificates ?? [];
   const cf = ok(r.sources, "cloudflare-intel")?.details;
   const state = standing(ctx?.statuses ?? []);
-  const mx = [...new Set(ctx?.mx ?? [])].sort();
+  const mx = [...new Set(ctx?.mx ?? [])].sort(byCodeUnit);
   const provider = mailProvider(mx);
 
   return [
@@ -494,7 +495,7 @@ function domainFields(r: DomainCheckResult): IdentityClaim[] {
         : lined("resolve", "Resolves to", ctx?.resolvedIps ?? []),
       lined("ipv6", "IPv6", ctx?.ipv6 ?? []),
       lined("reverse", "Reverse names", ctx?.reverse ?? []),
-      lined("ns", "Nameservers", [...(ctx?.nameservers ?? [])].sort()),
+      lined("ns", "Nameservers", [...(ctx?.nameservers ?? [])].sort(byCodeUnit)),
     ]),
     ...group("Other records", [
       lined("cname", "CNAME", ctx?.cname ?? []),

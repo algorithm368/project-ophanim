@@ -24,9 +24,13 @@ export function RailMap({ place }: Readonly<{ place: RailPlace }>) {
     const { lat, lon, countryCode } = place;
     useEffect(() => {
         let live = true;
-        import("@/lib/ti/geo/rail-globe").then((m) => {
-            if (live) setDrawing(m.drawGlobe({ lat, lon, countryCode }));
-        });
+        import("@/lib/ti/geo/rail-globe")
+            .then((m) => {
+                if (live) setDrawing(m.drawGlobe({ lat, lon, countryCode }));
+            })
+            .catch(() => {
+                // A chunk that fails to load leaves the caption to stand alone.
+            });
         return () => {
             live = false;
         };
