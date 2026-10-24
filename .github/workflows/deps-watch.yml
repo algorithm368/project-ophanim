@@ -1,0 +1,35 @@
+name: Dependency watch
+
+# Dependabot opens the upgrade pull requests. This keeps one issue, labelled
+# deps-watch, current with what they do not show: everything behind in one
+# list, the upgrades held back on purpose and whether what blocks them has
+# moved, and the Bun line CI and Vercel run against the newest release. The
+# logic, and why each part exists, is in scripts/deps-watch.mjs.
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+# A manual run overlapping the scheduled one could each find no issue and open
+# two.
+concurrency: deps-watch
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      # The report reads installed versions out of node_modules, so it needs
+      # the lockfile's exact tree rather than a fresh resolve.
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun scripts/deps-watch.mjs --issue
+        env:
+          GH_TOKEN: ${{ github.token }}
