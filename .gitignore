@@ -59,3 +59,6 @@ ds-bundle/
 # personal Claude Code settings and runtime locks
 .claude/settings.local.json
 .claude/*.lock
+
+# turborepo cache and logs
+.turbo/

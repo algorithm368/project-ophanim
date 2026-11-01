@@ -2,6 +2,7 @@
   "name": "project-ophanim",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "bun@1.4.0",
   "scripts": {
     "dev": "bun run --bun next dev",
     "build": "bun run --bun next build",
@@ -46,6 +47,7 @@
     "i18n-iso-countries": "^7.14.0",
     "playwright": "^1.64.1",
     "tailwindcss": "^4.3.3",
+    "turbo": "^2.11.10",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
   }
