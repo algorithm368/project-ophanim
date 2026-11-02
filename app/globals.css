@@ -6,13 +6,14 @@
 @theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);
-    /* Zero-download type: native system stacks (no webfont request, no font
-       layout shift). --font-sans drives all prose + headings; --font-mono
-       carries the data tokens (IPs, hashes, scores, timings). The --heading /
-       --hand aliases resolve to the same sans so the many existing
-       `font-heading` / `font-hand` usages need no per-component edits. */
-    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-        "Helvetica Neue", Arial, sans-serif;
+    /* --font-sans is IBM Plex Sans (loaded by next/font in app/layout.tsx,
+       falling back to the system stack) and drives all prose + headings;
+       --font-mono is the native system stack and carries the data tokens
+       (IPs, hashes, scores, timings). The --heading / --hand aliases
+       resolve to the same sans so the many existing `font-heading` /
+       `font-hand` usages need no per-component edits. */
+    --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui,
+        -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code",
         Menlo, Consolas, monospace;
     --font-heading: var(--font-sans);

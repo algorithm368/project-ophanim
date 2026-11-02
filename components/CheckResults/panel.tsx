@@ -32,6 +32,7 @@ import { markFace } from "./mark-face";
 import { useCopied } from "./primitives";
 import { RailMap } from "./rail-map";
 import { Sprite } from "./sprite";
+import { summaryFace } from "./summary-face";
 import { VERDICT_STYLE } from "./verdict";
 import { sourceWeight } from "@/lib/ti/weight";
 
@@ -209,7 +210,7 @@ export function CopyBox({
                 copied && "border-foreground/12 bg-muted/40",
             )}
         >
-            <p className="pb-7 text-[0.95rem] leading-relaxed text-foreground/85">{text}</p>
+            <p className={cn(summaryFace.className, "pb-7 text-[0.95rem] leading-relaxed text-foreground/85")}>{text}</p>
             <button
                 type="button"
                 onClick={(event) => {

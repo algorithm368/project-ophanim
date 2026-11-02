@@ -1,8 +1,9 @@
 import { Barlow_Condensed } from "next/font/google";
 
 /**
- * The one webfont in the app, and it sets nothing but marks: the vitals and
- * the hero's class.
+ * One of the app's webfonts, and it sets nothing but marks: the vitals and
+ * the hero's class. The others are the summary's, in `summary-face.ts`, and
+ * the page's sans, loaded in `app/layout.tsx`.
  *
  * Every mark in the strip is meant to be the same height, and a system face is
  * too wide for that: at the size the strip wants, a domain or a country name
