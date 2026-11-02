@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { buildSubjectRecord, fileThreat } from "@/lib/ti/subject-record";
 import { longestRun } from "@/lib/ti/identity";
 import { scoreConfidence } from "@/lib/ti/confidence";
+import { subjectParts } from "@/lib/ti/subject-parts";
 import { parseDomain } from "@/lib/domain";
 import {
     classifyDomainLabel,
@@ -107,8 +108,10 @@ export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
  * The class outranks the address in size on purpose. On the indicator that
  * started this, an anycast front door, "which address" is the question with no
  * useful answer and "what kind of address" is the one that changes what the
- * reader does next. The address stays a full line of selectable monospace above
- * it, because it is still the thing that gets copied into a block list.
+ * reader does next. The address stays above it as selectable text, because it
+ * is still the thing that gets copied into a block list, with the part that
+ * names it set strong: the registrable domain, or an address's last octet
+ * (`lib/ti/subject-parts.ts`).
  *
  * All three kinds carry one, from their own ladder: an address is classed by
  * how much identity it has, a name by whether it still answers and whose
@@ -116,14 +119,23 @@ export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
  */
 export function HeroTile({ result }: Readonly<{ result: AnyCheckResult }>) {
     const narrative = useMemo(() => narrativeFor(result), [result]);
-    const record = useMemo(() => buildSubjectRecord(result), [result]);
+    const parts = useMemo(() => subjectParts(result), [result]);
     const klass = useMemo(() => classFor(result), [result]);
 
     return (
         <Tile span={6} className="flex flex-col">
             <div className="@container mb-2 border-b border-foreground/12 pb-3">
-                <p className="font-mono text-[12px] break-all text-muted-foreground">
-                    {record.subject}
+                <p className="text-[12.5px] break-all text-muted-foreground">
+                    {/* At most one muted part and one strong one, so the
+                        weight is a key. */}
+                    {parts.map((part) => (
+                        <span
+                            key={String(part.strong)}
+                            className={cn(part.strong && "font-semibold text-foreground")}
+                        >
+                            {part.text}
+                        </span>
+                    ))}
                 </p>
                 <p
                     className={cn(markFace.className, "mt-2 leading-[0.82] tracking-[0.005em] uppercase")}
