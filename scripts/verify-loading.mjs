@@ -175,25 +175,27 @@ const subjectCalls = apiCalls().filter(
 );
 console.log(
   subjectCalls.length === 0
-    ? "  ✓ no subject fan-out from the browser (server read it from cache)"
+    ? "  ✓ no subject fan-out from the browser"
     : `  ✗ still fetching the subject: ${subjectCalls.join(", ")}`,
 );
 
-// ── 3. the cold path still reaches the network ──────────────────────────────
-// Removing the request on a cache hit is only correct if a miss still fetches.
-// A domain nobody has looked up here has no cached identity record, so this is
-// the branch that has to fall through to the browser.
+// ── 3. the cold path makes no lookup either ─────────────────────────────────
+// The scan page carries no passive record any more, so a domain nobody has
+// looked up here must not set off the fan-out from the browser, the expensive
+// path a cached read used to be there to avoid.
 const COLD = `verify-${Date.now()}.example.com`;
 console.log(`\n── GET /scan/${COLD} (nothing cached) ──`);
 await page.unrouteAll({ behavior: "ignoreErrors" });
 seen = [];
 await page.goto(`${BASE}/scan/${COLD}`, { waitUntil: "networkidle", timeout: 90000 });
 await page.waitForTimeout(3000);
-const coldSubject = apiCalls().filter((s) => s.includes("/api/check-domain?"));
+const coldSubject = apiCalls().filter(
+  (s) => s.includes("/api/check?") || s.includes("/api/check-domain?"),
+);
 console.log(
-  coldSubject.length
-    ? `  ✓ cache miss still fetches the subject: ${coldSubject.join(", ")}`
-    : "  ✗ nothing fetched, a miss would render an empty identity card forever",
+  coldSubject.length === 0
+    ? "  ✓ cache miss fetches no subject"
+    : `  ✗ still fetching the subject: ${coldSubject.join(", ")}`,
 );
 
 // ── 4. the lookup shell keeps its own shape ─────────────────────────────────

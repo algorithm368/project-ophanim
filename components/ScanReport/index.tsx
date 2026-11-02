@@ -3,28 +3,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IOCType } from "@/lib/ioc";
 import { pollIntervalFor } from "@/lib/scan-poll";
-import { checkUrlFor } from "@/lib/ti/endpoints";
-import {
-  subjectTargetFor,
-  type SubjectKind,
-} from "@/lib/ti/subject-target";
+import { subjectTargetFor } from "@/lib/ti/subject-target";
 import { mergeTargets, type MergedIndicator } from "@/lib/ti/url/active/merge";
 import { redFlagsFor, type RedFlag } from "@/lib/ti/url/active/red-flags";
 import { classifyScan, type ScanClass } from "@/lib/ti/url/active/scan-class";
 import { scanTargetsFor } from "@/lib/ti/url/active/targets";
 import type { ActiveScanBatch } from "@/lib/ti/url/active/types";
-import type { CheckResult, DomainCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
-import { Frame, Tile } from "@/components/CheckResults/frame";
-import { SectionNav, type NavItem } from "@/components/CheckResults/section-nav";
-import { IdentityCard as SubjectRecordCard } from "@/components/CheckResults/identity";
+import { Frame, Stack, Tile } from "@/components/CheckResults/frame";
 import { ActiveModeButton, ArmedPanel } from "./active-mode";
-import { BallotsTile } from "./ballots";
 import {
   RedFlagsTile,
   ScanHeroTile,
   ScanProvenanceTile,
   ScanRailTile,
+  ScanVitalsTile,
 } from "./entry";
 import { PayloadTile } from "./payload";
 import { ScanSearchBar } from "./search";
@@ -40,71 +33,6 @@ import {
   TraceSection,
   VerdictSection,
 } from "./sections/record";
-
-type SubjectState =
-  | { status: "loading" }
-  | {
-      status: "ready";
-      subjectKind: SubjectKind;
-      result: CheckResult | DomainCheckResult;
-      context?: string;
-    }
-  | { status: "failed" };
-
-// Headroom over the slowest identity route's worst case: the others top out
-// near 15s. Without this the fetch has no AbortSignal and will wait as long
-// as the platform allows, holding the card on "checking the sources"
-// indefinitely.
-const SUBJECT_TIMEOUT_MS = 60_000;
-
-/** The entry's tiles, in page order, then the passive record. The ids are what
- *  `redFlagsFor` links to and what the rail scrolls to, so the three lists are
- *  one list. Tiles that render nothing (no flags, no files, one engine) are
- *  pruned from the rail by `SectionNav` itself. */
-const SECTIONS: NavItem[] = [
-  { id: "flags", label: "Flags" },
-  { id: "request", label: "Path" },
-  { id: "payload", label: "Payload" },
-  { id: "page", label: "Page" },
-  { id: "network", label: "Network" },
-  { id: "dom", label: "Forms" },
-  { id: "identity", label: "Identity" },
-  { id: "certs", label: "Certs" },
-  { id: "verdicts", label: "Verdicts" },
-  { id: "ballots", label: "Ballots" },
-  { id: "trace", label: "Trace" },
-  { id: "subject", label: "Subject" },
-];
-
-/**
- * The subject's identity, one card, exactly what /check renders for whatever
- * this indicator's host actually is. A url's subject is its host, not the
- * URL itself, so a scanned path/query is named separately by the caller
- * rather than folded into this record.
- *
- * An if/else ladder rather than chained ternaries: `no-nested-ternary` is an
- * error in this project, not a warning. Pulled out of `ScanReport` itself so
- * that component's cognitive complexity stays under the enforced limit.
- */
-function IdentityCard({ subject }: Readonly<{ subject: SubjectState }>) {
-  if (subject.status === "failed") {
-    return (
-      <p className="text-sm text-muted-foreground">
-        The identity lookup failed, so nothing is known here, which is not the
-        same as nothing being found.
-      </p>
-    );
-  }
-  if (subject.status === "ready") {
-    return (
-      <SubjectRecordCard
-        result={subject.result as CheckResult | DomainCheckResult}
-        streaming={false}
-      />
-    );
-  }
-  return <SubjectRecordCard result={null} streaming />;
-}
 
 /** How far along a running batch is, as a bar and a count. */
 function ScanProgress({ batch }: Readonly<{ batch: ActiveScanBatch }>) {
@@ -257,8 +185,14 @@ function Entry({
         busy={busy}
         onRescan={onRescan}
       />
-      <RedFlagsTile flags={flags} />
-      <RequestSection merged={merged} scans={scans} batch={batch} />
+      {/* Beside the provenance rail, as /check stacks its vitals and evidence
+          there: the headline facts, the flags raised on them, and the path
+          the visit took, which together are about as tall as the rail. */}
+      <Stack span={9}>
+        <ScanVitalsTile merged={merged} flags={flags} now={now} />
+        <RedFlagsTile flags={flags} />
+        <RequestSection merged={merged} scans={scans} batch={batch} />
+      </Stack>
       {!empty && (
         <>
           <PayloadTile merged={merged} klass={klass} />
@@ -268,7 +202,6 @@ function Entry({
           <IdentitySection merged={merged} scans={scans} />
           <CertificateSection merged={merged} scans={scans} />
           <VerdictSection merged={merged} scans={scans} />
-          <BallotsTile scans={scans} />
         </>
       )}
       <TraceSection merged={merged} scans={scans} />
@@ -290,46 +223,26 @@ function Entry({
  * paragraphs that matched almost word for word. What the URLs answered
  * differently on is printed beside the folded value instead, which is the part
  * worth reading.
- *
- * The passive record comes last. It is context for a page that is about the
- * visit, and it used to occupy the whole first screen of a page whose own
- * subject was below it.
  */
 export function ScanReport({
   indicator,
   kind,
   initialBatch,
-  initialSubject,
 }: Readonly<{
   indicator: string;
   kind: IOCType;
   initialBatch: ActiveScanBatch | null;
-  /** The subject's cached identity record, read server-side. When present the
-   *  card is on screen in the first paint and no lookup is made at all. */
-  initialSubject: CheckResult | DomainCheckResult | null;
 }>) {
   const [batch, setBatch] = useState<ActiveScanBatch | null>(initialBatch);
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  // Computed synchronously, not just inside the fetch effect, so the initial
-  // state and the loading skeleton can both match the resolved kind's shape
-  // instead of guessing domain.
-  const target = useMemo(
-    () => subjectTargetFor(indicator, kind),
+  // The path and query of a scanned URL, which the provenance rail names
+  // because the host alone does not say which page was visited.
+  const context = useMemo(
+    () => subjectTargetFor(indicator, kind)?.context,
     [indicator, kind],
   );
-  const [subject, setSubject] = useState<SubjectState>(() => {
-    if (!target) return { status: "failed" };
-    if (!initialSubject) return { status: "loading" };
-    return {
-      status: "ready",
-      subjectKind: target.subjectKind,
-      result: initialSubject,
-      context: target.context,
-    };
-  });
-
   // Read once per render rather than per component, so every "how long ago"
   // on the page agrees with every other and none of them disagrees with the
   // markup the server sent.
@@ -337,41 +250,6 @@ export function ScanReport({
 
   const targets = scanTargetsFor(indicator, kind);
   const pending = batch?.scans.some((s) => s.status === "running") ?? false;
-
-  // The subject's identity record — the same passive lookup /check renders,
-  // for whatever this indicator's host actually is.
-  //
-  // Only on a server-side cache miss. The page reads the same record out of
-  // Redis before it renders, so the common case costs no request at all; this
-  // is the cold path, where the fan-out has to be run and paid for once so the
-  // next visit hits.
-  useEffect(() => {
-    if (!target || initialSubject) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(
-          checkUrlFor(target.subjectKind, target.subject),
-          { signal: AbortSignal.timeout(SUBJECT_TIMEOUT_MS) },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const result = (await res.json()) as CheckResult | DomainCheckResult;
-        if (!cancelled) {
-          setSubject({
-            status: "ready",
-            subjectKind: target.subjectKind,
-            result,
-            context: target.context,
-          });
-        }
-      } catch {
-        if (!cancelled) setSubject({ status: "failed" });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [target, initialSubject]);
 
   const poll = useCallback(async () => {
     const res = await fetch(
@@ -465,7 +343,7 @@ export function ScanReport({
             klass={klass}
             now={now}
             targets={targets}
-            context={subject.status === "ready" ? subject.context : undefined}
+            context={context}
             pending={pending}
             busy={running || pending}
             // A rescan spends quota, so it stays a deliberate button rather
@@ -473,10 +351,6 @@ export function ScanReport({
             onRescan={() => void submit(true)}
           />
 
-          {/* Both phases: the rail draws the left column's edge, and a rail
-              that appears only once the scan lands slides the whole content
-              column sideways when it does. */}
-          <SectionNav items={SECTIONS} />
         </>
       ) : (
         <NotScannedPanel
@@ -490,13 +364,6 @@ export function ScanReport({
         />
       )}
 
-      {/* Last, and unlabelled: the dossier and profile cards head themselves,
-          and an outer title above them printed "subject record" twice. It is
-          context for a page about the visit, which is why it is down here at
-          all rather than occupying the first screen as it used to. */}
-      <section id="subject" className="scroll-mt-20">
-        <IdentityCard subject={subject} />
-      </section>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flagUrl } from "@/lib/flag";
+import { flagFillUrl, flagUrl } from "@/lib/flag";
 
 describe("flagUrl", () => {
   it("builds a CDN URL from a two-letter country code", () => {
@@ -32,5 +32,16 @@ describe("flagUrl", () => {
     ["whitespace padding", " th"],
   ])("rejects %s", (_label, code) => {
     expect(flagUrl(code)).toBeUndefined();
+  });
+});
+
+describe("flagFillUrl", () => {
+  it("asks for a raster, which stretches where an SVG letterboxes", () => {
+    expect(flagFillUrl("IT")).toBe("https://flagcdn.com/w640/it.png");
+  });
+
+  it("rejects what flagUrl rejects", () => {
+    expect(flagFillUrl(undefined)).toBeUndefined();
+    expect(flagFillUrl("THA")).toBeUndefined();
   });
 });

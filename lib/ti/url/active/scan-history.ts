@@ -57,3 +57,22 @@ export function rememberBatch(
   if (carried.length === 0) return next;
   return { ...next, previous: carried.slice(0, MAX_PREVIOUS) };
 }
+
+/**
+ * The history as one word for the provenance rail: whether this is the first
+ * reading, and if not, whether the answer has moved.
+ *
+ * "Changed" outranks the count, because a site that was flagged and now is not
+ * is evidence of a takedown or a cloak rather than of innocence, and that is
+ * the reason the history is kept at all. While the current reading is still
+ * out there is nothing to compare, so the rail says how many came before.
+ */
+export function historyLevel(
+  previous: PastScan[] | undefined,
+  nowMalicious: boolean | undefined,
+): string {
+  const past = previous ?? [];
+  if (past.length === 0) return "First";
+  if (nowMalicious === undefined) return `${past.length} before`;
+  return past.some((p) => p.malicious !== nowMalicious) ? "Changed" : "Steady";
+}

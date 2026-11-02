@@ -12,12 +12,6 @@ import { FrameSkeleton } from "@/components/CheckResults/pending";
  * `initialQuery` and no `initialResult`: the request would then be thrown away
  * when the cached result arrived, turning one navigation into two lookups.
  *
- * There is no placeholder for `SectionNav` here, and there must not be one.
- * That rail is `position: fixed` in the left gutter, so it takes no width out
- * of the flow at any breakpoint; a spacer reserving room for it would indent
- * this shell past where the real content lands and then jump left when the
- * content mounted, which is the shift it was meant to prevent.
- *
  * **It reads the path rather than taking props, and that is what stops it
  * shifting.** Each of these routes shows this shell twice in a row, first as
  * `loading.tsx` while the server is still thinking, then as the page's own

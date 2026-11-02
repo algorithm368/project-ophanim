@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  historyLevel,
   MAX_PREVIOUS,
   rememberBatch,
   summarizeBatch,
 } from "@/lib/ti/url/active/scan-history";
-import type { ActiveScan, ActiveScanBatch } from "@/lib/ti/url/active/types";
+import type { ActiveScan, ActiveScanBatch, PastScan } from "@/lib/ti/url/active/types";
 
 const scan = (
   over: Partial<ActiveScan> & Pick<ActiveScan, "engine">,
@@ -162,5 +163,26 @@ describe("scan-history — remaining shapes", () => {
   it("returns the new batch when nothing was replaced", () => {
     const next = batch();
     expect(rememberBatch(null, next)).toBe(next);
+  });
+});
+
+describe("historyLevel", () => {
+  const past = (malicious: boolean): PastScan => ({ at: "2026-10-01T00:00:00Z", malicious, engines: ["urlscan"], reports: [] });
+
+  it("is the first reading when nothing came before", () => {
+    expect(historyLevel(undefined, false)).toBe("First");
+    expect(historyLevel([], true)).toBe("First");
+  });
+
+  it("counts what came before while the current reading is out", () => {
+    expect(historyLevel([past(false), past(false)], undefined)).toBe("2 before");
+  });
+
+  it("says changed when any earlier reading said otherwise", () => {
+    expect(historyLevel([past(false), past(true)], false)).toBe("Changed");
+  });
+
+  it("says steady when every earlier reading agrees", () => {
+    expect(historyLevel([past(true)], true)).toBe("Steady");
   });
 });

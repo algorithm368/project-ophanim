@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, memo, useMemo } from "react";
-import { flagUrl } from "@/lib/flag";
+import { flagFillUrl } from "@/lib/flag";
 import { buildIdentity, longestRun, markParts, type IdentityClaim, type Vital } from "@/lib/ti/identity";
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
@@ -182,7 +182,7 @@ function ClaimValue({ claim }: Readonly<{ claim: IdentityClaim }>) {
  * nothing behind it still occupies its place and says what is missing, because
  * a strip that closes up around a gap moves every fact after it.
  */
-function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
+export function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
     // Barlow Condensed Bold averages a little under half an em per capital,
     // so half an em per character is the safe width of the longest run.
     const size = `min(56px, calc(100cqi / ${longestRun(vitals) * 0.5}))`;
@@ -207,12 +207,15 @@ function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
                             markFace.className,
                             "mt-2 leading-[0.82] tracking-[0.005em] uppercase wrap-anywhere",
                             vital.absent && "text-foreground/35",
+                            // The scan's own red flags, the one place a vital
+                            // carries colour: see `Vital.flagged`.
+                            vital.flagged && "text-red-600 dark:text-red-400",
                         )}
                         style={{ fontSize: size }}
                         title={vital.value}
                     >
                         {markParts(vital).map((part, i) => (
-                            <span key={i} className={cn(part.quiet && "text-foreground/35")}>
+                            <span key={i} className={cn(part.quiet && (vital.flagged ? "opacity-40" : "text-foreground/35"))}>
                                 <Breakable text={part.text} />
                             </span>
                         ))}
@@ -248,10 +251,13 @@ function Breakable({ text }: Readonly<{ text: string }>) {
     ));
 }
 
-/** The country's flag behind a vital, filling the cell and fading out toward
- *  the text so the headline stays the thing that is read. */
+/** The country's flag behind a vital, filling the whole cell edge to edge.
+ *  It is held faint rather than faded out under the text: a fade left most of
+ *  the cell blank and read as a strip of flag, not a flag. Stretched rather
+ *  than cropped: the cell is wider than any flag, and cropping a 3:2 flag to
+ *  it cut the outer stripes off, which left Thailand's as one blue band. */
 function FlagWallpaper({ code }: Readonly<{ code?: string }>) {
-    const src = flagUrl(code);
+    const src = flagFillUrl(code);
     if (!src) return null;
     return (
         // eslint-disable-next-line @next/next/no-img-element -- tiny external flag asset; next/image is overkill here
@@ -260,7 +266,7 @@ function FlagWallpaper({ code }: Readonly<{ code?: string }>) {
             alt=""
             aria-hidden
             loading="lazy"
-            className="pointer-events-none absolute inset-0 -z-10 size-full object-cover opacity-25 [mask-image:linear-gradient(to_left,black_35%,transparent_95%)] dark:opacity-20"
+            className="pointer-events-none absolute inset-0 -z-10 size-full object-fill opacity-25 dark:opacity-20"
         />
     );
 }

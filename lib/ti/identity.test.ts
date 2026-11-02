@@ -862,6 +862,7 @@ describe("the vitals strip", () => {
           categories: ["Education & reference", "Reference materials"],
           registrar: "MarkMonitor Inc.",
           createdAt: "2001-01-13T00:00:00Z",
+          ageDays: 9414,
         },
         {
           geoResolution: geoRes("United States", "US", "San Francisco"),
@@ -869,14 +870,20 @@ describe("the vitals strip", () => {
         },
       ),
     );
-    // No registrar: the record carries its name and the timeline its date.
-    expect(slots(rec)).toEqual(["country", "category", "reach"]);
+    // Age, not category: the hero's class is already the category.
+    expect(slots(rec)).toEqual(["country", "age", "reach"]);
     expect(vital(rec, "country")?.sub).toBe("San Francisco");
-    expect(vital(rec, "category")).toMatchObject({
-      value: "Education & reference",
-      sub: "Reference materials",
+    expect(vital(rec, "age")).toMatchObject({
+      value: "25 years",
+      quiet: { tail: " years" },
+      sub: "registered 2001-01-13, MarkMonitor Inc.",
     });
     expect(vital(rec, "reach")).toMatchObject({ value: "Rank 30", quiet: { lead: "Rank " } });
+  });
+
+  it("ages a domain with no registration details behind the count", () => {
+    const rec = buildIdentity(domain({ ageDays: 3 }));
+    expect(vital(rec, "age")).toMatchObject({ value: "3 days", sub: undefined });
   });
 
   it("captions a domain's city-state with nothing", () => {
@@ -893,7 +900,11 @@ describe("the vitals strip", () => {
       sub: "outside the Tranco top million",
       absent: true,
     });
-    expect(vital(rec, "category")?.value).toBe("Uncategorised");
+    expect(vital(rec, "age")).toMatchObject({
+      value: "Unknown",
+      sub: "no registration date",
+      absent: true,
+    });
   });
 
   it("gives a hash its own four slots", () => {

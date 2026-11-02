@@ -1,6 +1,6 @@
 import { cpeLabel } from "@/lib/cpe";
 import { parseDomain } from "@/lib/domain";
-import { classifyIpLabel, contentCategory, ipEvidence } from "./indicator-class";
+import { classifyIpLabel, ipEvidence } from "./indicator-class";
 import { formatBytes } from "./narrative";
 import { PORT_SERVICE, shodanHostInfo } from "./shodan";
 import { byCodeUnit } from "./sort";
@@ -93,7 +93,28 @@ export type Vital = {
   countryCode?: string;
   /** Nothing was measured for this slot, so `value` is the absence. */
   absent?: boolean;
+  /** The value is itself a red flag the scanner raised. Only the active scan
+   *  sets this; the passive strip keeps colour off its vitals. */
+  flagged?: boolean;
 };
+
+/** An age as a mark, in the largest unit that is still accurate, with the
+ *  unit split off so the number is what the eye lands on. Whole units only,
+ *  rounded down: a mark has no room for "about", so it never claims a year the
+ *  thing has not reached. */
+export function ageMark(days: number): Pick<Vital, "value" | "quiet"> {
+  if (days === 0) return { value: "Today" };
+  let n = days;
+  let unit = days === 1 ? "day" : "days";
+  if (days >= 730) {
+    n = Math.floor(days / 365);
+    unit = "years";
+  } else if (days >= 60) {
+    n = Math.round(days / 30);
+    unit = "months";
+  }
+  return { value: `${n} ${unit}`, quiet: { tail: ` ${unit}` } };
+}
 
 /**
  * The longest unbreakable run across a strip's headlines, in characters.
@@ -695,16 +716,14 @@ function ipVitals(r: CheckResult): Vital[] {
 function domainVitals(r: DomainCheckResult): Vital[] {
   const ctx = r.context;
   const res = r.geoResolution;
-  // Not `categories[0]`: Cloudflare mixes its filter-list taxonomy in with the
-  // content categories and in no useful order, so the first entry for
-  // pornhub.com is "CIPA Filter", the name of a school-filtering statute,
-  // printed in the slot meant to say what the site is.
-  const cats = ctx?.categories ?? [];
-  const cat = contentCategory(cats);
-  const rest = cats.filter((c) => c !== cat && contentCategory([c]));
   const rank = ok(r.sources, "tranco")?.details?.rank;
-  const app = cleanAppName(str(ok(r.sources, "cloudflare-intel")?.details?.application));
+  const created = day(ctx?.createdAt);
 
+  // Age, not category, in the middle slot. The hero's class is the content
+  // category whenever there is one, so a category slot printed the hero's
+  // mark a second time a few lines under it; the categories still reach the
+  // page as the class and its caption. Age is the domain's strongest single
+  // signal and nothing above the strip sets it as a mark.
   return [
     v(
       "country",
@@ -713,7 +732,14 @@ function domainVitals(r: DomainCheckResult): Vital[] {
       "Not located",
       { countryCode: res?.countryCode },
     ),
-    v("category", "Category", got(cat ?? app, list(rest)), "Uncategorised"),
+    v(
+      "age",
+      "Age",
+      ctx?.ageDays === undefined
+        ? undefined
+        : { ...ageMark(ctx.ageDays), sub: parts(created && `registered ${created}`, ctx.registrar) || undefined },
+      { value: "Unknown", sub: "no registration date" },
+    ),
     v(
       "reach",
       "Reach",

@@ -209,9 +209,10 @@ function laneTally(lane: ScanVerdictLane | undefined): string | undefined {
  * What each scanner concluded, on adjacent lines.
  *
  * Adjacent so agreement or disagreement is visible without comparing by eye.
- * Where the two engines disagree is not repeated here: the ballots tile prints
- * every engine's answer on every compared field, which shows the agreement as
- * well as the split, and a second list of the split alone said it twice.
+ * Where the two engines disagree is not repeated here: the engine grid in the
+ * provenance rail marks every engine on every compared field, which shows the
+ * agreement as well as the split, and a second list of the split alone said it
+ * twice.
  */
 export function VerdictSection({
   merged,

@@ -3,34 +3,27 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
     buildTimeline,
-    EVENT_LABEL,
     PHASE_LABEL,
     phaseSpan,
-    type EventKind,
     type Phase,
     type PhaseKind,
     type ReportActivity,
     type Timeline,
-    type TimelineEvent,
 } from "@/lib/ti/timeline";
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Tile } from "./frame";
 
 /**
- * The indicator's life, as a phase strip over a dated ledger.
- *
- * The strip is the shape (sat unused, went live, got listed, still reported)
- * and the ledger is the detail. The strip is decorative to a screen reader:
- * every phase edge is a ledger row, so nothing lives only in the picture.
- * It is a section of the panel's frame, directly above the record, which no
- * longer carries any dates of its own.
+ * The indicator's life, as a phase strip: sat unused, went live, got listed,
+ * still reported. Each segment's dates are in its tooltip, and the strip as a
+ * whole reads to a screen reader as its list of phases. It is a section of the
+ * panel's frame, directly above the record.
  */
 export const TimelineTile = memo(function TimelineTile({
     result,
 }: Readonly<{ result: AnyCheckResult }>) {
     const timeline = useMemo(() => buildTimeline(result), [result]);
-    const [lit, setLit] = useState<readonly EventKind[]>([]);
     const { events, sourceCount } = timeline;
     return (
         <Tile
@@ -42,11 +35,10 @@ export const TimelineTile = memo(function TimelineTile({
             {events.length === 0 ? (
                 <p className="font-mono text-xs text-muted-foreground">No source has dated this indicator</p>
             ) : (
-                <>
-                    {timeline.phases.length > 0 && <PhaseStrip timeline={timeline} onHover={setLit} />}
+                <div className="space-y-2">
+                    {timeline.phases.length > 0 && <PhaseStrip timeline={timeline} />}
                     {timeline.activity && <ActivityStrip activity={timeline.activity} now={timeline.now} />}
-                    <Ledger timeline={timeline} lit={lit} />
-                </>
+                </div>
             )}
         </Tile>
     );
@@ -66,10 +58,11 @@ const PHASE_STYLE: Record<PhaseKind, string> = {
     lapsed: "top-[18px] h-3.5 border-l-2 border-muted-foreground/40",
 };
 
-function PhaseStrip({
-    timeline,
-    onHover,
-}: Readonly<{ timeline: Timeline; onHover: (edges: readonly EventKind[]) => void }>) {
+const phaseLabel = (p: Phase) =>
+    p.kind === "lapsed" ? PHASE_LABEL.lapsed : `${PHASE_LABEL[p.kind]} ${phaseSpan(p.from, p.to)}`;
+const phaseTitle = (p: Phase) => `${phaseLabel(p)}, ${p.from} to ${p.to}`;
+
+function PhaseStrip({ timeline }: Readonly<{ timeline: Timeline }>) {
     const { events, phases, now } = timeline;
     const start = Math.min(...events.map((e) => dayMs(e.at)), ...phases.map((p) => dayMs(p.from)));
     const end = Math.max(dayMs(now), ...events.map((e) => dayMs(e.at)));
@@ -80,14 +73,13 @@ function PhaseStrip({
     const todayAt = pct(dayMs(now));
 
     return (
-        <div className="relative mb-2 h-14" aria-hidden="true">
+        <div className="relative h-14" role="img" aria-label={phases.map(phaseTitle).join("; ")}>
             {phases.map((p) => (
                 <Segment
                     key={p.kind}
                     phase={p}
                     left={pct(dayMs(p.from))}
                     width={pct(dayMs(p.to)) - pct(dayMs(p.from))}
-                    onHover={onHover}
                 />
             ))}
             {years.map((y) => (
@@ -137,7 +129,7 @@ function ActivityStrip({ activity, now }: Readonly<{ activity: ReportActivity; n
         m = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
     }
     return (
-        <div className="mb-2">
+        <div>
             <div className="relative h-11" aria-hidden="true">
                 <span className="absolute top-0.5 left-0 font-mono text-[9px] tracking-[0.06em] text-muted-foreground uppercase">
                     Reports per week, last {activity.windowDays} days
@@ -194,27 +186,10 @@ function ActivityCaption({ activity }: Readonly<{ activity: ReportActivity }>) {
     );
 }
 
-function Segment({
-    phase,
-    left,
-    width,
-    onHover,
-}: Readonly<{
-    phase: Phase;
-    left: number;
-    width: number;
-    onHover: (edges: readonly EventKind[]) => void;
-}>) {
-    const label = phase.kind === "lapsed" ? PHASE_LABEL.lapsed : `${PHASE_LABEL[phase.kind]} ${phaseSpan(phase.from, phase.to)}`;
+function Segment({ phase, left, width }: Readonly<{ phase: Phase; left: number; width: number }>) {
     return (
-        <div
-            className="absolute inset-y-0"
-            style={{ left: `${left}%`, width: `${width}%` }}
-            title={`${label}, ${phase.from} to ${phase.to}`}
-            onMouseEnter={() => onHover(phase.edges)}
-            onMouseLeave={() => onHover([])}
-        >
-            <FitLabel text={label} adverse={phase.kind === "listed"} />
+        <div className="absolute inset-y-0" style={{ left: `${left}%`, width: `${width}%` }} title={phaseTitle(phase)}>
+            <FitLabel text={phaseLabel(phase)} adverse={phase.kind === "listed"} />
             <div className={cn("absolute inset-x-0", PHASE_STYLE[phase.kind])} />
         </div>
     );
@@ -245,62 +220,5 @@ function FitLabel({ text, adverse }: Readonly<{ text: string; adverse: boolean }
         >
             {text}
         </span>
-    );
-}
-
-function Ledger({ timeline, lit }: Readonly<{ timeline: Timeline; lit: readonly EventKind[] }>) {
-    const gapAfter = new Map(timeline.gaps.map((g) => [g.after, g.months]));
-    const rows: React.ReactNode[] = [];
-    let year = "";
-    for (const e of timeline.events) {
-        const y = e.at.slice(0, 4);
-        if (y !== year) {
-            year = y;
-            rows.push(
-                <li key={`y${y}`} className="col-span-4 pt-3 pb-0.5 font-mono text-[10px] tracking-[0.1em] text-muted-foreground">
-                    {y}
-                </li>,
-            );
-        }
-        rows.push(<Row key={e.kind} event={e} lit={lit.includes(e.kind)} />);
-        const months = gapAfter.get(e.kind);
-        if (months) {
-            rows.push(
-                <li key={`g${e.kind}`} className="col-span-4 py-1 pl-[calc(3.5rem+14px+1.5rem)] font-mono text-[10px] italic text-muted-foreground">
-                    · {months} months quiet ·
-                </li>,
-            );
-        }
-    }
-    return <ol className="grid list-none grid-cols-[3.5rem_14px_1fr_auto] gap-x-3">{rows}</ol>;
-}
-
-const DOT: Record<TimelineEvent["tone"], string> = {
-    neutral: "border-foreground bg-foreground",
-    adverse: "border-red-600 bg-red-600 dark:border-red-400 dark:bg-red-400",
-    future: "border-dashed border-muted-foreground bg-card",
-};
-
-function Row({ event, lit }: Readonly<{ event: TimelineEvent; lit: boolean }>) {
-    const cell = cn("border-b border-foreground/8 py-1.5", lit && "bg-muted/60");
-    const also = event.also.map((a) => `${a.source} ${a.at}`).join("\n");
-    return (
-        <li className={cn("contents", event.tone === "future" && "text-muted-foreground")}>
-            <span className={cn(cell, "font-mono text-xs text-muted-foreground")}>{event.at.slice(5)}</span>
-            <span className={cn(cell, "relative flex justify-center")}>
-                <span className="absolute inset-y-0 left-1/2 border-l border-foreground/15" />
-                <span className={cn("relative mt-1 size-[7px] rounded-full border", DOT[event.tone])} />
-            </span>
-            <span className={cn(cell, "text-sm")}>
-                <b className={cn("font-semibold", event.tone === "adverse" && "text-red-600 dark:text-red-400")}>
-                    {EVENT_LABEL[event.kind]}
-                </b>
-                {event.detail && <span className="text-muted-foreground"> {event.detail}</span>}
-            </span>
-            <span className={cn(cell, "text-right font-mono text-[10px] text-muted-foreground")} title={also || undefined}>
-                {event.source}
-                {event.also.length > 0 && ` +${event.also.length}`}
-            </span>
-        </li>
     );
 }

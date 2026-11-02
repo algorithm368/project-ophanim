@@ -7,6 +7,7 @@ import { ENGINE_NAME } from "@/lib/ti/url/active/engines";
 import type { MergedIndicator } from "@/lib/ti/url/active/merge";
 import type { ScanClassKind } from "@/lib/ti/url/active/scan-class";
 import type { ActiveScan } from "@/lib/ti/url/active/types";
+import { hostFromUrl } from "@/lib/url";
 
 /** The scans that produced a screenshot this page can actually render.
  *
@@ -15,6 +16,91 @@ import type { ActiveScan } from "@/lib/ti/url/active/types";
 function shotsIn(scans: ActiveScan[]): ActiveScan[] {
   return scans.filter((s) =>
     s.verdict?.screenshot?.startsWith("https://urlscan.io/"),
+  );
+}
+
+/**
+ * The captures the rail shows: one normally, because the scanned URLs are one
+ * site answering on two ports, and one per URL when `separateSites` says the
+ * pictures differ, since showing one of them would be picking a winner. None
+ * for a file or a page that never answered, which have nothing to picture.
+ */
+export function railShots(
+  merged: MergedIndicator,
+  scans: ActiveScan[],
+  kind: ScanClassKind | undefined,
+): ActiveScan[] {
+  if (kind === undefined || kind === "no-answer" || kind === "file") return [];
+  const byTarget = new Map<string, ActiveScan>();
+  for (const shot of shotsIn(scans)) if (!byTarget.has(shot.target)) byTarget.set(shot.target, shot);
+  const all = [...byTarget.values()];
+  return merged.separateSites ? all : all.slice(0, 1);
+}
+
+/** Opens a capture in the full-screen inspector, titled by where the trip
+ *  ended rather than by the URL that was sent. */
+function Inspector({
+  shot,
+  merged,
+  onClose,
+}: Readonly<{ shot: ActiveScan; merged: MergedIndicator; onClose: () => void }>) {
+  return (
+    <ImageInspector
+      src={shot.verdict?.screenshot as string}
+      alt={`Screenshot of ${shot.target}`}
+      title={merged.detail.finalUrl ?? shot.target}
+      subtitle={[`captured by ${ENGINE_NAME[shot.engine]}`, merged.detail.title]
+        .filter(Boolean)
+        .join(" · ")}
+      href={shot.resultUrl}
+      hrefLabel="Open the scanner's report"
+      onClose={onClose}
+    />
+  );
+}
+
+/**
+ * One capture as the whole rail, edge to edge, the way the passive page fills
+ * its rail with the globe: the picture is the tile, and the caption fades in
+ * over its foot rather than taking a row of its own under it.
+ *
+ * Cropped to the top of the page, which is where the logo, the title and any
+ * login box are; the inspector has the rest.
+ */
+export function BleedCapture({
+  shot,
+  merged,
+}: Readonly<{ shot: ActiveScan; merged: MergedIndicator }>) {
+  const [inspecting, setInspecting] = useState(false);
+  const host = hostFromUrl(merged.detail.finalUrl ?? shot.target) ?? shot.target;
+  return (
+    <figure className="absolute inset-0 m-0">
+      <button
+        type="button"
+        onClick={() => setInspecting(true)}
+        aria-label={`Inspect the screenshot of ${shot.target}`}
+        title="Inspect the screenshot"
+        className="group absolute inset-0 block cursor-zoom-in overflow-hidden"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted screenshot; next/image would need urlscan allowlisted */}
+        <img
+          src={shot.verdict?.screenshot}
+          alt={`Screenshot of ${shot.target}`}
+          className="size-full object-cover object-top"
+          loading="lazy"
+        />
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-background opacity-0 transition group-hover:bg-foreground/30 group-hover:opacity-100 group-focus-visible:bg-foreground/30 group-focus-visible:opacity-100">
+          <Maximize2 className="size-5" />
+        </span>
+      </button>
+      <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-card via-card/85 to-transparent px-4 pt-10 pb-3">
+        <p className="truncate text-[13px] text-foreground">{host}</p>
+        <p className="font-mono text-[10.5px] text-muted-foreground">
+          {ENGINE_NAME[shot.engine]} capture, click to inspect
+        </p>
+      </figcaption>
+      {inspecting && <Inspector shot={shot} merged={merged} onClose={() => setInspecting(false)} />}
+    </figure>
   );
 }
 
@@ -76,10 +162,8 @@ export function RailCapture({
     return <NoPicture>No page to capture, this URL is a file.</NoPicture>;
   }
 
-  const all = shotsIn(scans);
-  if (all.length === 0) {
-    // Only blame Cloudflare's endpoint when Cloudflare is the reason: a urlscan
-    // scan that came back without a picture is a different gap.
+  const shots = railShots(merged, scans, kind);
+  if (shots.length === 0) {
     const onlyCloudflare = scans.every((s) => s.status !== "done" || s.engine === "cloudflare");
     return (
       <NoPicture>
@@ -89,14 +173,6 @@ export function RailCapture({
       </NoPicture>
     );
   }
-
-  // One per target at most, so two engines scanning one URL do not print the
-  // same page twice.
-  const byTarget = new Map<string, ActiveScan>();
-  for (const shot of all) if (!byTarget.has(shot.target)) byTarget.set(shot.target, shot);
-  const shots = merged.separateSites
-    ? [...byTarget.values()]
-    : [[...byTarget.values()][0]];
 
   return (
     <div className="w-full space-y-4">
@@ -136,20 +212,7 @@ export function RailCapture({
       ))}
 
       {inspecting && (
-        <ImageInspector
-          src={inspecting.verdict?.screenshot as string}
-          alt={`Screenshot of ${inspecting.target}`}
-          title={merged.detail.finalUrl ?? inspecting.target}
-          subtitle={[
-            `captured by ${ENGINE_NAME[inspecting.engine]}`,
-            merged.detail.title,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          href={inspecting.resultUrl}
-          hrefLabel="Open the scanner's report"
-          onClose={() => setInspecting(null)}
-        />
+        <Inspector shot={inspecting} merged={merged} onClose={() => setInspecting(null)} />
       )}
     </div>
   );
