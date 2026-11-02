@@ -52,9 +52,9 @@ export interface MergedScan {
  * rather than a bare key because the hop count is a fact about what was served
  * too, and it is a list rather than a string.
  *
- * Exported for the scan page's ballots, which print every engine's answer on
- * these same fields: one list, so the ballot and the disagreements computed
- * here can never be comparing different things.
+ * Exported for the scan page's engine ballot (`engine-ballot.ts`), which marks
+ * every engine on these same fields: one list, so the ballot and the
+ * disagreements computed here can never be comparing different things.
  */
 export const COMPARED: {
   label: string;

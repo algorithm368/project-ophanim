@@ -151,8 +151,9 @@ export function HeroTile({ result }: Readonly<{ result: AnyCheckResult }>) {
 }
 
 /** The class as a mark, sized as the vitals size theirs: as large as the
- *  container allows its longest word, at about half an em per capital. */
-function markSize(text: string): string {
+ *  container allows its longest word, at about half an em per capital. The
+ *  scan page's hero sets its class with the same rule. */
+export function markSize(text: string): string {
     return `min(56px, calc(100cqi / ${longestRun([{ value: text }]) * 0.5}))`;
 }
 

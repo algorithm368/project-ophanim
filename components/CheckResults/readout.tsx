@@ -86,7 +86,7 @@ export function ProvenanceTile({
     );
 }
 
-const LABEL = "font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase";
+export const LABEL = "font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase";
 
 /** "13H AGO", ticking, in the vitals' face, over the exact time and whether
  *  it came off the cache. */
@@ -114,7 +114,7 @@ function Checked({ checkedAt, cached }: Readonly<{ checkedAt: string; cached?: b
     );
 }
 
-function stamp(iso: string): string {
+export function stamp(iso: string): string {
     return new Date(iso).toLocaleString("en-GB", {
         day: "numeric",
         month: "short",
@@ -124,7 +124,7 @@ function stamp(iso: string): string {
 }
 
 /** One trust axis: its name, the level it comes to, and the picture of why. */
-function Section({
+export function Section({
     title,
     level,
     children,
