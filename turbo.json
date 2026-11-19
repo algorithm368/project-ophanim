@@ -1,0 +1,14 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "tasks": {
+    "typecheck": {
+      "tags": ["ci"]
+    },
+    "lint": {
+      "tags": ["ci"]
+    },
+    "test": {
+      "tags": ["ci"]
+    }
+  }
+}
