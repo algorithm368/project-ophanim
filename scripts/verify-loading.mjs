@@ -77,11 +77,13 @@ const IP = "8.8.8.8";
 console.log(`\n── GET /check/${IP} ──`);
 seen = [];
 await page.goto(`${BASE}/check/${IP}`, { waitUntil: "networkidle", timeout: 90000 });
+// The refresh button is disabled and reads "Checking" while the panel is
+// still answering, so its settled wording is the page saying it is done.
 await page
-  .locator('[aria-label="Risk score"]')
+  .getByRole("button", { name: /re-check|fetch fresh/i })
   .first()
   .waitFor({ timeout: 90000 })
-  .catch(() => console.log("! risk score never settled"));
+  .catch(() => console.log("! result never settled"));
 await page.waitForTimeout(1500);
 console.log("api requests:", apiCalls().length ? apiCalls() : "(none)");
 await page.screenshot({ path: join(OUT, "check-settled.png"), fullPage: true });
@@ -124,11 +126,17 @@ const box = () =>
     return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width) };
   });
 
-/** The shell's stand-in for the search box: a placeholder bar, not a real
- *  input, so it has no label to find it by. Both modes lead with one, since
- *  the scan page grew a search box of its own. */
+/** The scan shell's stand-in for the search box: a placeholder bar, not a
+ *  real input, so it has no label to find it by. */
 const hasSearchPlaceholder = () =>
   page.locator("main .sweep.h-12").first().isVisible().catch(() => false);
+
+/** The lookup shell is the live page's first frame, so its search box is the
+ *  real compact one, and the class mark is the caret waiting for the verdict. */
+const hasLookupSearch = () =>
+  page.getByLabel("IOC to check").first().isVisible().catch(() => false);
+const lookupShellOnScreen = () =>
+  page.locator("main .type-caret-blink").first().isVisible().catch(() => false);
 
 const link = page.getByRole("link", { name: /active/i }).first();
 await link.click();
@@ -218,8 +226,8 @@ await page.getByRole("link", { name: /passive/i }).first().click();
 await page.waitForTimeout(900);
 await page.screenshot({ path: join(OUT, "check-loading.png") });
 const lookupShellBox = await box();
-const lookupShellVisible = await page.locator(".sweep").first().isVisible().catch(() => false);
-const lookupShellSearch = await hasSearchPlaceholder();
+const lookupShellVisible = await lookupShellOnScreen();
+const lookupShellSearch = await hasLookupSearch();
 console.log("  shell box:", lookupShellBox);
 console.log(
   lookupShellVisible ? "  ✓ shell on screen" : "  ! no shell, the delay did not take",

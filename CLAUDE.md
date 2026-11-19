@@ -111,6 +111,7 @@ lib/ti/subject-target.ts                 whose identity a scanned indicator has
 lib/scan-input.ts                        what the active box makes of an input
 components/Checker/, CheckResults/       passive UI entry points
 components/result-skeleton.tsx           the loading shell, both modes
+components/CheckResults/live.tsx         pending /check is the result page: LiveContext + Typed
 components/ScanSearch.tsx                the active landing page's search box
 components/ModeSwitch.tsx                passive/active switch, in the banner
 components/ImageInspector.tsx            full-screen capture viewer, zoom + pan
