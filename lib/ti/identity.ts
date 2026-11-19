@@ -442,7 +442,7 @@ export function spfReading(spf: string): { lead: string; value?: string } {
 
 /** A DMARC record as its policy and where it reports to. */
 export function dmarcReading(dmarc: string): { lead: string; value: string } {
-  const tag = (name: string) => new RegExp(`(?:^|;)\\s*${name}\\s*=\\s*([^;]+)`, "i").exec(dmarc)?.[1].trim();
+  const tag = (name: string) => new RegExp(String.raw`(?:^|;)\s*${name}\s*=\s*([^;]+)`, "i").exec(dmarc)?.[1].trim();
   const policy = tag("p")?.toLowerCase();
   const rua = tag("rua")
     ?.split(",")
@@ -664,7 +664,7 @@ export function place(country: string | undefined, ...within: (string | undefine
  */
 export function reverseName(
   reverse: string | undefined,
-): { value: string; sub?: string; quiet?: Vital["quiet"] } | undefined {
+): { value: string; sub?: string; quiet?: NonNullable<Vital["quiet"]> } | undefined {
   if (!reverse) return undefined;
   const parsed = parseDomain(reverse);
   if (!parsed) return { value: reverse };

@@ -2,7 +2,14 @@
 
 import { Fragment, memo, useMemo } from "react";
 import { flagFillUrl } from "@/lib/flag";
-import { buildIdentity, longestRun, markParts, type IdentityClaim, type Vital } from "@/lib/ti/identity";
+import {
+    buildIdentity,
+    longestRun,
+    markParts,
+    type IdentityClaim,
+    type MarkPart,
+    type Vital,
+} from "@/lib/ti/identity";
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Frame, Tile } from "./frame";
@@ -234,6 +241,19 @@ export function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
     );
 }
 
+/** A run of a mark with its role as its key: the quiet run before the core,
+ *  the core, the quiet run after it. Roles rather than positions, so the core
+ *  keeps its element when a quiet lead appears in front of it. */
+type KeyedPart = { key: "lead" | "core" | "tail"; text?: string; quiet?: boolean };
+
+function keyParts(parts: MarkPart[]): KeyedPart[] {
+    const core = parts.findIndex((p) => !p.quiet);
+    return parts.map((part, at) => {
+        if (!part.quiet) return { ...part, key: "core" };
+        return { ...part, key: at < core ? "lead" : "tail" };
+    });
+}
+
 /** A slot whose value is only true once every source has answered: an
  *  absence, or a reading of one. */
 function waitsFor(vital: Vital): boolean {
@@ -248,9 +268,9 @@ function waitsFor(vital: Vital): boolean {
  * slot does not change height when its value lands.
  */
 function VitalCell({ vital, size, waiting }: Readonly<{ vital: Vital; size: string; waiting: boolean }>) {
-    // A waiting slot is one part, the rule, so the part the value types into
-    // is the same element the rule was.
-    const parts: { text?: string; quiet?: boolean }[] = waiting ? [{}] : markParts(vital);
+    // A waiting slot is one part, the rule, keyed as the core, so the part the
+    // value types into is the same element the rule was.
+    const parts: KeyedPart[] = waiting ? [{ key: "core" }] : keyParts(markParts(vital));
     return (
         <div className="@container relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4">
             <FlagWallpaper code={vital.countryCode} />
@@ -269,8 +289,8 @@ function VitalCell({ vital, size, waiting }: Readonly<{ vital: Vital; size: stri
                 style={{ fontSize: size }}
                 title={waiting ? undefined : vital.value}
             >
-                {parts.map((part, i) => (
-                    <span key={i} className={cn(part.quiet && (vital.flagged ? "opacity-40" : "text-foreground/35"))}>
+                {parts.map((part) => (
+                    <span key={part.key} className={cn(part.quiet && (vital.flagged ? "opacity-40" : "text-foreground/35"))}>
                         <Breakable text={part.text} />
                     </span>
                 ))}
@@ -296,11 +316,17 @@ function Breakable({ text }: Readonly<{ text?: string }>) {
 }
 
 function breakAtDots(text: string): React.ReactNode {
-    const pieces = text.split(".");
-    return pieces.map((piece, i) => (
-        <Fragment key={i}>
-            {piece}
-            {i < pieces.length - 1 && (
+    // Each label keyed by where it starts in the name, which is what it is.
+    const labels: { start: number; label: string }[] = [];
+    let start = 0;
+    for (const label of text.split(".")) {
+        labels.push({ start, label });
+        start += label.length + 1;
+    }
+    return labels.map(({ start: at, label }) => (
+        <Fragment key={at}>
+            {label}
+            {at + label.length < text.length && (
                 <>
                     .<wbr />
                 </>

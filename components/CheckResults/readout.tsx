@@ -121,6 +121,7 @@ function Checked({ checkedAt, cached }: Readonly<{ checkedAt: string; cached?: b
         const id = setInterval(() => setNow(Date.now()), 30_000);
         return () => clearInterval(id);
     }, []);
+    const settledLine = `${stamp(checkedAt)}, ${cached ? "from cache" : "live"}`;
     // Both lines depend on the clock and the time zone, which the server and
     // the browser need not share.
     return (
@@ -135,10 +136,7 @@ function Checked({ checkedAt, cached }: Readonly<{ checkedAt: string; cached?: b
             </div>
             <p suppressHydrationWarning className="mt-1.5 text-[11.5px] text-muted-foreground">
                 {pending && answeredLine(partial)}
-                <Typed
-                    text={pending ? undefined : `${stamp(checkedAt)}, ${cached ? "from cache" : "live"}`}
-                    placeholder="none"
-                />
+                <Typed text={pending ? undefined : settledLine} placeholder="none" />
             </p>
         </div>
     );

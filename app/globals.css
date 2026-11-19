@@ -255,8 +255,14 @@
 /* A score's mark travelling out from zero to where the source put it. */
 @utility track-mark-in {
     transition: left 0.5s cubic-bezier(0.3, 0.7, 0.4, 1);
-    @starting-style {
-        left: 0%;
+}
+
+/* Where it travels from: the frame the mark first appears in. Important,
+   because the mark's place is an inline style, which outranks any class rule,
+   starting style included, and the mark would simply appear where it ends. */
+@starting-style {
+    .track-mark-in {
+        left: 0% !important;
     }
 }
 
