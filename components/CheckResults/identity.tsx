@@ -6,6 +6,7 @@ import { buildIdentity, longestRun, markParts, type IdentityClaim, type Vital } 
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Frame, Tile } from "./frame";
+import { Typed, useLive } from "./live";
 import { markFace } from "./mark-face";
 
 /**
@@ -130,17 +131,39 @@ function GroupedLedger({ fields }: Readonly<{ fields: IdentityClaim[] }>) {
 /** One value: its reading and detail, or the value itself, then the lines or
  *  the raw record under it in small mono. */
 function ClaimValue({ claim }: Readonly<{ claim: IdentityClaim }>) {
+    const { pending } = useLive();
     const under = "mt-0.5 font-mono text-[11px] leading-[17px] text-muted-foreground";
     if (claim.absent) {
-        return <span className="text-[13px] leading-5 text-foreground/40">{claim.value}</span>;
+        // Absent is only a fact once every source has answered; until then the
+        // field is still waiting, and its absence is typed in at the end.
+        return (
+            <span className="text-[13px] leading-5 text-foreground/40">
+                <Typed text={pending ? undefined : claim.value} placeholder="10ch" />
+            </span>
+        );
     }
     if (claim.lead) {
         return (
             <>
-                <span className="text-[14px] leading-5 font-semibold">{claim.lead}</span>
-                {claim.value && <span className="text-[13px] leading-5 text-muted-foreground"> {claim.value}</span>}
-                {claim.lines && <span className={cn(under, "block")}>{claim.lines.map((line) => <span key={line} className="block">{line}</span>)}</span>}
-                {claim.raw && <span className={cn(under, "block")}>{claim.raw}</span>}
+                <span className="text-[14px] leading-5 font-semibold">
+                    <Typed text={claim.lead} />
+                </span>
+                {claim.value && (
+                    <span className="text-[13px] leading-5 text-muted-foreground">
+                        {" "}
+                        <Typed text={claim.value} />
+                    </span>
+                )}
+                {claim.lines && (
+                    <span className={cn(under, "block")}>
+                        <TypedLines lines={claim.lines} />
+                    </span>
+                )}
+                {claim.raw && (
+                    <span className={cn(under, "block")}>
+                        <Typed text={claim.raw} />
+                    </span>
+                )}
             </>
         );
     }
@@ -154,11 +177,18 @@ function ClaimValue({ claim }: Readonly<{ claim: IdentityClaim }>) {
                 claim.notable && "font-semibold",
             )}
         >
-            {claim.lines
-                ? claim.lines.map((line) => <span key={line} className="block">{line}</span>)
-                : claim.value}
+            {claim.lines ? <TypedLines lines={claim.lines} /> : <Typed text={claim.value} />}
         </span>
     );
+}
+
+/** A list set one item per line, each typed in on its own line. */
+function TypedLines({ lines }: Readonly<{ lines: string[] }>) {
+    return lines.map((line) => (
+        <span key={line} className="block">
+            <Typed text={line} />
+        </span>
+    ));
 }
 
 /**
@@ -183,9 +213,13 @@ function ClaimValue({ claim }: Readonly<{ claim: IdentityClaim }>) {
  * a strip that closes up around a gap moves every fact after it.
  */
 export function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
+    const { pending } = useLive();
     // Barlow Condensed Bold averages a little under half an em per capital,
-    // so half an em per character is the safe width of the longest run.
-    const size = `min(56px, calc(100cqi / ${longestRun(vitals) * 0.5}))`;
+    // so half an em per character is the safe width of the longest run. A
+    // slot still waiting has no run yet: its absence wording is not the value
+    // it is waiting for, and sizing to it shrank every mark on the strip.
+    const run = longestRun(vitals.filter((v) => !(pending && waitsFor(v))));
+    const size = run > 0 ? `min(56px, calc(100cqi / ${run * 0.5}))` : "56px";
     return (
         <div
             className={cn(
@@ -194,50 +228,74 @@ export function Vitals({ vitals }: Readonly<{ vitals: Vital[] }>) {
             )}
         >
             {vitals.map((vital) => (
-                <div
-                    key={vital.key}
-                    className="@container relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4"
-                >
-                    <FlagWallpaper code={vital.countryCode} />
-                    <div className="font-mono text-[9.5px] tracking-[0.11em] text-muted-foreground uppercase">
-                        {vital.label}
-                    </div>
-                    <div
-                        className={cn(
-                            markFace.className,
-                            "mt-2 leading-[0.82] tracking-[0.005em] uppercase wrap-anywhere",
-                            vital.absent && "text-foreground/35",
-                            // The scan's own red flags, the one place a vital
-                            // carries colour: see `Vital.flagged`.
-                            vital.flagged && "text-red-600 dark:text-red-400",
-                        )}
-                        style={{ fontSize: size }}
-                        title={vital.value}
-                    >
-                        {markParts(vital).map((part, i) => (
-                            <span key={i} className={cn(part.quiet && (vital.flagged ? "opacity-40" : "text-foreground/35"))}>
-                                <Breakable text={part.text} />
-                            </span>
-                        ))}
-                    </div>
-                    {vital.sub && (
-                        // One line, the whole of it on hover.
-                        <div
-                            className="mt-1.5 truncate text-[11.5px] leading-3.5 text-muted-foreground"
-                            title={vital.sub}
-                        >
-                            {vital.sub}
-                        </div>
-                    )}
-                </div>
+                <VitalCell key={vital.key} vital={vital} size={size} waiting={pending && waitsFor(vital)} />
             ))}
         </div>
     );
 }
 
-/** A break opportunity after every dot, so a long domain wraps between its
- *  labels before `wrap-anywhere` has to split one of them. */
-function Breakable({ text }: Readonly<{ text: string }>) {
+/** A slot whose value is only true once every source has answered: an
+ *  absence, or a reading of one. */
+function waitsFor(vital: Vital): boolean {
+    return vital.absent === true || vital.inferred === true;
+}
+
+/**
+ * One slot of the strip: its name, the mark, and the line under it.
+ *
+ * `waiting` is a slot with nothing behind it yet while the panel answers. It
+ * draws a rule where the mark will go and keeps the line under it open, so the
+ * slot does not change height when its value lands.
+ */
+function VitalCell({ vital, size, waiting }: Readonly<{ vital: Vital; size: string; waiting: boolean }>) {
+    // A waiting slot is one part, the rule, so the part the value types into
+    // is the same element the rule was.
+    const parts: { text?: string; quiet?: boolean }[] = waiting ? [{}] : markParts(vital);
+    return (
+        <div className="@container relative isolate flex min-w-0 flex-col overflow-hidden bg-card p-4">
+            <FlagWallpaper code={vital.countryCode} />
+            <div className="font-mono text-[9.5px] tracking-[0.11em] text-muted-foreground uppercase">
+                {vital.label}
+            </div>
+            <div
+                className={cn(
+                    markFace.className,
+                    "mt-2 leading-[0.82] tracking-[0.005em] uppercase wrap-anywhere",
+                    vital.absent && !waiting && "text-foreground/35",
+                    // The scan's own red flags, the one place a vital
+                    // carries colour: see `Vital.flagged`.
+                    vital.flagged && "text-red-600 dark:text-red-400",
+                )}
+                style={{ fontSize: size }}
+                title={waiting ? undefined : vital.value}
+            >
+                {parts.map((part, i) => (
+                    <span key={i} className={cn(part.quiet && (vital.flagged ? "opacity-40" : "text-foreground/35"))}>
+                        <Breakable text={part.text} />
+                    </span>
+                ))}
+            </div>
+            {(vital.sub || waiting) && (
+                // One line, the whole of it on hover.
+                <div
+                    className="mt-1.5 truncate text-[11.5px] leading-3.5 text-muted-foreground"
+                    title={vital.sub}
+                >
+                    <Typed text={waiting ? undefined : vital.sub} placeholder="12ch" />
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** A mark, typed in when it lands, with a break opportunity after every dot
+ *  once it is all in, so a long domain wraps between its labels before
+ *  `wrap-anywhere` has to split one of them. */
+function Breakable({ text }: Readonly<{ text?: string }>) {
+    return <Typed text={text} placeholder="4ch" render={breakAtDots} />;
+}
+
+function breakAtDots(text: string): React.ReactNode {
     const pieces = text.split(".");
     return pieces.map((piece, i) => (
         <Fragment key={i}>
@@ -305,10 +363,16 @@ function Row({
                     claim.absent && "text-muted-foreground",
                 )}
             >
-                {claim.value}
+                <RowValue claim={claim} />
             </dd>
         </div>
     );
+}
+
+/** A row's value, or a rule while its field is still waiting on the panel. */
+function RowValue({ claim }: Readonly<{ claim: IdentityClaim }>) {
+    const { pending } = useLive();
+    return <Typed text={claim.absent && pending ? undefined : claim.value} placeholder="14ch" />;
 }
 
 /**

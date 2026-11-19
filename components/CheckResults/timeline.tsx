@@ -13,6 +13,7 @@ import {
 import type { AnyCheckResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Tile } from "./frame";
+import { Typed, useLive } from "./live";
 
 /**
  * The indicator's life, as a phase strip: sat unused, went live, got listed,
@@ -23,19 +24,28 @@ import { Tile } from "./frame";
 export const TimelineTile = memo(function TimelineTile({
     result,
 }: Readonly<{ result: AnyCheckResult }>) {
-    const timeline = useMemo(() => buildTimeline(result), [result]);
-    const { events, sourceCount } = timeline;
+    const { pending, typing } = useLive();
+    // The strip is the shape of every source's dates together, so it is drawn
+    // once they are all in rather than reshaped with each answer.
+    const timeline = useMemo(() => (pending ? null : buildTimeline(result)), [pending, result]);
+    const events = timeline?.events ?? [];
+    const note =
+        timeline && events.length > 0
+            ? `${plural(events.length, "event")} · ${plural(timeline.sourceCount, "source")}`
+            : undefined;
     return (
         <Tile
             span={12}
             id="timeline"
             title="Timeline"
-            note={events.length > 0 ? `${plural(events.length, "event")} · ${plural(sourceCount, "source")}` : undefined}
+            note={(pending || note) && <Typed text={note} placeholder="16ch" />}
         >
-            {events.length === 0 ? (
+            {!timeline && <div aria-hidden className="h-14 border-b border-dotted border-foreground/30" />}
+            {timeline && events.length === 0 && (
                 <p className="font-mono text-xs text-muted-foreground">No source has dated this indicator</p>
-            ) : (
-                <div className="space-y-2">
+            )}
+            {timeline && events.length > 0 && (
+                <div className={cn("space-y-2", typing && "draw-in")}>
                     {timeline.phases.length > 0 && <PhaseStrip timeline={timeline} />}
                     {timeline.activity && <ActivityStrip activity={timeline.activity} now={timeline.now} />}
                 </div>

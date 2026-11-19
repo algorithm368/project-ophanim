@@ -1,11 +1,14 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ChevronRight, ExternalLink } from "lucide-react";
 import type { SourceMeta, SourceResult } from "@/lib/ti/types";
 import { algoFromLength } from "@/lib/hash";
+import { panelRows, type PanelRow } from "@/lib/ti/panel-rows";
+import { sourceWeight } from "@/lib/ti/weight";
 import { cn } from "@/lib/utils";
 import { Tile } from "./frame";
+import { Typed, useLive } from "./live";
 import type { Mode } from "./types";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -83,11 +86,8 @@ function sourceLookupUrl(
  * are three different states, and only the last is something the reader can act
  * on, so it names the variable to set.
  *
- * There is deliberately no "still waiting" reading. The breakdown only ever
- * has rows for sources that have settled, mid-stream included, so a row here
- * has always answered; a guard on the stream being open left an answered
- * source pulsing a skeleton until every other source was in, which said it was
- * still out when it was not.
+ * A source still out is not one of these: it has no row state at all yet, and
+ * draws rules in the cells its answer will fill.
  */
 function noSummaryReason(skipped: boolean, keyEnv?: string): string {
     if (!skipped) return "No data";
@@ -174,28 +174,20 @@ export const SourceBreakdown = memo(function SourceBreakdown({
     sources,
     indicator,
     kind,
-    streaming = false,
 }: Readonly<{
     sources: SourceResult[];
     indicator: string;
     kind: Mode;
-    /** Set while the panel is still answering. `sources` is already the partial
-     *  list in that case, and every row in it has answered, so the rows
-     *  themselves need no change; this only marks the count as still
-     *  growing. */
-    streaming?: boolean;
 }>) {
-    const byRelevance = (a: SourceResult, b: SourceResult) =>
-        TONE_RANK[sourceTone(a)] - TONE_RANK[sourceTone(b)] ||
-        (b.score ?? 0) - (a.score ?? 0) ||
-        b.source.weight - a.source.weight;
-
-    // Split on weight, not category: a context source is one that cannot move
-    // the score, and some of those (scanner identification) file under another
-    // category.
-    const weighted = sources.filter((s) => s.source.weight > 0).sort(byRelevance);
-    const context = sources.filter((s) => s.source.weight === 0).sort(byRelevance);
-    const flagged = weighted.filter((s) => sourceTone(s) === "flagged").length;
+    const { pending, partial } = useLive();
+    const metas = partial?.metas;
+    const rows = useMemo(
+        () => (pending ? panelRows(metas ?? [], sources) : settledRows(sources)),
+        [pending, metas, sources],
+    );
+    const flagged = rows.detectors.filter((r) => r.result && sourceTone(r.result) === "flagged").length;
+    const total = rows.detectors.length + rows.context.length;
+    const settled = [...rows.detectors, ...rows.context].filter((r) => r.result).length;
 
     return (
         <Tile
@@ -204,13 +196,13 @@ export const SourceBreakdown = memo(function SourceBreakdown({
             title="Source breakdown"
             note={
                 <span className="flex items-center gap-1.5 tabular-nums">
-                    {streaming && (
+                    {pending && (
                         <span
                             aria-hidden
                             className="size-1.5 animate-pulse rounded-full bg-foreground/40"
                         />
                     )}
-                    {flagged} of {weighted.length} flagged, {sources.length} answered
+                    {flagged} of {rows.detectors.length} flagged, {pending ? settled : total} answered
                 </span>
             }
             className="overflow-x-auto p-0"
@@ -229,33 +221,23 @@ export const SourceBreakdown = memo(function SourceBreakdown({
                     </tr>
                 </thead>
                 <tbody>
-                    {weighted.map((s) => (
-                        <SourceRow
-                            key={s.source.id}
-                            result={s}
-                            indicator={indicator}
-                            kind={kind}
-                        />
+                    {rows.detectors.map((row) => (
+                        <SourceRow key={row.meta.id} row={row} indicator={indicator} kind={kind} />
                     ))}
+                    {pending && rows.detectors.length === 0 && <UnnamedRows />}
                 </tbody>
-                {context.length > 0 && (
+                {rows.context.length > 0 && (
                     <tbody>
                         <tr className="border-b border-border bg-muted/40">
                             <td
                                 colSpan={8}
                                 className="px-4 py-1.5 font-mono text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"
                             >
-                                Context, {context.length}, no weight in the score
+                                Context, {rows.context.length}, no weight in the score
                             </td>
                         </tr>
-                        {context.map((s) => (
-                            <SourceRow
-                                key={s.source.id}
-                                result={s}
-                                indicator={indicator}
-                                kind={kind}
-                                isContext
-                            />
+                        {rows.context.map((row) => (
+                            <SourceRow key={row.meta.id} row={row} indicator={indicator} kind={kind} isContext />
                         ))}
                     </tbody>
                 )}
@@ -264,19 +246,127 @@ export const SourceBreakdown = memo(function SourceBreakdown({
     );
 });
 
+/**
+ * The finished ledger: what moved the score first, then what answered clean,
+ * then what never answered. While the panel answers the rows stand in
+ * registry order instead (`panelRows`), so none moves under the reader; this
+ * sort happens once, at the end, and rows keep their keys across it, so React
+ * moves them rather than drawing them again.
+ *
+ * Split on weight, not category: a context source is one that cannot move the
+ * score, and some of those (scanner identification) file under another
+ * category.
+ */
+function settledRows(sources: SourceResult[]): { detectors: PanelRow[]; context: PanelRow[] } {
+    const byRelevance = (a: SourceResult, b: SourceResult) =>
+        TONE_RANK[sourceTone(a)] - TONE_RANK[sourceTone(b)] ||
+        (b.score ?? 0) - (a.score ?? 0) ||
+        b.source.weight - a.source.weight;
+    const row = (s: SourceResult): PanelRow => ({ meta: s.source, result: s });
+    return {
+        detectors: sources.filter((s) => s.source.weight > 0).sort(byRelevance).map(row),
+        context: sources.filter((s) => s.source.weight === 0).sort(byRelevance).map(row),
+    };
+}
+
+/** Rows before the stream has named the panel, so the table stands at a
+ *  working height instead of as a bare header. */
+function UnnamedRows() {
+    return Array.from({ length: 8 }, (_, i) => (
+        <tr key={i} className="border-b border-border text-muted-foreground">
+            <td className="w-[3px] p-0" />
+            <td className="py-1.5 pr-3 pl-4">
+                <span className="pending-rule w-28" />
+            </td>
+            <td colSpan={6} className="px-3 py-1.5">
+                <span className="pending-rule w-2/5" />
+            </td>
+        </tr>
+    ));
+}
+
 function SourceRow({
-    result,
+    row,
     indicator,
     kind,
     isContext = false,
 }: Readonly<{
-    result: SourceResult;
+    row: PanelRow;
     indicator: string;
     kind: Mode;
     /** Weight 0: it answers with facts, never a verdict, so it gets no verdict
      *  word and no score mark. */
     isContext?: boolean;
 }>) {
+    const result = row.result;
+    if (!result) return <WaitingRow meta={row.meta} indicator={indicator} kind={kind} isContext={isContext} />;
+    return <AnsweredRow result={result} indicator={indicator} kind={kind} isContext={isContext} />;
+}
+
+/** The cells every row has before anything is known: who, and what kind. */
+function NameCells({
+    source,
+    indicator,
+    kind,
+}: Readonly<{ source: SourceMeta; indicator: string; kind: Mode }>) {
+    const lookupUrl = sourceLookupUrl(source, indicator, kind);
+    return (
+        <>
+            <td className="py-1.5 pr-3 pl-4 font-medium whitespace-nowrap">
+                <a
+                    href={lookupUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Look up ${indicator} on ${source.name}`}
+                    className="inline-flex items-center gap-1.5 tracking-tight underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+                >
+                    {source.name}
+                    <ExternalLink className="size-3 text-muted-foreground/50 opacity-0 transition group-hover/row:opacity-100" />
+                </a>
+            </td>
+            <td className="px-3 py-1.5 font-mono text-[11px] tracking-[0.1em] whitespace-nowrap text-muted-foreground uppercase">
+                {CATEGORY_LABEL[source.category] ?? source.category}
+            </td>
+        </>
+    );
+}
+
+/** A source still out: its name and class, and rules where its answer goes. */
+function WaitingRow({
+    meta,
+    indicator,
+    kind,
+    isContext,
+}: Readonly<{ meta: SourceMeta; indicator: string; kind: Mode; isContext: boolean }>) {
+    return (
+        <tr className="group/row border-b border-border">
+            <td className="w-[3px] p-0">
+                <span className="sr-only">Waiting</span>
+            </td>
+            <NameCells source={meta} indicator={indicator} kind={kind} />
+            <td className="px-3 py-1.5 text-muted-foreground">
+                <Typed placeholder="7ch" />
+            </td>
+            <td className="px-3 py-1.5">
+                <div aria-hidden className="h-2.5 w-full border-b border-dotted border-foreground/25" />
+            </td>
+            <td className="px-3 py-1.5 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                {isContext ? "0" : sourceWeight(meta).toFixed(2)}
+            </td>
+            <td className="px-3 py-1.5 text-muted-foreground">
+                <Typed placeholder="24ch" />
+            </td>
+            <td className="p-0" />
+        </tr>
+    );
+}
+
+function AnsweredRow({
+    result,
+    indicator,
+    kind,
+    isContext,
+}: Readonly<{ result: SourceResult; indicator: string; kind: Mode; isContext: boolean }>) {
     const { source, status } = result;
     const skipped = status === "skipped";
     const errored = status === "error" || status === "timeout";
@@ -284,7 +374,6 @@ function SourceRow({
     // Serialize the raw-details payload only once the disclosure is opened, so
     // the eager JSON.stringify doesn't run for every source on the result mount.
     const [detailsOpen, setDetailsOpen] = useState(false);
-    const lookupUrl = sourceLookupUrl(source, indicator, kind);
     const hasDetails =
         !!result.details && Object.keys(result.details).length > 0;
 
@@ -313,24 +402,10 @@ function SourceRow({
                         {isContext ? "Context" : TONE_LABEL[tone]}
                     </span>
                 </td>
-                <td className="py-1.5 pr-3 pl-4 font-medium whitespace-nowrap">
-                    <a
-                        href={lookupUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`Look up ${indicator} on ${source.name}`}
-                        className="inline-flex items-center gap-1.5 tracking-tight underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-                    >
-                        {source.name}
-                        <ExternalLink className="size-3 text-muted-foreground/50 opacity-0 transition group-hover/row:opacity-100" />
-                    </a>
-                </td>
-                <td className="px-3 py-1.5 font-mono text-[11px] tracking-[0.1em] whitespace-nowrap text-muted-foreground uppercase">
-                    {CATEGORY_LABEL[source.category] ?? source.category}
-                </td>
+                <NameCells source={source} indicator={indicator} kind={kind} />
                 <td className="px-3 py-1.5 font-mono text-[11px] font-semibold tracking-[0.08em] whitespace-nowrap uppercase">
                     {showVerdict ? (
-                        TONE_LABEL[tone]
+                        <Typed text={TONE_LABEL[tone]} />
                     ) : (
                         <span className="sr-only">No verdict</span>
                     )}
@@ -341,7 +416,9 @@ function SourceRow({
                 <td className="px-3 py-1.5 text-right font-mono text-xs tabular-nums text-muted-foreground">
                     {isContext ? "0" : source.weight.toFixed(2)}
                 </td>
-                <td className="px-3 py-1.5 text-muted-foreground">{summary}</td>
+                <td className="px-3 py-1.5 text-muted-foreground">
+                    <Typed text={summary} />
+                </td>
                 <td className="p-0">
                     {hasDetails && (
                         <button

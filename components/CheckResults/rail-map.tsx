@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import type { GlobeDrawing } from "@/lib/ti/geo/rail-globe";
 import type { RailPlace } from "@/lib/ti/geo/rail-place";
+import { Typed } from "./live";
 
 /**
  * Where the subject is, as a whole globe filling the rail, in the verdict's
@@ -41,9 +42,13 @@ export function RailMap({ place }: Readonly<{ place: RailPlace }>) {
         <figure className="absolute inset-0 m-0">
             {drawing && <Globe d={drawing} exact={exact} />}
             <figcaption className="absolute inset-x-0 bottom-0 bg-linear-to-t from-card via-card/85 to-transparent px-4 pt-8 pb-3">
-                {place.label && <p className="text-[13px] text-foreground">{place.label}</p>}
+                {place.label && (
+                    <p className="text-[13px] text-foreground">
+                        <Typed text={place.label} />
+                    </p>
+                )}
                 <p className="font-mono text-[10.5px] text-muted-foreground">
-                    {exact ? degrees(lat, lon) : "country only, no coordinates"}
+                    <Typed text={exact ? degrees(lat, lon) : "country only, no coordinates"} />
                 </p>
             </figcaption>
         </figure>

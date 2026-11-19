@@ -36,6 +36,8 @@ import { Sprite } from "./sprite";
 import { summaryFace } from "./summary-face";
 import { VERDICT_STYLE } from "./verdict";
 import { sourceWeight } from "@/lib/ti/weight";
+import { panelRows, type PanelRow } from "@/lib/ti/panel-rows";
+import { Typed, useLive } from "./live";
 
 /**
  * The bestiary entry's tiles: the picture, the name, the summary, and the
@@ -65,14 +67,26 @@ import { sourceWeight } from "@/lib/ti/weight";
  * is every file and the odd address nobody located.
  */
 export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
+    const { pending } = useLive();
     const record = useMemo(() => buildSubjectRecord(result), [result]);
     const place = useMemo(() => railPlace(result), [result]);
-    const tone = VERDICT_STYLE[result.verdict];
+    // A verdict over half a panel is not a verdict, so the picture stays
+    // grey until everyone has answered.
+    const tone = pending ? PENDING_TONE : VERDICT_STYLE[result.verdict];
     if (place) {
         return (
             // Full bleed: the globe is the tile, with no padding left round it.
             <Tile span={3} tone="rail" className={cn("relative min-h-[300px] overflow-hidden p-0", tone.text)}>
                 <RailMap place={place} />
+                <span className="sr-only">{tone.headline}</span>
+            </Tile>
+        );
+    }
+    // The sprite is drawn from the class, which waits for the whole panel;
+    // until then a rail with no place to show stays an empty tinted column.
+    if (pending) {
+        return (
+            <Tile span={3} tone="rail" className="min-h-[300px]">
                 <span className="sr-only">{tone.headline}</span>
             </Tile>
         );
@@ -90,6 +104,9 @@ export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
         </Tile>
     );
 }
+
+/** The rail's colour while the verdict is withheld. */
+const PENDING_TONE = { text: "text-muted-foreground", headline: "Verdict pending" };
 
 /** The name, and the sentence under it. Nothing qualifies the name: a species
  *  line sat here until the stat bank was removed and left it next to the
@@ -118,9 +135,12 @@ export function RailTile({ result }: Readonly<{ result: AnyCheckResult }>) {
  * history its age really is, a file by whether anyone has ever seen it.
  */
 export function HeroTile({ result }: Readonly<{ result: AnyCheckResult }>) {
-    const narrative = useMemo(() => narrativeFor(result), [result]);
+    const { pending } = useLive();
+    // The class and the summary are both readings of the whole panel, so
+    // neither is worked out, let alone shown, until the panel is complete.
+    const narrative = useMemo(() => (pending ? undefined : narrativeFor(result)), [pending, result]);
     const parts = useMemo(() => subjectParts(result), [result]);
-    const klass = useMemo(() => classFor(result), [result]);
+    const klass = useMemo(() => (pending ? undefined : classFor(result)), [pending, result]);
 
     return (
         <Tile span={6} className="flex flex-col">
@@ -139,16 +159,22 @@ export function HeroTile({ result }: Readonly<{ result: AnyCheckResult }>) {
                 </p>
                 <p
                     className={cn(markFace.className, "mt-2 leading-[0.82] tracking-[0.005em] uppercase")}
-                    style={{ fontSize: markSize(klass.short) }}
+                    style={{ fontSize: klass ? markSize(klass.short) : PENDING_MARK }}
                 >
-                    {klass.short}
+                    <Typed text={klass?.short} placeholder="caret" />
                 </p>
-                <p className="mt-1.5 text-[11.5px] leading-3.5 text-muted-foreground">{klass.caption}</p>
+                <p className="mt-1.5 text-[11.5px] leading-3.5 text-muted-foreground">
+                    <Typed text={klass?.caption} placeholder="14ch" />
+                </p>
             </div>
             <CopyBox text={narrative} />
         </Tile>
     );
 }
+
+/** The class mark's size while it is still a caret: the size the mark takes
+ *  for a short class, which is most of them. */
+const PENDING_MARK = "48px";
 
 /** The class as a mark, sized as the vitals size theirs: as large as the
  *  container allows its longest word, at about half an em per capital. The
@@ -199,7 +225,9 @@ export function CopyBox({
     text,
     copyText = text,
 }: Readonly<{
-    text: string;
+    /** Undefined while the summary is being withheld: the box then holds its
+     *  place as ruled lines, with nothing to copy. */
+    text: string | undefined;
     /** What lands on the clipboard, when it is more than what is shown. The
      *  scan page shows one sentence beside rows that state every other fact,
      *  but what is pasted into a ticket has to stand without those rows. */
@@ -208,6 +236,7 @@ export function CopyBox({
     const [copied, copy] = useCopied();
 
     const copyUnlessSelecting = () => {
+        if (!copyText) return;
         if ((window.getSelection()?.toString() ?? "").length > 0) return;
         void copy(copyText);
     };
@@ -219,31 +248,36 @@ export function CopyBox({
         <div
             onClick={copyUnlessSelecting}
             className={cn(
-                "group relative flex-1 cursor-pointer rounded-md border border-transparent p-2 transition-colors hover:border-foreground/12 hover:bg-muted/40 has-[button:focus-visible]:border-foreground/12",
+                "group relative flex-1 rounded-md border border-transparent p-2 transition-colors hover:border-foreground/12 hover:bg-muted/40 has-[button:focus-visible]:border-foreground/12",
+                copyText && "cursor-pointer",
                 copied && "border-foreground/12 bg-muted/40",
             )}
         >
-            <p className={cn(summaryFace.className, "pb-7 text-[0.95rem] leading-relaxed text-foreground/85")}>{text}</p>
-            <button
-                type="button"
-                onClick={(event) => {
-                    // The button is the real control, so it copies whether or
-                    // not there is a selection. Stopping the event keeps the
-                    // box's handler from running a second copy on top of it.
-                    event.stopPropagation();
-                    void copy(copyText);
-                }}
-                aria-label="Copy summary"
-                className={cn(
-                    "absolute bottom-1 left-1 inline-flex items-center gap-1.5 rounded-sm px-1.5 py-1 font-mono text-[10px] tracking-[0.1em] text-muted-foreground uppercase transition-colors group-hover:text-foreground",
-                    copied && "text-foreground",
-                )}
-            >
-                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                <span className={cn("hidden group-hover:inline", copied && "inline")}>
-                    {copied ? "Copied" : "Copy"}
-                </span>
-            </button>
+            <p className={cn(summaryFace.className, "pb-7 text-[0.95rem] leading-relaxed text-foreground/85")}>
+                <Typed text={text} lines={5} />
+            </p>
+            {copyText && (
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        // The button is the real control, so it copies whether or
+                        // not there is a selection. Stopping the event keeps the
+                        // box's handler from running a second copy on top of it.
+                        event.stopPropagation();
+                        void copy(copyText);
+                    }}
+                    aria-label="Copy summary"
+                    className={cn(
+                        "absolute bottom-1 left-1 inline-flex items-center gap-1.5 rounded-sm px-1.5 py-1 font-mono text-[10px] tracking-[0.1em] text-muted-foreground uppercase transition-colors group-hover:text-foreground",
+                        copied && "text-foreground",
+                    )}
+                >
+                    {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                    <span className={cn("hidden group-hover:inline", copied && "inline")}>
+                        {copied ? "Copied" : "Copy"}
+                    </span>
+                </button>
+            )}
         </div>
     );
 }
@@ -259,6 +293,97 @@ export function CopyBox({
  * the formula.
  */
 export function EvidenceTile({ result }: Readonly<{ result: AnyCheckResult }>) {
+    const { pending } = useLive();
+    return pending ? <PendingEvidence sources={result.sources} /> : <SettledEvidence result={result} />;
+}
+
+/**
+ * The evidence while the panel answers: every detector on it, in registry
+ * order, in the two columns the quiet ones finally sit in, each typing in its
+ * score as it lands.
+ *
+ * Registry order rather than loudest first, because loudest first would move
+ * rows under the reader every time an answer came in. The tile takes its final
+ * shape once, at the end, which is the only movement on the page then.
+ */
+function PendingEvidence({ sources }: Readonly<{ sources: SourceResult[] }>) {
+    const { partial } = useLive();
+    const metas = partial?.metas;
+    const detectors = useMemo(() => panelRows(metas ?? [], sources).detectors, [metas, sources]);
+    const half = Math.ceil(detectors.length / 2);
+    return (
+        <Tile span={12} id="evidence">
+            <div className="grid gap-x-10 md:grid-cols-2">
+                {detectors.length > 0 ? (
+                    [detectors.slice(0, half), detectors.slice(half)].map((group, i) => (
+                        <div key={group[0]?.meta.id ?? i}>
+                            {group.map((row) => (
+                                <LiveRow key={row.meta.id} row={row} />
+                            ))}
+                        </div>
+                    ))
+                ) : (
+                    <UnnamedRows />
+                )}
+            </div>
+        </Tile>
+    );
+}
+
+/** One detector while the panel answers: its name, then its track and score
+ *  once it has said something. */
+function LiveRow({ row }: Readonly<{ row: PanelRow }>) {
+    const r = row.result;
+    const answered = r !== undefined;
+    const score = r?.status === "ok" ? (r.score ?? 0) : null;
+    const loud = r?.malicious === true;
+    return (
+        <div className={ROW}>
+            <span
+                title={row.meta.name}
+                className={cn(
+                    "truncate font-mono text-[11.5px]",
+                    (!answered || score === null) && "text-muted-foreground",
+                    loud && "text-red-600 dark:text-red-400",
+                )}
+            >
+                {row.meta.name}
+            </span>
+            {answered ? (
+                <Track row={{ score, loud }} arriving />
+            ) : (
+                <span className="block h-1.5 border border-dotted border-foreground/25" />
+            )}
+            <span
+                className={cn(
+                    "text-right font-mono text-[11.5px] tabular-nums",
+                    loud && "font-bold text-red-600 dark:text-red-400",
+                    !loud && "text-muted-foreground",
+                )}
+            >
+                <Typed text={answered ? String(score ?? "—") : undefined} placeholder="1.5ch" />
+            </span>
+        </div>
+    );
+}
+
+/** Rows before the stream has named the panel, at the height the named rows
+ *  will take, so the tile does not grow when they arrive. */
+function UnnamedRows() {
+    return [0, 1].map((col) => (
+        <div key={col}>
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className={cn(ROW, "text-muted-foreground")}>
+                    <span className="pending-rule w-28" />
+                    <span className="block h-1.5 border border-dotted border-foreground/25" />
+                    <span className="pending-rule ml-auto w-[1.5ch]" />
+                </div>
+            ))}
+        </div>
+    ));
+}
+
+function SettledEvidence({ result }: Readonly<{ result: AnyCheckResult }>) {
     const rows = useMemo(() => detectorRows(result.sources), [result.sources]);
     const confidence = useMemo(
         () => scoreConfidence({ sources: result.sources, scoreBreakdown: result.scoreBreakdown }),
@@ -379,10 +504,15 @@ function DetectorRow({ row }: Readonly<{ row: DetectorRow }>) {
     );
 }
 
+/** A quiet row's grid: name, track, score. Shared with the pending rows, so
+ *  a row keeps its measure when the tile takes its final shape. */
+const ROW =
+    "grid grid-cols-[1fr_5.5rem_1.9rem] items-center gap-x-3.5 border-b border-foreground/12 py-1.5 last:border-b-0";
+
 /** A source that found nothing: name and its zero, and no more. */
 function SilentRow({ row }: Readonly<{ row: DetectorRow }>) {
     return (
-        <div className="grid grid-cols-[1fr_5.5rem_1.9rem] items-center gap-x-3.5 border-b border-foreground/12 py-1.5 last:border-b-0">
+        <div className={ROW}>
             <span title={row.name} className="truncate font-mono text-[11.5px] text-muted-foreground">
                 {row.name}
             </span>
@@ -399,7 +529,15 @@ function SilentRow({ row }: Readonly<{ row: DetectorRow }>) {
  *  right and the rest are bunched left, and that gap is the whole story of the
  *  score. A source that did not answer keeps a hatched track, so a gap in the
  *  evidence cannot read as evidence. */
-function Track({ row }: Readonly<{ row: DetectorRow }>) {
+function Track({
+    row,
+    arriving = false,
+}: Readonly<{
+    row: Pick<DetectorRow, "score" | "loud">;
+    /** The score has just landed: its mark travels out from zero. */
+    arriving?: boolean;
+}>) {
+    const { typing } = useLive();
     return (
         <span
             className={cn(
@@ -413,6 +551,7 @@ function Track({ row }: Readonly<{ row: DetectorRow }>) {
                     className={cn(
                         "absolute -top-1 -bottom-1 -ml-px w-0.5 bg-foreground",
                         row.loud && "w-[3px] bg-red-600 dark:bg-red-400",
+                        arriving && typing && "track-mark-in",
                     )}
                     style={{ left: `${row.score}%` }}
                 />

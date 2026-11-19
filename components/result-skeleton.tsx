@@ -1,8 +1,12 @@
 "use client";
 
+import { useRef } from "react";
 import { usePathname } from "next/navigation";
 import { modeRouteFor } from "@/lib/route-mode";
-import { FrameSkeleton } from "@/components/CheckResults/pending";
+import { detectIOC, type LookupType } from "@/lib/ioc";
+import CheckResults from "@/components/CheckResults";
+import { IDLE } from "@/components/CheckResults/use-research";
+import { SearchBox } from "@/components/Checker/search-box";
 
 /**
  * The inert shell a route shows before its cached result has been read.
@@ -39,21 +43,18 @@ export function ResultSkeleton() {
 
   return (
     <div className={lookup ? "mx-auto w-full max-w-7xl px-4 py-6" : undefined}>
-      <div className="sweep h-12 w-full rounded-lg" />
-
-      <div className="mt-5">
-        {lookup ? (
-          // The finished page's own shape, every tile at its final span, so the
-          // result replaces placeholders rather than replacing a layout.
-          <FrameSkeleton indicator={indicator} />
-        ) : (
-          <div className="rounded-lg border border-foreground/12 p-4">
+      {lookup ? (
+        <LookupShell indicator={indicator ?? ""} />
+      ) : (
+        <>
+          <div className="sweep h-12 w-full rounded-lg" />
+          <div className="mt-5 rounded-lg border border-foreground/12 p-4">
             <div className="sweep h-7 w-56 rounded" />
             <div className="sweep mt-4 h-3 w-11/12 rounded" />
             <div className="sweep mt-2 h-3 w-3/4 rounded" />
           </div>
-        )}
-      </div>
+        </>
+      )}
 
       <p className="sr-only" role="status" aria-live="polite">
         Loading {indicator ?? "the indicator"}.
@@ -61,3 +62,42 @@ export function ResultSkeleton() {
     </div>
   );
 }
+
+/**
+ * The lookup page's first frame, exactly: the compact search box holding the
+ * indicator, and the result view with no result and no progress, which is
+ * every tile at its real span with a rule in every slot. It is the same
+ * component the live lookup then renders, so the hand-over from this shell to
+ * the page is one frame drawn twice rather than a placeholder giving way to a
+ * layout. Nothing in it fetches: the research lane is idle and there is no
+ * place to draw a globe for.
+ */
+function LookupShell({ indicator }: Readonly<{ indicator: string }>) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const detected = detectIOC(indicator);
+  const kind: LookupType = detected === "domain" || detected === "hash" ? detected : "ip";
+  return (
+    <>
+      <SearchBox
+        compact
+        query={indicator}
+        loading
+        canSubmit={false}
+        inputRef={inputRef}
+        onQueryChange={noop}
+        onClear={noop}
+        onSubmit={noop}
+      />
+      <CheckResults
+        result={null}
+        partial={null}
+        indicator={indicator}
+        kind={kind}
+        onRefresh={noop}
+        research={IDLE}
+      />
+    </>
+  );
+}
+
+function noop() {}

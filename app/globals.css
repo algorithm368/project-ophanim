@@ -208,3 +208,91 @@
         animation: none;
     }
 }
+
+/* Typed loading (components/CheckResults/live.tsx). While a lookup streams,
+   every slot on the result page is either a dotted rule waiting for its value
+   or the value being typed in behind a block caret. The rules are drawn in
+   the text's own colour, so a slot in a muted cell waits in the muted tone. */
+
+/* A value not yet in: a dotted baseline as wide as the value is likely to be. */
+@utility pending-rule {
+    display: inline-block;
+    max-width: 100%;
+    height: 0.8em;
+    vertical-align: -0.05em;
+    border-bottom: 1px dotted color-mix(in oklch, currentColor 40%, transparent);
+}
+
+/* One line of a paragraph not yet written. */
+@utility pending-line {
+    display: block;
+    height: 0.75em;
+    margin: 0.5em 0 0.85em;
+    border-bottom: 1px dotted color-mix(in oklch, currentColor 40%, transparent);
+}
+
+/* The write head: a solid block the size of a character. */
+@utility type-caret {
+    display: inline-block;
+    width: 0.55em;
+    height: 0.95em;
+    margin-left: 1px;
+    vertical-align: -0.1em;
+    background-color: currentColor;
+}
+
+@keyframes ophanim-caret-blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+/* A caret waiting for a value the panel has to finish before it can write. */
+@utility type-caret-blink {
+    animation: ophanim-caret-blink 1s steps(1) infinite;
+}
+
+/* A score's mark travelling out from zero to where the source put it. */
+@utility track-mark-in {
+    transition: left 0.5s cubic-bezier(0.3, 0.7, 0.4, 1);
+    @starting-style {
+        left: 0%;
+    }
+}
+
+@keyframes ophanim-draw-in {
+    from {
+        clip-path: inset(0 100% 0 0);
+    }
+    to {
+        clip-path: inset(0 0 0 0);
+    }
+}
+
+/* A strip drawn in left to right, the way the values are typed. */
+@utility draw-in {
+    animation: ophanim-draw-in 0.6s linear both;
+}
+
+@keyframes ophanim-grow-up {
+    from {
+        transform: scaleY(0);
+    }
+}
+
+/* A bar growing from its baseline. */
+@utility grow-up {
+    transform-origin: bottom;
+    animation: ophanim-grow-up 0.45s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .type-caret-blink,
+    .draw-in,
+    .grow-up {
+        animation: none;
+    }
+    .track-mark-in {
+        transition: none;
+    }
+}
