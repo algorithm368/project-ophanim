@@ -27,7 +27,7 @@ interface Store {
     error: boolean;
 }
 
-const IDLE: ResearchStreamState = {
+export const IDLE: ResearchStreamState = {
     metas: [],
     results: {},
     loading: false,

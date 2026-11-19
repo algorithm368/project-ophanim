@@ -656,6 +656,16 @@ describe("files", () => {
     expect(find(buildIdentity(hash({ signed: false })), "signed")?.absent).toBe(true);
   });
 
+  // "Unsigned" is what no report means, so it is a reading of the panel, not
+  // a fact one source stated: the pending page must not show it early.
+  it("marks the signature vital inferred only when no source reported one", () => {
+    const sig = (ctx: Parameters<typeof hash>[0]) =>
+      buildIdentity(hash(ctx)).vitals.find((v) => v.key === "signature");
+    expect(sig({})?.inferred).toBe(true);
+    expect(sig({ signed: false })?.inferred).toBeUndefined();
+    expect(sig({ signed: true, signer: "Microsoft Corporation" })?.inferred).toBeUndefined();
+  });
+
   it("groups a submission count so a seven-figure tally is readable", () => {
     // EICAR has been submitted over a million times; "1163351" is a wall.
     const rec = buildIdentity(hash({ firstSeen: "2006-05-22T00:00:00Z", timesSubmitted: 1163351 }));

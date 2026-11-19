@@ -68,6 +68,11 @@ export default function Checker({
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState("");
   const [progress, setProgress] = useState<Progress | null>(null);
+  // Which lookup the result view belongs to, and whether it is streaming from
+  // the sources. A new id remounts the view, so nothing typed for one indicator
+  // carries into the next; `streamed` is what lets values be typed in at all,
+  // and stays false for a cache hit, which never sends a `start` event.
+  const [run, setRun] = useState({ id: 0, streamed: false });
   const [error, setError] = useState<CheckError | null>(null);
   const [result, setResult] = useState<AnyCheckResult | null>(
     initialResult ?? null,
@@ -171,6 +176,7 @@ export default function Checker({
       if (cached) {
         // Cache hit: restore instantly, no network.
         setResult(cached);
+        setRun((r) => ({ id: r.id + 1, streamed: false }));
         clearLookupState();
       } else {
         // Cache miss (e.g. after a hard reload): re-fetch this indicator. The
@@ -304,6 +310,7 @@ export default function Checker({
     }
 
     setLoading(true);
+    setRun((r) => ({ id: r.id + 1, streamed: false }));
     // Track the canonical target (not the raw input) so the live-research key is
     // identical during the check and once the result renders — the stream that
     // starts now keeps feeding the card without a refetch on that transition.
@@ -329,7 +336,10 @@ export default function Checker({
         controller,
         {
           chunk: watchdog.bump,
-          start: (total, metas) => setProgress({ total, metas, settled: {} }),
+          start: (total, metas) => {
+            setProgress({ total, metas, settled: {} });
+            setRun((r) => ({ ...r, streamed: true }));
+          },
           source: (sr) =>
             setProgress((p) =>
               p
@@ -540,6 +550,8 @@ export default function Checker({
           safe to render. */}
       {!isBulk && (result || loading) && (
         <CheckResults
+          key={run.id}
+          typing={run.streamed}
           result={result}
           partial={partial}
           indicator={pending || query}

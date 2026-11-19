@@ -93,6 +93,11 @@ export type Vital = {
   countryCode?: string;
   /** Nothing was measured for this slot, so `value` is the absence. */
   absent?: boolean;
+  /** `value` is what no data means rather than what a source said: a file no
+   *  source has reported a signature for reads "Unsigned". Drawn as a value on
+   *  the finished page, but while the panel is still answering it is not yet
+   *  true, so the slot waits like an absent one. */
+  inferred?: boolean;
   /** The value is itself a red flag the scanner raised. Only the active scan
    *  sets this; the passive strip keeps colour off its vitals. */
   flagged?: boolean;
@@ -437,7 +442,7 @@ export function spfReading(spf: string): { lead: string; value?: string } {
 
 /** A DMARC record as its policy and where it reports to. */
 export function dmarcReading(dmarc: string): { lead: string; value: string } {
-  const tag = (name: string) => new RegExp(`(?:^|;)\\s*${name}\\s*=\\s*([^;]+)`, "i").exec(dmarc)?.[1].trim();
+  const tag = (name: string) => new RegExp(String.raw`(?:^|;)\s*${name}\s*=\s*([^;]+)`, "i").exec(dmarc)?.[1].trim();
   const policy = tag("p")?.toLowerCase();
   const rua = tag("rua")
     ?.split(",")
@@ -659,7 +664,7 @@ export function place(country: string | undefined, ...within: (string | undefine
  */
 export function reverseName(
   reverse: string | undefined,
-): { value: string; sub?: string; quiet?: Vital["quiet"] } | undefined {
+): { value: string; sub?: string; quiet?: NonNullable<Vital["quiet"]> } | undefined {
   if (!reverse) return undefined;
   const parsed = parseDomain(reverse);
   if (!parsed) return { value: reverse };
@@ -789,7 +794,12 @@ function hashVitals(r: HashCheckResult): Vital[] {
     ),
     // Never absent: "unsigned" is what an absent signature means, and drawing
     // it quiet would say the question was not asked.
-    { key: "signature", label: "Signature", ...signatureVital(ctx?.signed, ctx?.signer) },
+    {
+      key: "signature",
+      label: "Signature",
+      ...signatureVital(ctx?.signed, ctx?.signer),
+      ...(ctx?.signed === undefined && { inferred: true }),
+    },
   ];
 }
 

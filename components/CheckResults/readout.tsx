@@ -7,9 +7,12 @@ import { buildResolverBallot } from "@/lib/ti/dns/ballot";
 import { type DetectorBar, type DetectorKind, detectorBars, detectorCounts } from "@/lib/ti/detector-bars";
 import { buildVoteTable, providerLabel, VOTE_FIELDS, type VoteTable } from "@/lib/ti/geo/votes";
 import { relativeTime } from "@/lib/relative-time";
-import { type AnyCheckResult, isDomainResult, type SourceResult } from "@/lib/ti/types";
+import { etaBudgetMs, etaLabel } from "@/lib/ti/eta";
+import type { PartialLookup } from "@/lib/ti/partial";
+import { type AnyCheckResult, isDomainResult, isHashResult, type SourceResult } from "@/lib/ti/types";
 import { cn } from "@/lib/utils";
 import { Tile } from "./frame";
+import { Typed, useLive } from "./live";
 import { markFace } from "./mark-face";
 import { VoteGrid } from "./voting";
 
@@ -43,20 +46,28 @@ export function ProvenanceTile({
     const dns = isDomainResult(result) ? result.context?.originResolverConsensus : undefined;
     const resolve = useMemo(() => resolveConfidence(dns), [dns]);
     const ballot = useMemo(() => (dns ? buildResolverBallot(dns) : null), [dns]);
+    const { pending } = useLive();
+
+    // While the panel answers, every section the finished rail can have is
+    // drawn, its level withheld: a level over half a panel is a guess, and a
+    // section that appears at the end would push the button down. The grids
+    // themselves are per-provider facts and fill in as the providers land.
+    const showResolve = resolve ?? (pending && isDomainResult(result));
+    const showGeo = geo ?? (pending && !isHashResult(result));
 
     return (
         <Tile span={3} rows={2} tone="rail" className="flex flex-col gap-4">
             <Checked checkedAt={result.checkedAt} cached={result.cached} />
-            {confidence && (
-                <Section title="Score confidence" level={confidence.level}>
-                    <Skyline sources={result.sources} />
+            {(confidence || pending) && (
+                <Section title="Score confidence" level={pending ? undefined : confidence?.level}>
+                    {pending ? <PendingSkyline /> : <Skyline sources={result.sources} />}
                 </Section>
             )}
             {/* Resolution above location, because it is upstream of it: the
                 address the resolvers settled on is the address the location
                 providers were then asked about. */}
-            {resolve && (
-                <Section title="Resolution" level={resolve.level}>
+            {showResolve && (
+                <Section title="Resolution" level={pending ? undefined : resolve?.level}>
                     {ballot && dns && (
                         <VoteGrid
                             rows={dns.perResolver.map((r) => r.resolver)}
@@ -67,8 +78,8 @@ export function ProvenanceTile({
                     )}
                 </Section>
             )}
-            {geo && (
-                <Section title="Location" level={geo.level}>
+            {showGeo && (
+                <Section title="Location" level={pending ? undefined : geo?.level}>
                     {votes && <GeoGrid table={votes} />}
                 </Section>
             )}
@@ -76,26 +87,41 @@ export function ProvenanceTile({
                 <button
                     type="button"
                     onClick={onRefresh}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded border border-foreground/15 bg-background px-2.5 py-2.5 font-mono text-[11px] tracking-[0.06em] uppercase transition-colors hover:border-foreground/40"
+                    disabled={pending}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded border border-foreground/15 bg-background px-2.5 py-2.5 font-mono text-[11px] tracking-[0.06em] uppercase transition-colors hover:border-foreground/40 disabled:pointer-events-none disabled:opacity-50"
                 >
                     <RefreshCw className="size-3" />
-                    {result.cached ? "Fetch fresh" : "Re-check"}
+                    {refreshLabel(pending, result.cached)}
                 </button>
             </div>
         </Tile>
     );
 }
 
+function refreshLabel(pending: boolean, cached: boolean | undefined): string {
+    if (pending) return "Checking";
+    return cached ? "Fetch fresh" : "Re-check";
+}
+
 export const LABEL = "font-mono text-[9.5px] tracking-[0.13em] text-muted-foreground uppercase";
 
-/** "13H AGO", ticking, in the vitals' face, over the exact time and whether
- *  it came off the cache. */
+/**
+ * "13H AGO", ticking, in the vitals' face, over the exact time and whether
+ * it came off the cache.
+ *
+ * While the panel answers, the same two lines count down instead: how much
+ * longer, and how many have answered. The finished values are typed into the
+ * same slots when the last source lands, so the countdown is overwritten
+ * rather than replaced.
+ */
 function Checked({ checkedAt, cached }: Readonly<{ checkedAt: string; cached?: boolean }>) {
+    const { pending, partial } = useLive();
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
         const id = setInterval(() => setNow(Date.now()), 30_000);
         return () => clearInterval(id);
     }, []);
+    const settledLine = `${stamp(checkedAt)}, ${cached ? "from cache" : "live"}`;
     // Both lines depend on the clock and the time zone, which the server and
     // the browser need not share.
     return (
@@ -105,13 +131,57 @@ function Checked({ checkedAt, cached }: Readonly<{ checkedAt: string; cached?: b
                 suppressHydrationWarning
                 className={cn(markFace.className, "mt-1 text-[44px] leading-[0.85] uppercase")}
             >
-                {relativeTime(checkedAt, now)}
+                {pending && <Countdown partial={partial} />}
+                <Typed text={pending ? undefined : relativeTime(checkedAt, now)} placeholder="none" />
             </div>
             <p suppressHydrationWarning className="mt-1.5 text-[11.5px] text-muted-foreground">
-                {stamp(checkedAt)}, {cached ? "from cache" : "live"}
+                {pending && answeredLine(partial)}
+                <Typed text={pending ? undefined : settledLine} placeholder="none" />
             </p>
         </div>
     );
+}
+
+/** "16 of 27 answered", or a rule before the stream has named the panel. */
+function answeredLine(partial: PartialLookup | null): React.ReactNode {
+    const total = partial?.counts.total ?? 0;
+    if (total === 0) return <span className="pending-rule w-24" />;
+    return `${partial?.counts.settled ?? 0} of ${total} answered`;
+}
+
+function Countdown({ partial }: Readonly<{ partial: PartialLookup | null }>) {
+    const eta = useEta(partial);
+    return eta ?? <span className="type-caret type-caret-blink" />;
+}
+
+/**
+ * How much longer this is likely to take, ticking down.
+ *
+ * An analyst waiting twenty seconds is owed an estimate. The budget is the
+ * longest timeout among the sources still out, so it shrinks as slow sources
+ * land and can never grow; the elapsed side only rises. The countdown therefore
+ * never ticks up, and when the estimate runs out it says so instead of counting
+ * into negatives. Null until the stream has named the panel, since there is no
+ * budget to count down from before that.
+ */
+function useEta(partial: PartialLookup | null): string | null {
+    const [startedAt] = useState(() => Date.now());
+    const [now, setNow] = useState(() => Date.now());
+
+    const metas = partial?.metas ?? [];
+    const settledIds = (partial?.sources ?? []).map((s) => s.source.id);
+    const budgetMs = etaBudgetMs(metas, settledIds);
+    // Nothing left to count down to once the last source is in.
+    const finished = metas.length === 0 || budgetMs === 0;
+
+    useEffect(() => {
+        if (finished) return;
+        const id = setInterval(() => setNow(Date.now()), 500);
+        return () => clearInterval(id);
+    }, [finished]);
+
+    if (metas.length === 0) return null;
+    return etaLabel(budgetMs - (now - startedAt));
 }
 
 export function stamp(iso: string): string {
@@ -128,12 +198,19 @@ export function Section({
     title,
     level,
     children,
-}: Readonly<{ title: string; level: string; children?: React.ReactNode }>) {
+}: Readonly<{
+    title: string;
+    /** Undefined while the level is withheld, which draws a rule in its place. */
+    level: string | undefined;
+    children?: React.ReactNode;
+}>) {
     return (
         <div className="border-t border-foreground/12 pt-3">
             <div className="flex items-baseline justify-between">
                 <span className={LABEL}>{title}</span>
-                <span className={cn(markFace.className, "text-[26px] leading-none uppercase")}>{level}</span>
+                <span className={cn(markFace.className, "text-[26px] leading-none uppercase")}>
+                    <Typed text={level} placeholder="3.5ch" />
+                </span>
             </div>
             {children && <div className="mt-3">{children}</div>}
         </div>
@@ -153,6 +230,7 @@ const STUB = 12;
 
 /** One bar per detector, as tall as its score, under a legend of counts. */
 function Skyline({ sources }: Readonly<{ sources: SourceResult[] }>) {
+    const { typing } = useLive();
     const bars = useMemo(() => detectorBars(sources), [sources]);
     if (bars.length === 0) return null;
     return (
@@ -162,7 +240,7 @@ function Skyline({ sources }: Readonly<{ sources: SourceResult[] }>) {
                     <span
                         key={b.id}
                         title={`${b.name}: ${b.score ?? b.kind}`}
-                        className={cn("flex-1 rounded-t-[1px]", KIND_STYLE[b.kind])}
+                        className={cn("flex-1 rounded-t-[1px]", KIND_STYLE[b.kind], typing && "grow-up")}
                         style={{ height: `${heightOf(b)}%` }}
                     />
                 ))}
@@ -176,6 +254,17 @@ function Skyline({ sources }: Readonly<{ sources: SourceResult[] }>) {
                     </span>
                 ))}
             </div>
+        </div>
+    );
+}
+
+/** The skyline's footprint while it is withheld: the baseline it will stand
+ *  on and the line its legend will take. */
+function PendingSkyline() {
+    return (
+        <div aria-hidden className="text-muted-foreground">
+            <div className="h-11 border-b border-dotted border-foreground/30" />
+            <span className="pending-rule mt-2 w-36 text-[9.5px]" />
         </div>
     );
 }
